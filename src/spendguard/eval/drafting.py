@@ -153,10 +153,18 @@ def _context(policy: Policy, seed_data: SeedData) -> str:
         f'- {code}, a {definition.check} check, rests on {definition.clause.reference}'
         for code, definition in policy.finding_codes.items()
     )
+    expense_categories = '\n'.join(
+        f'- {key} ({category.label}): limit applies per {category.unit}'
+        for key, category in policy.expense_categories.items()
+    )
     seed_text = yaml.safe_dump(seed_data.model_dump(mode='json'), sort_keys=False)
     return (
         f'## Policy\n\n{policy.rendered_text}\n\n'
         f'## Finding codes\n\n{finding_codes}\n\n'
+        '## Expense categories\n\n'
+        'An expense claim names one of these category keys and a quantity: a whole number,'
+        " at least 1, counting the unit the category's limit applies per.\n\n"
+        f'{expense_categories}\n\n'
         f'## Company records\n\n{seed_text}'
     )
 

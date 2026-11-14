@@ -29,7 +29,7 @@ def test_the_fixture_seed_files_read_into_typed_records() -> None:
 
     claim = seed_data.historical_claims[1]
     assert (claim.reference, claim.claimant, claim.currency) == ('CLM-0002', 'EMP-002', 'EUR')
-    assert claim.amount == Decimal('120.00')
+    assert (claim.category, claim.quantity, claim.amount) == ('accommodation', 2, Decimal('240.00'))
     assert claim.spent_on == datetime.date(2026, 10, 3)
     assert seed_data.cost_centres[2].owner is None
     assert seed_data.fx_rates[0].gbp_per_unit == Decimal('0.86')
@@ -101,6 +101,21 @@ def test_an_amount_the_product_could_not_record_is_rejected(
     directory = fixture_copy(tmp_path / 'seed', **{stem: records})
 
     with pytest.raises(pydantic.ValidationError, match=rf'{stem}\.0\.{field}'):
+        read_seed_directory(directory)
+
+
+@pytest.mark.parametrize('quantity', [None, 0])
+def test_a_historical_claim_without_a_quantity_of_at_least_one_is_rejected(
+    tmp_path: Path, quantity: int | None
+) -> None:
+    claims = yaml.safe_load((FIXTURE_SEED_DIRECTORY / 'historical_claims.yaml').read_text())
+    if quantity is None:
+        del claims[1]['quantity']
+    else:
+        claims[1]['quantity'] = quantity
+    directory = fixture_copy(tmp_path / 'seed', historical_claims=claims)
+
+    with pytest.raises(pydantic.ValidationError, match=r'historical_claims\.1\.quantity'):
         read_seed_directory(directory)
 
 
@@ -296,6 +311,10 @@ def test_loading_the_fixture_seed_data_twice_leaves_one_copy(
         'fx_rates': 2,
         'public_holidays': 2,
     }
+    claim_quantities = database_connection.execute(
+        'select reference, quantity from historical_claims order by reference'
+    ).fetchall()
+    assert claim_quantities == [('CLM-0001', 1), ('CLM-0002', 2)]
 
 
 def test_reloading_after_a_seed_file_changes_updates_the_record(

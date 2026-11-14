@@ -1,7 +1,8 @@
 - reference: CLM-0001
   claimant: EMP-003
   spent_on: 2026-09-14
-  category: meals
+  category: subsistence
+  quantity: 1
   merchant: Harbour Kitchen
   amount: 42.50
   currency: GBP
@@ -9,6 +10,7 @@
   claimant: EMP-002
   spent_on: 2026-10-03
   category: accommodation
+  quantity: 2
   merchant: Hotel Lindqvist
-  amount: 120.00
+  amount: 240.00
   currency: EUR

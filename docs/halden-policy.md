@@ -64,12 +64,15 @@ items and claims only those.
 
 ## 4. Category limits
 
-**§4.1 Limits by category and grade.** A claim must not exceed the limit for its category and the claimant's grade.
-Limits are ceilings, not allowances: claim only what was actually spent.
+**§4.1 Limits by category and grade.** A claim names one of the categories below and states a quantity: how many of
+that category's unit the claim covers. The limit for the category and the
+claimant's grade applies to each unit, so the amount claimed divided by the
+quantity must not exceed it. Limits are ceilings, not allowances: claim only
+what was actually spent.
 
 | Category | Limit applies per | Associate | Manager | Executive |
 |---|---|---|---|---|
-| Meals and subsistence | day | £35 | £45 | £60 |
+| Meals and subsistence | person per day | £35 | £45 | £60 |
 | Hotel accommodation | night | £140 | £160 | £200 |
 | Client entertainment | person attending | £50 | £70 | £90 |
 | Taxis | journey | £40 | £40 | £60 |
@@ -80,7 +83,7 @@ Limits are ceilings, not allowances: claim only what was actually spent.
 
 **§5.1 When meals can be claimed.** Meals can be claimed when business takes an employee away from their usual workplace for more than 5 hours. Meals taken at or near the usual workplace, including during internal meetings, are a personal cost.
 
-**§5.2 Meals with colleagues.** When colleagues travel together, each claims their own meals. Where one person pays for the group, the claim lists everyone who ate, and the limit applies to each person.
+**§5.2 Meals with colleagues.** When colleagues travel together, each claims their own meals. Where one person pays for the group, the claim lists everyone who ate, and its quantity is the number of people who ate multiplied by the number of days, so the limit applies to each person for each day.
 
 **§5.3 Alcohol.** Halden Group does not pay for alcohol. This covers drinks with a meal, in a hotel bar, on a train or at a team event. Any alcoholic drink on a receipt is removed from the amount claimed.
 
@@ -98,7 +101,7 @@ Limits are ceilings, not allowances: claim only what was actually spent.
 
 **§7.1 Who counts as a guest.** Client entertainment means hospitality given to people from outside Halden Group for a clear business reason. The claim names the guests' organisation, says how many people from each side attended and explains the business reason. Hospitality for Halden staff alone is not client entertainment.
 
-**§7.2 How the limit applies.** The client entertainment limit is a limit per person attending, counting Halden staff as well as guests, at the grade of the employee who claims. The total claimed is divided by the number of people attending.
+**§7.2 How the limit applies.** The client entertainment limit is a limit per person attending, counting Halden staff as well as guests, at the grade of the employee who claims. The claim's quantity is the number of people attending, and the limit applies to the total claimed divided by it.
 
 **§7.3 Alcohol at client events.** Alcohol served as part of a client entertainment meal may be claimed when the claimant's line manager approved the event in writing before it took place. The claim quotes that approval, and the whole bill, including the alcohol, stays within the per-person limit.
 

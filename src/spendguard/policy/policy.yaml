@@ -21,42 +21,42 @@ parameters:
   category_limits:
     subsistence:
       label: Meals and subsistence
-      per: day
+      unit: person per day
       limits:
         associate: 35 # gut pick
         manager: 45 # gut pick
         executive: 60 # gut pick
     accommodation:
       label: Hotel accommodation
-      per: night
+      unit: night
       limits:
         associate: 140 # gut pick
         manager: 160 # gut pick
         executive: 200 # gut pick
     client_entertainment:
       label: Client entertainment
-      per: person attending
+      unit: person attending
       limits:
         associate: 50 # gut pick
         manager: 70 # gut pick
         executive: 90 # gut pick
     taxi:
       label: Taxis
-      per: journey
+      unit: journey
       limits:
         associate: 40 # gut pick
         manager: 40 # gut pick
         executive: 60 # gut pick
     public_transport:
       label: Local public transport
-      per: journey
+      unit: journey
       limits:
         associate: 75 # gut pick
         manager: 75 # gut pick
         executive: 75 # gut pick
     office_supplies:
       label: Stationery and small office supplies
-      per: item
+      unit: item
       limits:
         associate: 50 # gut pick
         manager: 50 # gut pick
@@ -169,12 +169,15 @@ sections:
       - id: category_limits
         heading: Limits by category and grade
         text: |-
-          A claim must not exceed the limit for its category and the claimant's grade.
-          Limits are ceilings, not allowances: claim only what was actually spent.
+          A claim names one of the categories below and states a quantity: how many of
+          that category's unit the claim covers. The limit for the category and the
+          claimant's grade applies to each unit, so the amount claimed divided by the
+          quantity must not exceed it. Limits are ceilings, not allowances: claim only
+          what was actually spent.
 
           | Category | Limit applies per |{% for grade in grades %} {{ grade | capitalize }} |{% endfor %}
           |---|---|{% for grade in grades %}---|{% endfor %}
-          {% for category in category_limits.values() %}| {{ category.label }} | {{ category.per }} |{% for grade in grades %} £{{ category.limits[grade] }} |{% endfor %}
+          {% for category in category_limits.values() %}| {{ category.label }} | {{ category.unit }} |{% for grade in grades %} £{{ category.limits[grade] }} |{% endfor %}
           {% endfor %}
 
   - heading: Meals and subsistence
@@ -190,8 +193,9 @@ sections:
         heading: Meals with colleagues
         text: >-
           When colleagues travel together, each claims their own meals. Where one
-          person pays for the group, the claim lists everyone who ate, and the limit
-          applies to each person.
+          person pays for the group, the claim lists everyone who ate, and its quantity
+          is the number of people who ate multiplied by the number of days, so the limit
+          applies to each person for each day.
       - id: no_alcohol
         heading: Alcohol
         text: >-
@@ -243,7 +247,8 @@ sections:
         text: >-
           The client entertainment limit is a limit per person attending, counting
           Halden staff as well as guests, at the grade of the employee who claims.
-          The total claimed is divided by the number of people attending.
+          The claim's quantity is the number of people attending, and the limit applies
+          to the total claimed divided by it.
       - id: entertainment_alcohol
         heading: Alcohol at client events
         text: >-

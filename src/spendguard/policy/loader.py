@@ -9,7 +9,7 @@ from typing import Literal, get_args
 
 import jinja2
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 FindingCode = Literal[
     'OVER_CATEGORY_LIMIT',
@@ -62,6 +62,15 @@ class _FindingCodeSource(_StrictModel):
     precedent_scope: PrecedentScope | None = None
 
 
+class _ExpenseCategorySource(_StrictModel):
+    label: str
+    unit: str
+    limits: dict[str, Decimal]
+
+
+_CATEGORY_LIMITS_ADAPTER = TypeAdapter(dict[str, _ExpenseCategorySource])
+
+
 class _ApplicabilitySource(_StrictModel):
     expense_claim: tuple[FindingCode, ...]
     supplier_invoice: tuple[FindingCode, ...]
@@ -95,6 +104,14 @@ class FindingCodeDefinition:
 
 
 @dataclass(frozen=True)
+class ExpenseCategory:
+    key: str
+    label: str
+    unit: str
+    limits: Mapping[str, Decimal]
+
+
+@dataclass(frozen=True)
 class Policy:
     title: str
     version: str
@@ -102,6 +119,7 @@ class Policy:
     clauses: tuple[Clause, ...]
     finding_codes: Mapping[FindingCode, FindingCodeDefinition]
     applicability: Mapping[SubmissionType, tuple[FindingCode, ...]]
+    expense_categories: Mapping[str, ExpenseCategory]
     rendered_text: str
 
 
@@ -179,10 +197,31 @@ def load_policy(path: Path) -> Policy:
             'expense_claim': source.applicability.expense_claim,
             'supplier_invoice': source.applicability.supplier_invoice,
         },
+        expense_categories=_expense_categories(path, source),
         rendered_text=_DOCUMENT_TEMPLATE.render(
             title=source.title, version=source.version, sections=sections
         ),
     )
+
+
+def _expense_categories(path: Path, source: _PolicySource) -> dict[str, ExpenseCategory]:
+    if 'category_limits' not in source.parameters:
+        raise PolicyError(f'{path} has no category_limits parameter')
+    try:
+        category_sources = _CATEGORY_LIMITS_ADAPTER.validate_python(
+            source.parameters['category_limits']
+        )
+    except ValidationError as error:
+        raise PolicyError(f'{path} has invalid category_limits:\n{error}') from error
+    return {
+        key: ExpenseCategory(
+            key=key,
+            label=category_source.label,
+            unit=category_source.unit,
+            limits=category_source.limits,
+        )
+        for key, category_source in category_sources.items()
+    }
 
 
 def _render_clause(

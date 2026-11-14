@@ -5,7 +5,8 @@ submission:
   type: expense_claim
   claimant: EMP-003
   spent_on: 2026-10-08
-  category: meals
+  category: subsistence
+  quantity: 1
   merchant: Harbour Kitchen
   amount: 34.00
   currency: GBP

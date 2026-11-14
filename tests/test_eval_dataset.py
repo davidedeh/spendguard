@@ -57,6 +57,49 @@ def test_a_case_without_drafted_by_is_reported() -> None:
     assert report.problems == ('test-weekend.yaml: drafted_by: Field required',)
 
 
+@pytest.mark.parametrize(
+    ('quantity', 'problem'),
+    [
+        (None, 'test-weekend.yaml: submission.expense_claim.quantity: Field required'),
+        (
+            0,
+            'test-weekend.yaml: submission.expense_claim.quantity:'
+            ' Input should be greater than or equal to 1',
+        ),
+        (
+            1.5,
+            'test-weekend.yaml: submission.expense_claim.quantity:'
+            ' Input should be a valid integer, got a number with a fractional part',
+        ),
+    ],
+)
+def test_an_expense_claim_without_a_whole_quantity_of_at_least_one_is_reported(
+    quantity: float | None, problem: str
+) -> None:
+    cases = fixture_cases()
+    if quantity is None:
+        del cases['test-weekend.yaml']['submission']['quantity']
+    else:
+        cases['test-weekend.yaml']['submission']['quantity'] = quantity
+
+    report = validate(cases)
+
+    assert report.problems == (problem,)
+
+
+def test_an_expense_claim_whose_category_is_not_a_policy_category_key_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-weekend.yaml']['submission']['category'] = 'travel'
+
+    report = validate(cases)
+
+    assert report.problems == (
+        "test-weekend.yaml: category 'travel' is not a policy category"
+        ' (accommodation, subsistence, taxi)',
+    )
+    assert report.dataset_hash is None
+
+
 def test_a_gold_clause_missing_from_the_policy_is_reported() -> None:
     cases = fixture_cases()
     cases['test-alcohol.yaml']['expected_findings'][0]['gold_clauses'] = ['§2.2', '§2.9']

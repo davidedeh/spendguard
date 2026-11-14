@@ -6,6 +6,25 @@ parameters:
   meal_limit: 40
   purchase_order_threshold: 500
   currency_deviation_percent: 3
+  category_limits:
+    subsistence:
+      label: Meals
+      unit: person per day
+      limits:
+        junior: 40
+        senior: 55
+    accommodation:
+      label: Hotels
+      unit: night
+      limits:
+        junior: 120
+        senior: 150
+    taxi:
+      label: Taxis
+      unit: journey
+      limits:
+        junior: 30
+        senior: 30
 
 sections:
   - heading: Claiming expenses

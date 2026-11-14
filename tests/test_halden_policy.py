@@ -96,6 +96,31 @@ def test_every_category_sets_a_limit_for_each_grade_and_only_approving_grades_ha
     assert set(approval_limits) == {'manager', 'executive'}
 
 
+def test_category_limits_apply_per_unit_of_the_quantity_a_claim_states() -> None:
+    policy = load_policy(POLICY_PATH)
+    clauses = {clause.id: clause for clause in policy.clauses}
+
+    assert clauses['category_limits'].reference == '§4.1'
+    assert ' '.join(clauses['category_limits'].text.split()).startswith(
+        'A claim names one of the categories below and states a quantity: how many of that'
+        " category's unit the claim covers. The limit for the category and the claimant's"
+        ' grade applies to each unit, so the amount claimed divided by the quantity must not'
+        ' exceed it.'
+    )
+    assert policy.expense_categories['subsistence'].unit == 'person per day'
+    assert clauses['meals_with_colleagues'].reference == '§5.2'
+    assert clauses['meals_with_colleagues'].text.endswith(
+        'Where one person pays for the group, the claim lists everyone who ate, and its'
+        ' quantity is the number of people who ate multiplied by the number of days, so the'
+        ' limit applies to each person for each day.'
+    )
+    assert policy.expense_categories['client_entertainment'].unit == 'person attending'
+    assert clauses['entertainment_limit'].text.endswith(
+        "The claim's quantity is the number of people attending, and the limit applies to"
+        ' the total claimed divided by it.'
+    )
+
+
 RENDERED_POLICY_PATH = Path(__file__).parents[1] / 'docs' / 'halden-policy.md'
 
 

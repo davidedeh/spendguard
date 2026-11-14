@@ -5,7 +5,8 @@ submission:
   type: expense_claim
   claimant: EMP-002
   spent_on: 2026-10-05
-  category: travel
+  category: taxi
+  quantity: 1
   merchant: City Taxis
   amount: 12.80
   currency: EUR

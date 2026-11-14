@@ -91,7 +91,8 @@ class DraftingFake(FakeChatModel):
                     'type': 'expense_claim',
                     'claimant': self.claimant,
                     'spent_on': '2026-10-06',
-                    'category': 'meals',
+                    'category': 'subsistence',
+                    'quantity': 1,
                     'merchant': f'{self.model_id} call {len(self.received)}',
                     'amount': '18.40',
                     'currency': 'GBP',
@@ -275,3 +276,21 @@ def test_prompts_name_each_finding_code_with_the_clause_it_rests_on(tmp_path: Pa
     prompt_text = str(drafters.models['fake_gemini'].received[0][1].content)
     assert '- ALCOHOL_NOT_PERMITTED, a judgement check, rests on §2.2' in prompt_text
     assert '- MISSING_PO, a rule check, rests on §3.2' in prompt_text
+
+
+def test_prompts_name_each_expense_category_key_with_the_unit_its_quantity_counts(
+    tmp_path: Path,
+) -> None:
+    drafters = DrafterPool()
+
+    run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    prompt_text = str(drafters.models['fake_claude'].received[0][1].content)
+    assert (
+        '## Expense categories\n\n'
+        'An expense claim names one of these category keys and a quantity: a whole number,'
+        " at least 1, counting the unit the category's limit applies per.\n\n"
+        '- subsistence (Meals): limit applies per person per day\n'
+        '- accommodation (Hotels): limit applies per night\n'
+        '- taxi (Taxis): limit applies per journey\n'
+    ) in prompt_text

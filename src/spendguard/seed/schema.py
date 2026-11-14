@@ -13,6 +13,7 @@ InvoiceReference = Annotated[str, StringConstraints(pattern=r'^INV-\d{4,}$')]
 CurrencyCode = Annotated[str, StringConstraints(pattern=r'^[A-Z]{3}$')]
 Amount = Annotated[Decimal, Field(gt=0, decimal_places=2)]
 NonNegativeAmount = Annotated[Decimal, Field(ge=0, decimal_places=2)]
+Quantity = Annotated[int, Field(ge=1)]
 
 
 class SeedRecord(BaseModel):
@@ -57,6 +58,7 @@ class HistoricalClaim(SeedRecord):
     claimant: EmployeeReference
     spent_on: datetime.date
     category: str
+    quantity: Quantity
     merchant: str
     amount: Amount
     currency: CurrencyCode

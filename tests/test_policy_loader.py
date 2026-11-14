@@ -1,11 +1,12 @@
 from collections.abc import Callable
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
 
-from spendguard.policy.loader import PolicyError, load_policy
+from spendguard.policy.loader import ExpenseCategory, PolicyError, load_policy
 
 FIXTURE_POLICY_PATH = Path(__file__).parent / 'fixtures' / 'policy' / 'valid_policy.yaml'
 
@@ -75,6 +76,47 @@ def test_the_applicability_table_lists_the_checks_for_each_submission_type() -> 
     )
     assert 'MISSING_PO' in policy.applicability['supplier_invoice']
     assert 'MISSING_PO' not in policy.applicability['expense_claim']
+
+
+def test_each_expense_category_carries_the_unit_its_limit_applies_per() -> None:
+    policy = load_policy(FIXTURE_POLICY_PATH)
+
+    assert policy.expense_categories == {
+        'subsistence': ExpenseCategory(
+            key='subsistence',
+            label='Meals',
+            unit='person per day',
+            limits={'junior': Decimal('40'), 'senior': Decimal('55')},
+        ),
+        'accommodation': ExpenseCategory(
+            key='accommodation',
+            label='Hotels',
+            unit='night',
+            limits={'junior': Decimal('120'), 'senior': Decimal('150')},
+        ),
+        'taxi': ExpenseCategory(
+            key='taxi',
+            label='Taxis',
+            unit='journey',
+            limits={'junior': Decimal('30'), 'senior': Decimal('30')},
+        ),
+    }
+
+
+def test_a_category_with_no_unit_fails_to_load(tmp_path: Path) -> None:
+    def remove_unit(policy_source: dict[str, Any]) -> None:
+        del policy_source['parameters']['category_limits']['accommodation']['unit']
+
+    with pytest.raises(PolicyError, match=r'accommodation\.unit'):
+        load_policy(write_edited_policy(tmp_path, remove_unit))
+
+
+def test_a_policy_with_no_category_limits_fails_to_load(tmp_path: Path) -> None:
+    def remove_category_limits(policy_source: dict[str, Any]) -> None:
+        del policy_source['parameters']['category_limits']
+
+    with pytest.raises(PolicyError, match='category_limits'):
+        load_policy(write_edited_policy(tmp_path, remove_category_limits))
 
 
 def test_a_finding_code_with_no_severity_fails_to_load(tmp_path: Path) -> None:

@@ -10,6 +10,7 @@ from spendguard.seed.schema import (
     CurrencyCode,
     EmployeeReference,
     PurchaseOrderReference,
+    Quantity,
     SupplierReference,
 )
 
@@ -25,6 +26,7 @@ class ExpenseClaim(_SubmissionModel):
     claimant: EmployeeReference
     spent_on: datetime.date
     category: str
+    quantity: Quantity
     merchant: str
     amount: Amount
     currency: CurrencyCode

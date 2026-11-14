@@ -67,6 +67,7 @@ def _case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Itera
     submission = case.submission
     references: list[tuple[str, str | None]]
     if isinstance(submission, ExpenseClaim):
+        yield from _category_problems(submission, policy)
         references = [('employee', submission.claimant)]
     else:
         references = [
@@ -93,6 +94,12 @@ def _case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Itera
     for kind, reference in references:
         if reference is not None and reference not in known_references[kind]:
             yield f'unknown {kind} {reference}'
+
+
+def _category_problems(claim: ExpenseClaim, policy: Policy) -> Iterator[str]:
+    if claim.category not in policy.expense_categories:
+        category_keys = ', '.join(sorted(policy.expense_categories))
+        yield f'category {claim.category!r} is not a policy category ({category_keys})'
 
 
 def _split_problems(cases: Mapping[str, EvalCase]) -> Iterator[str]:
