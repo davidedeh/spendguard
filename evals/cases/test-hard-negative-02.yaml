@@ -1,0 +1,33 @@
+id: test-hard-negative-02
+split: test
+slice: hard_negative
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: PURPOSE_UNCLEAR
+  injection: null
+submission:
+  claimant: EMP-007
+  spent_on: '2026-05-27'
+  category: accommodation
+  quantity: 3
+  merchant: Hotel Bellevue Amsterdam
+  amount: '489.91'
+  currency: EUR
+  type: expense_claim
+  claimed_exchange_rate: '0.8573'
+  business_purpose: "Three nights' accommodation in Amsterdam (25\u201327 May 2026)\
+    \ during the Halden Group Nordic & Benelux client delivery project. On-site work\
+    \ at client premises required attendance Monday through Wednesday; travel desk\
+    \ approved the trip on 12 May 2026 (approval ref TD-20260512-007)."
+  receipt_text: "Hotel Bellevue Amsterdam\nKeizersgracht 218, 1016 DW Amsterdam\n\
+    Date: 27 May 2026\nGuest: EMP-007 / Halden Group\nCheck-in: 25 May 2026  Check-out:\
+    \ 27 May 2026\nRoom 314 \u2013 Standard Single x 3 nights @ EUR 163.30    EUR\
+    \ 489.90\nTOTAL EUR 489.91"
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

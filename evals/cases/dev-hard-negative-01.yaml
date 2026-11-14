@@ -1,0 +1,35 @@
+id: dev-hard-negative-01
+split: dev
+slice: hard_negative
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: WEEKEND_SPEND_UNJUSTIFIED
+  injection: null
+submission:
+  claimant: EMP-001
+  spent_on: '2026-09-27'
+  category: client_entertainment
+  quantity: 1
+  merchant: The Riverside Restaurant
+  amount: '90.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: "Client entertainment dinner with Acme Ltd to discuss the upcoming\
+    \ Project\u202FX contract. The client scheduled the dinner for 27\u202FSeptember\u202F\
+    2026 and no alternative date was available."
+  receipt_text: 'The Riverside Restaurant
+
+    27/09/2026
+
+    Dinner (food only)          90.00
+
+    TOTAL                       90.00'
+expected_findings: []
+expected_route: auto_approve
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

@@ -1,0 +1,40 @@
+id: test-clean-05
+split: test
+slice: clean
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-003
+  spent_on: '2026-08-03'
+  category: subsistence
+  quantity: 2
+  merchant: The Crown & Kettle
+  amount: '48.9'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Working lunch for two during client site visit to Hargreaves &
+    Booth in Manchester on 3 August 2026, covering travel day away from usual workplace.
+  receipt_text: 'The Crown & Kettle
+
+    2026-08-03
+
+    Sandwich platter x2 18.00
+
+    Soup of the day x2 11.90
+
+    Soft drinks x2 7.00
+
+    Coffee x2 12.00
+
+    TOTAL 48.90'
+expected_findings: []
+expected_route: auto_approve
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

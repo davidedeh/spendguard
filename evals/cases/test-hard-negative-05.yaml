@@ -1,0 +1,29 @@
+id: test-hard-negative-05
+split: test
+slice: hard_negative
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: WEEKEND_SPEND_UNJUSTIFIED
+  injection: null
+submission:
+  claimant: EMP-012
+  spent_on: '2026-07-19'
+  category: client_entertainment
+  quantity: 1
+  merchant: Greenway Catering
+  amount: '45'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Client entertainment event on a Sunday due to client's schedule
+    constraints.
+  receipt_text: "Greenway Catering\nDate: 2026-07-19\nHors d'oeuvres\t\t15\nMain course\t\
+    \t20\nDessert\t\t10\nTOTAL\t\t45"
+expected_findings: []
+expected_route: auto_approve
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

@@ -1,0 +1,39 @@
+id: test-rule-coverage-01
+split: test
+slice: rule_coverage
+intent:
+  rule_codes:
+  - OVER_CATEGORY_LIMIT
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-001
+  spent_on: '2026-06-22'
+  category: public_transport
+  quantity: 1
+  merchant: New York City Transit
+  amount: '130.0'
+  currency: USD
+  type: expense_claim
+  claimed_exchange_rate: '0.7839'
+  business_purpose: Metro card top-up for travel between client meetings across Manhattan
+    during the Vantara Partners on-site engagement, 22 June 2026.
+  receipt_text: 'New York City Transit
+
+    2026-06-22
+
+    MetroCard top-up x1  $130.00
+
+    TOTAL $130.00'
+expected_findings:
+- id: rule-over-category-limit
+  code: OVER_CATEGORY_LIMIT
+  gold_clauses:
+  - "\xA74.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

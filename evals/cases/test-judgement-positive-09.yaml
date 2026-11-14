@@ -1,0 +1,36 @@
+id: test-judgement-positive-09
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - RECEIPT_MISMATCH
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-012
+  spent_on: '2026-04-21'
+  category: client_entertainment
+  quantity: 4
+  merchant: The Grand Bistro
+  amount: '180.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: 'Client dinner with representatives of AlphaTech to discuss Q3
+    project progress and future contract opportunities. Attendees: 2 AlphaTech staff
+    and 2 Halden staff.'
+  receipt_text: "The Grand Bistro\nDate: 21\u201104\u20112026\n\nItemised charges:\n\
+    Dinner \u2013 \xA380.00\nEntertainment \u2013 \xA370.00\nService charge (10%)\
+    \ \u2013 \xA35.00\n\nTOTAL \xA3155.00"
+expected_findings:
+- id: RECEIPT_MISMATCH
+  code: RECEIPT_MISMATCH
+  gold_clauses:
+  - "\xA73.2"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

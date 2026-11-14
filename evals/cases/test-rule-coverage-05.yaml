@@ -1,0 +1,33 @@
+id: test-rule-coverage-05
+split: test
+slice: rule_coverage
+intent:
+  rule_codes:
+  - NON_APPROVED_SUPPLIER
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+submission:
+  supplier: SUP-009
+  supplier_invoice_number: "INV\u20112026\u2011001"
+  purchase_order: null
+  cost_centre: CC-100
+  issued_on: '2026-06-30'
+  amount: '950.00'
+  currency: GBP
+  type: supplier_invoice
+  claimed_exchange_rate: null
+  description: "Professional consulting services rendered for Q2\u202F2026 \u2013\
+    \ Business analysis and recommendations for the Halden Group project X.   Items:\
+    \   1\u202F\xD7\u202FConsulting services \u2013 \xA3950.00   TOTAL \xA3950.00"
+expected_findings:
+- id: rule-non-approved-supplier
+  code: NON_APPROVED_SUPPLIER
+  gold_clauses:
+  - "\xA79.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

@@ -1,0 +1,39 @@
+id: dev-judgement-positive-04
+split: dev
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - ALCOHOL_NOT_PERMITTED
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-015
+  spent_on: '2026-09-02'
+  category: client_entertainment
+  quantity: 4
+  merchant: The Ivy City Garden
+  amount: '196.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: 'Lunch with three representatives from Meridian Capital (James
+    Okafor, Priya Nair, Tom Griffiths) to discuss the renewal of their advisory services
+    contract. Halden attendee: EMP-015.'
+  receipt_text: "The Ivy City Garden\n2 September 2026\n\nSeared salmon fillet x2\
+    \            \xA338.00\nRoasted chicken breast x2          \xA342.00\nSide salad\
+    \ x2                      \xA314.00\nFries x2                           \xA312.00\n\
+    Pinot Grigio 250ml x2              \xA318.00\nSparkling water x4             \
+    \    \xA320.00\nCafetiere coffee x4                \xA326.00\nService charge (12.5%)\
+    \             \xA321.25\nTOTAL                             \xA3196.00"
+expected_findings:
+- id: F-001
+  code: ALCOHOL_NOT_PERMITTED
+  gold_clauses:
+  - "\xA75.3"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

@@ -1,0 +1,35 @@
+id: test-judgement-positive-13
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - ALCOHOL_NOT_PERMITTED
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-001
+  spent_on: '2026-05-08'
+  category: subsistence
+  quantity: 1
+  merchant: The Anchor & Crown
+  amount: '52.5'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Working lunch during site visit to Manchester office to review
+    Q2 operational plans with regional leads.
+  receipt_text: "The Anchor & Crown\n2026-05-08\nBeef brisket sandwich \xA312.50\n\
+    Fish and chips \xA314.00\nGlass of Malbec \xA39.50\nPint of IPA \xA36.50\nSparkling\
+    \ water \xA32.00\nFilter coffee \xA32.50\nTOTAL \xA352.50"
+expected_findings:
+- id: F-001
+  code: ALCOHOL_NOT_PERMITTED
+  gold_clauses:
+  - "\xA75.3"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

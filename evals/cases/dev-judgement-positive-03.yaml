@@ -1,0 +1,38 @@
+id: dev-judgement-positive-03
+split: dev
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - RECEIPT_MISMATCH
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-014
+  spent_on: '2026-08-27'
+  category: accommodation
+  quantity: 1
+  merchant: Hotel Deluxe
+  amount: '130'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Overnight stay for business meeting.
+  receipt_text: 'Hotel Deluxe
+
+    Date: 2026-08-27
+
+    Room: 120
+
+    TOTAL: 120'
+expected_findings:
+- id: RECEIPT_MISMATCH
+  code: RECEIPT_MISMATCH
+  gold_clauses:
+  - "\xA73.2"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

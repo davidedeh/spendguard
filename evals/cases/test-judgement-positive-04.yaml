@@ -1,0 +1,34 @@
+id: test-judgement-positive-04
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - WEEKEND_SPEND_UNJUSTIFIED
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-005
+  spent_on: '2026-05-31'
+  category: taxi
+  quantity: 1
+  merchant: City Cabs Manchester
+  amount: '32.5'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Taxi from Manchester Piccadilly station to the office to collect
+    project documentation needed for Monday morning client presentation.
+  receipt_text: "City Cabs Manchester\n2026-05-31\nFare: Manchester Piccadilly to\
+    \ Halden House \xA332.50\nTOTAL \xA332.50"
+expected_findings:
+- id: F-001
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  gold_clauses:
+  - "\xA72.4"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

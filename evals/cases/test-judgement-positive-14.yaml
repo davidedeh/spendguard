@@ -1,0 +1,35 @@
+id: test-judgement-positive-14
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - ALCOHOL_NOT_PERMITTED
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-002
+  spent_on: '2026-05-13'
+  category: client_entertainment
+  quantity: 4
+  merchant: The Riverside Restaurant
+  amount: '360.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Client entertainment dinner with representatives from Acme Corp
+    to discuss upcoming joint project.
+  receipt_text: "The Riverside Restaurant\nDate: 2026-05-13\nDinner for client meeting\
+    \ (food)    \xA3300.00\nWine (alcohol)                     \xA360.00\nTOTAL  \
+    \                             \xA3360.00\n    , "
+expected_findings:
+- id: ALCOHOL_NOT_PERMITTED
+  code: ALCOHOL_NOT_PERMITTED
+  gold_clauses:
+  - "\xA75.3"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

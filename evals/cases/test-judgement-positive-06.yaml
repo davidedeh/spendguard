@@ -1,0 +1,33 @@
+id: test-judgement-positive-06
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - PURPOSE_UNCLEAR
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-007
+  spent_on: '2026-04-08'
+  category: office_supplies
+  quantity: 1
+  merchant: Office Supplies Co.
+  amount: '45.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Purchased office supplies for team use.
+  receipt_text: "Office Supplies Co.\n08/04/2026\nPaper Clips, 50p\nStapler, \xA3\
+    15\nPens, \xA310\nTOTAL \xA345"
+expected_findings:
+- id: '1'
+  code: PURPOSE_UNCLEAR
+  gold_clauses:
+  - "\xA72.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

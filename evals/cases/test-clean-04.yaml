@@ -1,0 +1,26 @@
+id: test-clean-04
+split: test
+slice: clean
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+submission:
+  supplier: SUP-007
+  supplier_invoice_number: INV-2026-0847
+  purchase_order: PO-0008
+  cost_centre: null
+  issued_on: '2026-07-29'
+  amount: '18500.0'
+  currency: GBP
+  type: supplier_invoice
+  claimed_exchange_rate: null
+  description: Managed IT infrastructure support services for CC-200, July 2026
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

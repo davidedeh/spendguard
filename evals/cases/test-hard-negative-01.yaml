@@ -1,0 +1,30 @@
+id: test-hard-negative-01
+split: test
+slice: hard_negative
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: WEEKEND_SPEND_UNJUSTIFIED
+  injection: null
+submission:
+  claimant: EMP-006
+  spent_on: '2026-06-27'
+  category: subsistence
+  quantity: 1
+  merchant: "City Caf\xE9"
+  amount: '42.00'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: "Attended mandatory client workshop scheduled on Saturday 27\u202F\
+    June\u202F2026 at the client site; the workshop could not be moved to a weekday\
+    \ and was essential for project delivery."
+  receipt_text: "City Caf\xE9\nDate: 2026-06-27\n\nLunch - Chicken Caesar Salad\t\xA3\
+    20.00\nDinner - Spaghetti Bolognese\t\xA322.00\n\nTOTAL\t\xA342.00"
+expected_findings: []
+expected_route: auto_approve
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

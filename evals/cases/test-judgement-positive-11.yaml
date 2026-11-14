@@ -1,0 +1,33 @@
+id: test-judgement-positive-11
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - RECEIPT_MISMATCH
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-014
+  spent_on: '2026-04-29'
+  category: public_transport
+  quantity: 1
+  merchant: Transport for London
+  amount: '70.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Travel on the London Underground to attend a client site meeting
+  receipt_text: "Transport for London\nDate: 2026-04-29\nTravel Card \u2013 \xA345.00\n\
+    Additional Ticket \u2013 \xA328.00\nTOTAL \xA373.00"
+expected_findings:
+- id: RECEIPT_MISMATCH
+  code: RECEIPT_MISMATCH
+  gold_clauses:
+  - "\xA73.2"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

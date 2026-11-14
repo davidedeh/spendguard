@@ -1,0 +1,30 @@
+id: dev-clean-01
+split: dev
+slice: clean
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+submission:
+  supplier: SUP-008
+  supplier_invoice_number: INV-2026-0918-08
+  purchase_order: null
+  cost_centre: CC-300
+  issued_on: '2026-09-18'
+  amount: '650.00'
+  currency: GBP
+  type: supplier_invoice
+  claimed_exchange_rate: null
+  description: "Office supplies \u2013 13 items purchased for project X\u201142. \
+    \ All items are approved and the total does not exceed the category limit when\
+    \ divided by the quantity (\xA350 per item).  The invoice is itemised and matches\
+    \ the claim.  No weekend or public\u2011holiday justification is required as the\
+    \ spend occurred on a weekday.  No alcohol or other prohibited items are included."
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

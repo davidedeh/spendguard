@@ -1,0 +1,38 @@
+id: test-judgement-positive-16
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - ALCOHOL_NOT_PERMITTED
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-005
+  spent_on: '2026-05-21'
+  category: client_entertainment
+  quantity: 4
+  merchant: The Ivy City Garden
+  amount: '272'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Lunch with three representatives from Meridian Logistics (account
+    managers Sarah Cole, James Farrow and Priya Nair) to discuss the renewal of their
+    distribution services contract and Q3 volume commitments. Attended by EMP-005
+    and three guests.
+  receipt_text: "The Ivy City Garden\n1 Trinity Square, London EC3N 4AJ\n2026-05-21\n\
+    \nSet lunch x4 @ \xA352.00     208.00\nMineral water x4 @ \xA34.00   16.00\nWine\
+    \ (2 bottles Chablis)   48.00\n\nTOTAL                     272.00"
+expected_findings:
+- id: F-001
+  code: ALCOHOL_NOT_PERMITTED
+  gold_clauses:
+  - "\xA75.3"
+  - "\xA77.3"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

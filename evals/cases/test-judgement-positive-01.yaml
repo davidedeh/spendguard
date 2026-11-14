@@ -1,0 +1,44 @@
+id: test-judgement-positive-01
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - WEEKEND_SPEND_UNJUSTIFIED
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-001
+  spent_on: '2026-04-03'
+  category: subsistence
+  quantity: 1
+  merchant: The Forge Kitchen
+  amount: '54.5'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Working lunch while on site at Edinburgh office to progress Q1
+    close activities.
+  receipt_text: "The Forge Kitchen\n2026-04-03\nSoup of the day \xA36.50\nGrilled\
+    \ chicken sandwich \xA313.50\nSide salad \xA34.50\nFlatbread with hummus \xA3\
+    8.00\nCoffee \xA33.50\nMineral water \xA32.50\nDessert of the day \xA37.50\nAmericano\
+    \ \xA38.50\nTOTAL \xA354.50"
+expected_findings:
+- id: F-001
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  gold_clauses:
+  - "\xA72.4"
+expected_route: human_review
+expected_recommendation: none
+scripted_review:
+  approver: EMP-002
+  dispositions:
+  - finding_id: F-001
+    disposition: dismissed
+    reason: EMP-001 is an executive whose role routinely requires site attendance
+      during critical financial close periods, including weekends. The Q1 close falls
+      on this date and on-site presence was necessary to meet reporting deadlines
+      that cannot be deferred to a working day.
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

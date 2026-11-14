@@ -1,0 +1,42 @@
+id: test-judgement-positive-05
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - PURPOSE_UNCLEAR
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-006
+  spent_on: '2026-04-01'
+  category: public_transport
+  quantity: 1
+  merchant: National Rail
+  amount: '70.00'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: "Travel to mandatory client site visit \u2013 Project\u202FAlpha\
+    \ \u2013 required to attend on\u2011site meeting with client representatives."
+  receipt_text: "National Rail\n01\u201104\u20112026\nTrain ticket \u2013 London to\
+    \ Manchester\t\xA370.00\nTOTAL\t\xA370.00"
+expected_findings:
+- id: PURPOSE_UNCLEAR
+  code: PURPOSE_UNCLEAR
+  gold_clauses:
+  - "\xA72.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review:
+  approver: EMP-003
+  dispositions:
+  - finding_id: PURPOSE_UNCLEAR
+    disposition: dismissed
+    reason: "Standing reason \u2013 the travel is part of a pre\u2011approved on\u2011\
+      site client visit (Project\u202FAlpha) that required use of public transport\
+      \ on the scheduled date. The purpose is fully documented in the project plan,\
+      \ satisfying \xA72.1."
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

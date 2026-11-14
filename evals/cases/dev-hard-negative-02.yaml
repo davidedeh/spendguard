@@ -1,0 +1,35 @@
+id: dev-hard-negative-02
+split: dev
+slice: hard_negative
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: PURPOSE_UNCLEAR
+  injection: null
+submission:
+  claimant: EMP-002
+  spent_on: '2026-09-07'
+  category: taxi
+  quantity: 1
+  merchant: Local Taxi Service
+  amount: '50'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Travel to client meeting
+  receipt_text: 'Local Taxi Service
+
+    2026-09-07
+
+    Taxi Ride
+
+    50
+
+    TOTAL: 50'
+expected_findings: []
+expected_route: auto_approve
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

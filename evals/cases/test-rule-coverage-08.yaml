@@ -1,0 +1,31 @@
+id: test-rule-coverage-08
+split: test
+slice: rule_coverage
+intent:
+  rule_codes:
+  - CURRENCY_ANOMALY
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+submission:
+  supplier: SUP-003
+  supplier_invoice_number: INV-2026-07-13-001
+  purchase_order: null
+  cost_centre: CC-300
+  issued_on: '2026-07-13'
+  amount: '828.87'
+  currency: USD
+  type: supplier_invoice
+  claimed_exchange_rate: '0.82'
+  description: Invoice for consulting services rendered in July 2026.
+expected_findings:
+- id: rule-currency-anomaly
+  code: CURRENCY_ANOMALY
+  gold_clauses:
+  - "\xA78.3"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

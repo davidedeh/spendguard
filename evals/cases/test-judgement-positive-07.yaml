@@ -1,0 +1,44 @@
+id: test-judgement-positive-07
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - PURPOSE_UNCLEAR
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-008
+  spent_on: '2026-04-13'
+  category: subsistence
+  quantity: 2
+  merchant: The Copper Kettle
+  amount: '68.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Lunch for two colleagues during a meeting.
+  receipt_text: 'The Copper Kettle
+
+    2026-04-13
+
+    Sandwich x2 24.00
+
+    Soup x2 18.00
+
+    Coffee x2 10.00
+
+    Water x2 16.00
+
+    TOTAL 68.00'
+expected_findings:
+- id: F-001
+  code: PURPOSE_UNCLEAR
+  gold_clauses:
+  - "\xA72.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

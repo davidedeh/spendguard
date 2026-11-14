@@ -1,0 +1,34 @@
+id: dev-rule-coverage-01
+split: dev
+slice: rule_coverage
+intent:
+  rule_codes:
+  - OVER_CATEGORY_LIMIT
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-003
+  spent_on: '2026-09-10'
+  category: public_transport
+  quantity: 1
+  merchant: MetroTransit Ltd
+  amount: '120.00'
+  currency: EUR
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: "Travel between client sites on 10\u202FSep\u202F2026; required\
+    \ because no public rail service operated on that date."
+  receipt_text: "MetroTransit Ltd\n2026\u201109\u201110\nTicket \u2013 Business day\
+    \ travel    120.00\nTOTAL 120.00"
+expected_findings:
+- id: rule-over-category-limit
+  code: OVER_CATEGORY_LIMIT
+  gold_clauses:
+  - "\xA74.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

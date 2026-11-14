@@ -1,0 +1,32 @@
+id: test-rule-coverage-06
+split: test
+slice: rule_coverage
+intent:
+  rule_codes:
+  - MISSING_PO
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+submission:
+  supplier: SUP-001
+  supplier_invoice_number: INV-2026-0847
+  purchase_order: null
+  cost_centre: CC-200
+  issued_on: '2026-07-03'
+  amount: '2200'
+  currency: GBP
+  type: supplier_invoice
+  claimed_exchange_rate: null
+  description: "Office furniture supply and installation \u2014 10 ergonomic desk\
+    \ chairs for CC-200 team workspace"
+expected_findings:
+- id: rule-missing-po
+  code: MISSING_PO
+  gold_clauses:
+  - "\xA79.2"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

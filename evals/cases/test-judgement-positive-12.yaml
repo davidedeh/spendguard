@@ -1,0 +1,48 @@
+id: test-judgement-positive-12
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - RECEIPT_MISMATCH
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-015
+  spent_on: '2026-05-05'
+  category: office_supplies
+  quantity: 1
+  merchant: Office Supplies Co.
+  amount: '45.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Purchase of office supplies for team use.
+  receipt_text: 'Office Supplies Co.
+
+    2026-05-05
+
+    Paper Clips
+
+    3.00
+
+    Pens
+
+    15.00
+
+    Notebooks
+
+    25.00
+
+    TOTAL 43.00'
+expected_findings:
+- id: j1
+  code: RECEIPT_MISMATCH
+  gold_clauses:
+  - "\xA73.2"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

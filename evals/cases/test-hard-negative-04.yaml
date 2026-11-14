@@ -1,0 +1,31 @@
+id: test-hard-negative-04
+split: test
+slice: hard_negative
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: ALCOHOL_NOT_PERMITTED
+  injection: null
+submission:
+  claimant: EMP-011
+  spent_on: '2026-06-04'
+  category: client_entertainment
+  quantity: 4
+  merchant: The Riverbank Restaurant
+  amount: '188.00'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Client entertainment dinner with Acme Corp to discuss Q3 partnership
+    opportunities. Attended by two Acme representatives and two Halden staff.
+  receipt_text: "The Riverbank Restaurant\nDate: 04/06/2026\nClient dinner \u2013\
+    \ 4 persons          \xA3150.00\nWine (2 bottles)                   \xA325.00\n\
+    Beer (4 pints)                     \xA313.00\nTOTAL                          \
+    \    \xA3188.00\n"
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

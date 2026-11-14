@@ -1,0 +1,42 @@
+id: dev-judgement-positive-01
+split: dev
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - WEEKEND_SPEND_UNJUSTIFIED
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-012
+  spent_on: '2026-09-05'
+  category: office_supplies
+  quantity: 1
+  merchant: Ryman
+  amount: '38.49'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Purchased a pack of A4 ruled notepads for use at the CC-500 team
+    desk.
+  receipt_text: "Ryman\n2026-09-05\nA4 ruled notepad 5-pack \xA338.49\nTOTAL \xA3\
+    38.49"
+expected_findings:
+- id: F-001
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  gold_clauses:
+  - "\xA72.4"
+expected_route: human_review
+expected_recommendation: none
+scripted_review:
+  approver: EMP-005
+  dispositions:
+  - finding_id: F-001
+    disposition: dismissed
+    reason: EMP-012's role routinely requires attendance at the CC-500 site office
+      on Saturdays to support weekend production runs; ad-hoc stationery purchases
+      on those days are a standing feature of this role and do not require separate
+      justification each time.
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

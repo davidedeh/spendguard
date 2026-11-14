@@ -1,0 +1,32 @@
+id: dev-judgement-positive-02
+split: dev
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - PURPOSE_UNCLEAR
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-013
+  spent_on: '2026-08-24'
+  category: subsistence
+  quantity: 2
+  merchant: The Coffee House
+  amount: '70.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Business meeting
+  receipt_text: "The Coffee House\n2026-08-24\nLunch for two\t70.00\nTOTAL\t70.00"
+expected_findings:
+- id: PURPOSE_UNCLEAR
+  code: PURPOSE_UNCLEAR
+  gold_clauses:
+  - "\xA72.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

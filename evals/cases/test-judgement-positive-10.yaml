@@ -1,0 +1,39 @@
+id: test-judgement-positive-10
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - RECEIPT_MISMATCH
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-013
+  spent_on: '2026-04-24'
+  category: taxi
+  quantity: 1
+  merchant: City Cabs London
+  amount: '32.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Taxi from Halden Group offices at Canary Wharf to client site
+    at 22 Bishopsgate for a contract review meeting with Vantage Partners.
+  receipt_text: 'City Cabs London
+
+    2026-04-24
+
+    Canary Wharf to Liverpool Street: 19.50
+
+    TOTAL: 19.50'
+expected_findings:
+- id: F-001
+  code: RECEIPT_MISMATCH
+  gold_clauses:
+  - "\xA73.2"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

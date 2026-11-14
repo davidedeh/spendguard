@@ -1,0 +1,29 @@
+id: test-clean-06
+split: test
+slice: clean
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-005
+  spent_on: '2026-08-06'
+  category: accommodation
+  quantity: 1
+  merchant: Hilton London
+  amount: '160.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Hotel stay for client site visit in London; overnight required
+    because the meeting ran past normal working hours.
+  receipt_text: "Hilton London\n2026-08-06\nRoom \u2013 1 night 150.00\nBreakfast\
+    \ 10.00\nTOTAL 160.00"
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

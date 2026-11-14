@@ -1,0 +1,26 @@
+id: test-clean-02
+split: test
+slice: clean
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+submission:
+  supplier: SUP-005
+  supplier_invoice_number: INV-2026-0847
+  purchase_order: null
+  cost_centre: CC-100
+  issued_on: '2026-07-21'
+  amount: '920'
+  currency: GBP
+  type: supplier_invoice
+  claimed_exchange_rate: null
+  description: Quarterly stationery and office supplies delivery for CC-100
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

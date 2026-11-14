@@ -1,0 +1,31 @@
+id: test-rule-coverage-04
+split: test
+slice: rule_coverage
+intent:
+  rule_codes:
+  - SPLIT_PURCHASE
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+submission:
+  supplier: SUP-006
+  supplier_invoice_number: A-5591
+  purchase_order: null
+  cost_centre: CC-500
+  issued_on: '2026-05-28'
+  amount: '740.0'
+  currency: GBP
+  type: supplier_invoice
+  claimed_exchange_rate: null
+  description: Office stationery and printing supplies replenishment for CC-500
+expected_findings:
+- id: rule-split-purchase
+  code: SPLIT_PURCHASE
+  gold_clauses:
+  - "\xA79.3"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

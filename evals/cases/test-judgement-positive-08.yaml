@@ -1,0 +1,34 @@
+id: test-judgement-positive-08
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - PURPOSE_UNCLEAR
+  lookalike_code: null
+  injection: null
+submission:
+  claimant: EMP-011
+  spent_on: '2026-04-16'
+  category: accommodation
+  quantity: 1
+  merchant: Hilton London
+  amount: '130.00'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: "Accommodation for overnight business trip to client site \u2013\
+    \ required because travel back the same day was impractical."
+  receipt_text: "Hilton London\nDate: 2026-04-16\nHotel room \u2013 1 night \u2013\
+    \ \xA3130.00\nTOTAL \xA3130.00"
+expected_findings:
+- id: PURPOSE_UNCLEAR
+  code: PURPOSE_UNCLEAR
+  gold_clauses:
+  - "\xA72.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0
