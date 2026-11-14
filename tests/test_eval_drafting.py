@@ -17,7 +17,7 @@ from spendguard.eval.drafting import DraftedCase, plan_requests, run
 from spendguard.models.fake import FakeChatModel, structured_response
 from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.settings import ChatModelSettings, Settings
-from spendguard.submission import SupplierInvoice
+from spendguard.submission import ExpenseClaim, SupplierInvoice
 
 FIXTURES = Path(__file__).parent / 'fixtures'
 FIXTURE_POLICY_PATH = FIXTURES / 'policy' / 'valid_policy.yaml'
@@ -71,6 +71,7 @@ class DraftingFake(FakeChatModel):
     tool_schemas: list[Any] = Field(default_factory=list)
     reviews_every_case: bool = False
     drafts_invoices: bool = False
+    failing_slice: str | None = None
 
     def _generate(
         self,
@@ -84,7 +85,10 @@ class DraftingFake(FakeChatModel):
         request = str(messages[1].content).split('## Request')[-1].split('## Rejected draft')[0]
         drafted_case = self.draft(request)
         message = structured_response(drafted_case)
-        if len(self.received) <= self.failing_calls and self.failure not in (
+        failing = len(self.received) <= self.failing_calls or (
+            self.failing_slice is not None and f'the {self.failing_slice} slice' in request
+        )
+        if failing and self.failure not in (
             'decorated_json',
             'omitted_nulls',
             'empty_nulls',
@@ -213,7 +217,9 @@ class DrafterPool:
         failures: dict[str, tuple[FailureKind, int]] | None = None,
         reviews_every_case: bool = False,
         drafts_invoices: bool = False,
+        failing_slice: tuple[FailureKind, str] | None = None,
     ) -> None:
+        self.failing_slice = failing_slice
         self.reviews_every_case = reviews_every_case
         self.drafts_invoices = drafts_invoices
         self.claimants = claimants or {}
@@ -222,6 +228,8 @@ class DrafterPool:
 
     def build(self, settings: Settings, model_key: str) -> BaseChatModel:
         failure, failing_calls = self.failures.get(model_key, ('malformed', 0))
+        if self.failing_slice is not None:
+            failure = self.failing_slice[0]
         model = DraftingFake(
             model_id=settings.chat_models[model_key].model_id,
             claimant=self.claimants.get(model_key, 'EMP-003'),
@@ -229,6 +237,7 @@ class DrafterPool:
             failure=failure,
             reviews_every_case=self.reviews_every_case,
             drafts_invoices=self.drafts_invoices and model_key == 'fake_nova',
+            failing_slice=None if self.failing_slice is None else self.failing_slice[1],
         )
         self.models[model_key] = model
         return model
@@ -316,14 +325,14 @@ def test_every_case_carries_the_drafted_by_of_the_model_that_produced_it(
 def test_drafts_that_fail_validation_are_not_written_and_the_problems_are_reported(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    drafters = DrafterPool(claimants={'fake_gpt': 'EMP-999'})
+    drafters = DrafterPool(failing_slice=('unknown_employee', 'injection'))
 
     exit_code = run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
 
     assert exit_code == 1
     assert not (tmp_path / 'cases').exists()
     errors = capsys.readouterr().err
-    assert 'test-judgement-positive-02.yaml: unknown employee EMP-999' in errors
+    assert 'test-injection-01.yaml: unknown employee EMP-999' in errors
     assert 'test-judgement-positive-01.yaml' not in errors
 
 
@@ -485,22 +494,22 @@ def test_a_draft_that_fails_once_is_retried_and_written(
     [
         (
             'malformed',
-            'test-judgement-positive-02.yaml: no valid draft after 3 attempts:'
-            ' submission: Field required',
+            'test-injection-01.yaml: no valid draft after 3 attempts: submission: Field required',
         ),
-        ('unknown_employee', 'test-judgement-positive-02.yaml: unknown employee EMP-999'),
+        ('unknown_employee', 'test-injection-01.yaml: unknown employee EMP-999'),
     ],
 )
-def test_a_draft_that_fails_three_times_blocks_the_write_and_is_reported(
+def test_a_draft_every_drafter_fails_blocks_the_write_and_is_reported(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], failure: FailureKind, problem: str
 ) -> None:
-    drafters = DrafterPool(failures={'fake_gpt': (failure, 3)})
+    drafters = DrafterPool(failing_slice=(failure, 'injection'))
 
     exit_code = run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
 
     assert exit_code == 1
     assert not (tmp_path / 'cases').exists()
-    assert len(drafters.models['fake_gpt'].received) == 11
+    attempts = sum(len(model.received) for model in drafters.models.values())
+    assert attempts == 27 + 3 * len(DRAFTER_MODEL_IDS)
     error_lines = capsys.readouterr().err.splitlines()
     assert problem in error_lines
     assert not any(line.startswith('test-hard-negative-02.yaml') for line in error_lines)
@@ -601,16 +610,18 @@ def test_a_failed_run_keeps_its_valid_drafts_and_a_rerun_drafts_only_what_failed
     failing_run = run(
         drafting_arguments(tmp_path),
         drafting_settings(),
-        DrafterPool(failures={'fake_gpt': ('unknown_employee', 3)}).build,
+        DrafterPool(failing_slice=('unknown_employee', 'injection')).build,
     )
     rerun_drafters = DrafterPool()
 
     rerun = run(drafting_arguments(tmp_path), drafting_settings(), rerun_drafters.build)
 
     assert (failing_run, rerun) == (1, 0)
-    rerun_prompts = [model.received for model in rerun_drafters.models.values()]
-    assert sum(len(prompts) for prompts in rerun_prompts) == 1
-    assert 'judgement_positive' in str(rerun_drafters.models['fake_gpt'].received[0][1].content)
+    rerun_prompts = [
+        prompt for model in rerun_drafters.models.values() for prompt in model.received
+    ]
+    assert len(rerun_prompts) == 1
+    assert 'the injection slice' in str(rerun_prompts[0][1].content)
     assert len(read_drafted_cases(tmp_path)) == 28
     assert not any((tmp_path / 'drafts').glob('*.yaml'))
 
@@ -621,7 +632,7 @@ def test_a_staged_draft_from_a_drafter_no_longer_configured_is_drafted_again(
     run(
         drafting_arguments(tmp_path),
         drafting_settings(),
-        DrafterPool(failures={'fake_claude': ('unknown_employee', 3)}).build,
+        DrafterPool(failing_slice=('unknown_employee', 'injection')).build,
     )
     replaced_settings = drafting_settings().model_copy(
         update={
@@ -640,9 +651,8 @@ def test_a_staged_draft_from_a_drafter_no_longer_configured_is_drafted_again(
     exit_code = run(drafting_arguments(tmp_path), replaced_settings, rerun_drafters.build)
 
     assert exit_code == 0
-    assert len(rerun_drafters.models['fake_gpt'].received) == 9
-    assert len(rerun_drafters.models['fake_claude'].received) == 1
-    assert len(rerun_drafters.models['fake_nova'].received) == 0
+    redrafted = {key: len(model.received) for key, model in rerun_drafters.models.items()}
+    assert redrafted == {'fake_claude': 0, 'fake_gpt': 9, 'fake_nova': 0}
 
 
 def test_a_drafter_set_to_json_schema_gets_a_schema_bedrock_can_lock_its_output_to(
@@ -717,13 +727,13 @@ def test_a_draft_that_leaves_out_or_empties_its_null_fields_is_read_with_them_as
 
 
 def test_a_draft_still_failing_after_its_retries_is_not_saved(tmp_path: Path) -> None:
-    drafters = DrafterPool(failures={'fake_gpt': ('unknown_employee', 3)})
+    drafters = DrafterPool(failing_slice=('unknown_employee', 'injection'))
 
     run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
 
     staged = {path.name for path in (tmp_path / 'drafts').glob('*.yaml')}
-    assert 'test-judgement-positive-01.yaml' in staged
-    assert 'test-judgement-positive-02.yaml' not in staged
+    assert len(staged) == 27
+    assert 'test-injection-01.yaml' not in staged
 
 
 def test_drafters_are_told_to_leave_out_fields_that_do_not_apply(tmp_path: Path) -> None:
@@ -733,3 +743,18 @@ def test_drafters_are_told_to_leave_out_fields_that_do_not_apply(tmp_path: Path)
 
     system_prompt = str(drafters.models['fake_nova'].received[0][0].content)
     assert 'Leave out any field that does not apply' in system_prompt
+
+
+def test_cases_a_drafter_cannot_draft_go_to_the_other_drafters_in_turn(tmp_path: Path) -> None:
+    drafters = DrafterPool(failures={'fake_nova': ('unknown_employee', 1000)})
+
+    exit_code = run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    assert exit_code == 0
+    cases = read_drafted_cases(tmp_path)
+    assert len(cases) == 28
+    drafted_by = Counter(case.drafted_by.model_id for case in cases)
+    assert drafted_by == {'fake-claude-drafter': 15, 'fake-gpt-drafter': 13}
+    for case in cases:
+        assert isinstance(case.submission, ExpenseClaim)
+        assert case.submission.merchant.split(' call ')[0] == case.drafted_by.model_id

@@ -4,7 +4,7 @@ import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, TypeGuard, get_args
 
 import yaml
 from langchain_core.language_models import BaseChatModel
@@ -245,6 +245,42 @@ def _draft_until_valid(
     return outcome
 
 
+@dataclass(frozen=True)
+class _DrafterPool:
+    drafters: dict[str, _Drafter]
+    fallback_turns: Iterator[int]
+
+    def fallbacks_for(self, drafter_key: str) -> list[_Drafter]:
+        other_keys = [key for key in self.drafters if key != drafter_key]
+        if not other_keys:
+            return []
+        start = next(self.fallback_turns) % len(other_keys)
+        return [self.drafters[key] for key in other_keys[start:] + other_keys[:start]]
+
+
+def _draft_with_fallback(
+    request: CaseRequest, pool: _DrafterPool, context: str, policy: Policy, seed_data: SeedData
+) -> EvalCase | DraftFailedError:
+    first_outcome = _draft_until_valid(
+        request, pool.drafters[request.drafter_key], context, policy, seed_data
+    )
+    if _is_valid_draft(first_outcome, request, policy, seed_data):
+        return first_outcome
+    for drafter in pool.fallbacks_for(request.drafter_key):
+        outcome = _draft_until_valid(request, drafter, context, policy, seed_data)
+        if _is_valid_draft(outcome, request, policy, seed_data):
+            return outcome
+    return first_outcome
+
+
+def _is_valid_draft(
+    outcome: EvalCase | DraftFailedError, request: CaseRequest, policy: Policy, seed_data: SeedData
+) -> TypeGuard[EvalCase]:
+    return isinstance(outcome, EvalCase) and not _draft_problems(
+        request, outcome, policy, seed_data
+    )
+
+
 def _draft_problems(
     request: CaseRequest, case: EvalCase, policy: Policy, seed_data: SeedData
 ) -> list[str]:
@@ -322,17 +358,15 @@ def run(arguments: list[str], run_settings: settings.Settings, build_model: Mode
     }
     options.drafts.mkdir(parents=True, exist_ok=True)
     outcomes: dict[str, EvalCase | DraftFailedError] = {}
+    pool = _DrafterPool(drafters=drafters, fallback_turns=itertools.count())
     for request in plan_requests(plan, policy, run_settings.drafting_model_keys):
-        drafter = drafters[request.drafter_key]
         staged_path = options.drafts / f'{request.case_id}.yaml'
-        staged_case = _staged_case(staged_path, request, drafter, policy, seed_data)
+        staged_case = _staged_case(staged_path, request, drafters, policy, seed_data)
         if staged_case is not None:
             outcomes[staged_path.name] = staged_case
             continue
-        outcome = _draft_until_valid(request, drafter, context, policy, seed_data)
-        if isinstance(outcome, EvalCase) and not _draft_problems(
-            request, outcome, policy, seed_data
-        ):
+        outcome = _draft_with_fallback(request, pool, context, policy, seed_data)
+        if _is_valid_draft(outcome, request, policy, seed_data):
             _write_case(staged_path, outcome)
         outcomes[staged_path.name] = outcome
     documents = {
@@ -406,7 +440,11 @@ def _write_case(path: Path, case: EvalCase) -> None:
 
 
 def _staged_case(
-    path: Path, request: CaseRequest, drafter: _Drafter, policy: Policy, seed_data: SeedData
+    path: Path,
+    request: CaseRequest,
+    drafters: dict[str, _Drafter],
+    policy: Policy,
+    seed_data: SeedData,
 ) -> EvalCase | None:
     if not path.exists():
         return None
@@ -414,10 +452,15 @@ def _staged_case(
         case = EvalCase.model_validate(yaml.safe_load(path.read_text()))
     except ValidationError:
         return None
-    drafted_by = DraftedBy(
-        provider=drafter.model_settings.provider, model_id=drafter.model_settings.model_id
-    )
-    if (case.split, case.slice, case.drafted_by) != (request.split, request.slice, drafted_by):
+    configured_drafters = {
+        DraftedBy(
+            provider=drafter.model_settings.provider, model_id=drafter.model_settings.model_id
+        )
+        for drafter in drafters.values()
+    }
+    if (case.split, case.slice) != (request.split, request.slice):
+        return None
+    if case.drafted_by not in configured_drafters:
         return None
     if _draft_problems(request, case, policy, seed_data):
         return None
