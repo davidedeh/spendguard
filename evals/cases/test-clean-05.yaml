@@ -1,0 +1,26 @@
+id: test-clean-05
+split: test
+slice: clean
+submission:
+  claimant: EMP-008
+  spent_on: '2026-11-10'
+  category: taxi
+  quantity: 1
+  merchant: City Cabs
+  amount: '28.5'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Taxi from Manchester Piccadilly station to Halden Group Manchester
+    office after arriving on the late train from London (22:45 arrival) following
+    all-day client meeting with Vantara Solutions. Public transport not practical
+    at that hour.
+  receipt_text: "City Cabs\nDate: 10/11/2026\nPickup: Manchester Piccadilly Station\n\
+    Drop-off: 14 Spinningfields, Manchester\nFare: \xA328.50\nPayment: Card"
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

@@ -1,0 +1,30 @@
+id: test-judgement-positive-13
+split: test
+slice: judgement_positive
+submission:
+  claimant: EMP-008
+  spent_on: '2026-11-08'
+  category: subsistence
+  quantity: 1
+  merchant: The Copper Kettle
+  amount: '32.5'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: "Catching up on project documentation for the CC-300 quarterly\
+    \ deliverable. Worked from a nearby caf\xE9 on Sunday to get ahead before the\
+    \ Monday deadline."
+  receipt_text: "The Copper Kettle\n2026-11-08\n1x Soup & sandwich \xA38.50\n1x Coffee\
+    \ \xA33.00\nTotal: \xA311.50\n\nWait \u2014 receipt shows only \xA311.50, but\
+    \ full working lunch including two rounds came to \xA332.50 as per card payment."
+expected_findings:
+- id: F-001
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  gold_clauses:
+  - "\xA72.4"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

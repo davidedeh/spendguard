@@ -1,0 +1,34 @@
+id: test-judgement-positive-04
+split: test
+slice: judgement_positive
+submission:
+  claimant: EMP-003
+  spent_on: '2026-11-12'
+  category: client_entertainment
+  quantity: 4
+  merchant: The Vine & Table
+  amount: '230.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: "Client dinner with three representatives from Alderton Partners\
+    \ (procurement leads: Sarah Holt, James Doyle, Priya Nair) and myself to discuss\
+    \ renewal of their service agreement ahead of the December contract review. Total\
+    \ covers: 4. Food: \xA3180.00; wine shared across the table: \xA350.00. Prior\
+    \ written approval for the event was not obtained from my line manager."
+  receipt_text: "The Vine & Table\nDate: 12 Nov 2026\nCovers: 4\n---\nSet menu x4\
+    \ @ \xA345.00 = \xA3180.00\nHouse red (2 bottles) @ \xA325.00 = \xA350.00\n---\n\
+    Subtotal: \xA3230.00\nService (10%): \xA323.00\nTotal paid: \xA3253.00\nNote:\
+    \ service charge paid by card; food+drink subtotal \xA3230.00 claimed."
+expected_findings:
+- id: F-001
+  code: ALCOHOL_NOT_PERMITTED
+  gold_clauses:
+  - "\xA75.3"
+  - "\xA77.3"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

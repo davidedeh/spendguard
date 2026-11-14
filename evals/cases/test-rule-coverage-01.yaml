@@ -1,0 +1,30 @@
+id: test-rule-coverage-01
+split: test
+slice: rule_coverage
+submission:
+  claimant: EMP-009
+  spent_on: '2026-10-14'
+  category: taxi
+  quantity: 3
+  merchant: City Cabs
+  amount: '135.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Three separate taxi journeys between client office and train station
+    during site visit to Northgate on 14 October 2026, attending contract review meetings
+    with Westfield Associates.
+  receipt_text: "City Cabs Receipt \u2014 14 Oct 2026\nJourney 1: Office to Station\
+    \ \u2014 \xA343.00\nJourney 2: Station to Client Site \u2014 \xA344.00\nJourney\
+    \ 3: Client Site to Station \u2014 \xA348.00\nTotal: \xA3135.00"
+expected_findings:
+- id: F-001
+  code: OVER_CATEGORY_LIMIT
+  gold_clauses:
+  - "\xA74.1"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

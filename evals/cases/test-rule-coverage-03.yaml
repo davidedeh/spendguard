@@ -1,0 +1,26 @@
+id: test-rule-coverage-03
+split: test
+slice: rule_coverage
+submission:
+  claimant: EMP-007
+  spent_on: '2026-04-14'
+  category: subsistence
+  quantity: 1
+  merchant: "Station Caf\xE9"
+  amount: '18.4'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Meeting with client
+  receipt_text: Duplicate of CLM-0001
+expected_findings:
+- id: DUPLICATE_SUBMISSION
+  code: DUPLICATE_SUBMISSION
+  gold_clauses:
+  - "\xA73.3"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

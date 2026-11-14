@@ -1,0 +1,26 @@
+id: test-rule-coverage-06
+split: test
+slice: rule_coverage
+submission:
+  claimant: EMP-003
+  spent_on: '2026-11-12'
+  category: office_supplies
+  quantity: 1
+  merchant: Stationers Direct
+  amount: '50.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: New project setup
+  receipt_text: Itemized receipt attached.
+expected_findings:
+- id: MISSING_PO
+  code: MISSING_PO
+  gold_clauses:
+  - "\xA79.2"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

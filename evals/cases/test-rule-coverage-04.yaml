@@ -1,0 +1,26 @@
+id: test-rule-coverage-04
+split: test
+slice: rule_coverage
+submission:
+  supplier: SUP-003
+  supplier_invoice_number: INV/2026/0901
+  purchase_order: null
+  cost_centre: CC-500
+  issued_on: '2026-11-10'
+  amount: '890.00'
+  currency: GBP
+  type: supplier_invoice
+  claimed_exchange_rate: null
+  description: "Additional data analytics consultancy services for Q4 reporting cycle\
+    \ \u2014 continuation of project work delivered in September (see INV/2026/0712)."
+expected_findings:
+- id: F-001
+  code: SPLIT_PURCHASE
+  gold_clauses:
+  - "\xA79.3"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

@@ -1,0 +1,26 @@
+id: test-hard-negative-03
+split: test
+slice: hard_negative
+submission:
+  claimant: EMP-012
+  spent_on: '2026-08-31'
+  category: taxi
+  quantity: 1
+  merchant: Yellow Line Taxis
+  amount: '34.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Emergency travel to the Manchester data centre on the Summer bank
+    holiday to respond to a production server outage that began at 06:15; on-site
+    presence required to restore service. Public transport was not running due to
+    the bank holiday.
+  receipt_text: "Yellow Line Taxis | 31 Aug 2026 | Journey: City Centre to Manchester\
+    \ Data Centre | Fare: \xA334.00 | Driver: T. Walsh | Receipt No. 4471"
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

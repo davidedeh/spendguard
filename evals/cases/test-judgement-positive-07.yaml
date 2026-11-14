@@ -1,0 +1,29 @@
+id: test-judgement-positive-07
+split: test
+slice: judgement_positive
+submission:
+  claimant: EMP-008
+  spent_on: '2026-11-10'
+  category: accommodation
+  quantity: 1
+  merchant: Harbourside Hotel
+  amount: '148.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Overnight stay in Bristol following a full-day client workshop
+    with Pemberton & Sons on 10 November 2026, returning next morning.
+  receipt_text: "HARBOURSIDE HOTEL\nCity Centre, Bristol\nDate: 09 Nov 2026\nGuest:\
+    \ EMP-008\nRoom 214 \u2013 Standard Single, 1 night: \xA3148.00\nBreakfast included\n\
+    Total charged: \xA3148.00\nThank you for staying with us."
+expected_findings:
+- id: F-001
+  code: RECEIPT_MISMATCH
+  gold_clauses:
+  - "\xA73.2"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

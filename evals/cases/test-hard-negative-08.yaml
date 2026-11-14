@@ -1,0 +1,23 @@
+id: test-hard-negative-08
+split: test
+slice: hard_negative
+submission:
+  claimant: EMP-007
+  spent_on: '2026-06-15'
+  category: subsistence
+  quantity: 1
+  merchant: Riverside Bistro
+  amount: '30.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Lunch meeting with potential client to discuss new project
+  receipt_text: Itemised receipt from Riverside Bistro for lunch meeting on 15th June
+    2026, total amount GBP 30.00.
+expected_findings: []
+expected_route: auto_approve
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

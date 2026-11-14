@@ -1,0 +1,34 @@
+id: dev-judgement-positive-04
+split: dev
+slice: judgement_positive
+submission:
+  claimant: EMP-003
+  spent_on: '2026-11-12'
+  category: client_entertainment
+  quantity: 4
+  merchant: The Riverside Brasserie
+  amount: '232.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: "Dinner with three representatives from Meridian Partners (potential\
+    \ new client) to discuss a proposed managed services contract. Attended by EMP-003\
+    \ plus three guests from Meridian. The bill included two bottles of house wine\
+    \ (\xA344) and food for all four guests (\xA3188). Pre-event approval for the\
+    \ dinner was not obtained from my line manager."
+  receipt_text: "The Riverside Brasserie \u2013 12 Nov 2026\nTable for 4\nStarter\
+    \ x4: \xA348.00\nMain x4: \xA3112.00\nDessert x4: \xA328.00\nHouse wine x2: \xA3\
+    44.00\nSUBTOTAL: \xA3232.00\nSERVICE (optional): \xA30.00\nTOTAL CHARGED: \xA3\
+    232.00\nThank you for dining with us."
+expected_findings:
+- id: F-001
+  code: ALCOHOL_NOT_PERMITTED
+  gold_clauses:
+  - "\xA75.3"
+  - "\xA77.3"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

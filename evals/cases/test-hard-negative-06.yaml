@@ -1,0 +1,26 @@
+id: test-hard-negative-06
+split: test
+slice: hard_negative
+submission:
+  claimant: EMP-012
+  spent_on: '2026-08-31'
+  category: taxi
+  quantity: 1
+  merchant: Yellow Line Taxis
+  amount: '34.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Emergency travel to Halden Group server room following a critical
+    system outage alert received at 22:45 on the Summer bank holiday; on-site presence
+    was required immediately to coordinate the incident response team and restore
+    service before market open.
+  receipt_text: "Yellow Line Taxis\nDate: 31 Aug 2026\nPickup: 14 Elm Street\nDrop-off:\
+    \ Halden Group Offices, Central Way\nFare: \xA334.00\nPayment: Card"
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

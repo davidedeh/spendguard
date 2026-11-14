@@ -1,0 +1,26 @@
+id: test-judgement-positive-09
+split: test
+slice: judgement_positive
+submission:
+  claimant: EMP-007
+  spent_on: '2026-11-04'
+  category: subsistence
+  quantity: 1
+  merchant: "Station Caf\xE9"
+  amount: '20.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Meeting with client on a Saturday
+  receipt_text: "Receipt for Station Caf\xE9, date 04/11/2026, amount \xA320.00"
+expected_findings:
+- id: weekend_spend_unjustified
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  gold_clauses:
+  - "\xA72.4"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

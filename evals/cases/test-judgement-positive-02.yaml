@@ -1,0 +1,35 @@
+id: test-judgement-positive-02
+split: test
+slice: judgement_positive
+submission:
+  claimant: EMP-010
+  spent_on: '2026-09-20'
+  category: client_entertainment
+  quantity: 1
+  merchant: Riverside Bistro
+  amount: '45.00'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: business meeting
+  receipt_text: "Itemised receipt attached \u2013 Riverside Bistro, 20\u2011Sep\u2011\
+    2026, \xA345.00 (client entertainment)."
+expected_findings:
+- id: F001
+  code: PURPOSE_UNCLEAR
+  gold_clauses:
+  - "\xA72.1"
+expected_route: human_review
+expected_recommendation: approve
+scripted_review:
+  approver: EMP-004
+  dispositions:
+  - finding_id: F001
+    disposition: dismissed
+    reason: "The brief wording \u2018business meeting\u2019 actually refers to a pre\u2011\
+      scheduled meeting with a key client (Acme Corp) to negotiate renewal of contract\u202F\
+      X. This satisfies the business\u2011purpose requirement of \xA72.1 and is covered\
+      \ by the standing client\u2011entertainment approval for Acme Corp."
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0
