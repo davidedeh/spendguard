@@ -18,15 +18,18 @@ def read_locked_hash(lock_path: Path) -> str:
     return locked_hash
 
 
-def main(arguments: list[str]) -> int:
-    parser = argparse.ArgumentParser(
-        description='Validate the eval dataset and write its lock file'
-    )
+def dataset_argument_parser(description: str) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=description)
     parser.add_argument('--cases', type=Path, default=CASE_DIRECTORY)
     parser.add_argument('--plan', type=Path, default=SLICE_PLAN_PATH)
     parser.add_argument('--policy', type=Path, default=POLICY_PATH)
     parser.add_argument('--seed', type=Path, default=SEED_DIRECTORY)
     parser.add_argument('--lock', type=Path, default=LOCK_PATH)
+    return parser
+
+
+def main(arguments: list[str]) -> int:
+    parser = dataset_argument_parser('Validate the eval dataset and write its lock file')
     options = parser.parse_args(arguments)
     report = validate_dataset(
         read_case_directory(options.cases),

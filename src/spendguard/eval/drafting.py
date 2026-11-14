@@ -1,9 +1,7 @@
-import argparse
 import itertools
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import get_args
 
 import yaml
@@ -26,11 +24,11 @@ from spendguard.eval.cases import (
     Split,
     load_slice_plan,
 )
-from spendguard.eval.freeze import CASE_DIRECTORY, LOCK_PATH, SLICE_PLAN_PATH
+from spendguard.eval.freeze import dataset_argument_parser
 from spendguard.eval.validator import case_problems, describe_validation_error, validate_dataset
 from spendguard.models.factory import build_chat_model
-from spendguard.policy.loader import POLICY_PATH, FindingCode, Policy, load_policy
-from spendguard.seed.loader import SEED_DIRECTORY, read_seed_directory
+from spendguard.policy.loader import FindingCode, Policy, load_policy
+from spendguard.seed.loader import read_seed_directory
 from spendguard.seed.schema import SeedData
 from spendguard.strict_model import StrictModel
 from spendguard.submission import Submission
@@ -209,12 +207,7 @@ def _context(policy: Policy, seed_data: SeedData) -> str:
 
 
 def run(arguments: list[str], run_settings: settings.Settings, build_model: ModelBuilder) -> int:
-    parser = argparse.ArgumentParser(description='Draft eval cases with drafter rotation')
-    parser.add_argument('--cases', type=Path, default=CASE_DIRECTORY)
-    parser.add_argument('--plan', type=Path, default=SLICE_PLAN_PATH)
-    parser.add_argument('--policy', type=Path, default=POLICY_PATH)
-    parser.add_argument('--seed', type=Path, default=SEED_DIRECTORY)
-    parser.add_argument('--lock', type=Path, default=LOCK_PATH)
+    parser = dataset_argument_parser('Draft eval cases with drafter rotation')
     options = parser.parse_args(arguments)
     if options.lock.exists():
         print(
