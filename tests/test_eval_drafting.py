@@ -54,7 +54,13 @@ DRAFTING_PLAN: dict[str, dict[str, Any]] = {
 
 
 FailureKind = Literal[
-    'malformed', 'unknown_employee', 'wrong_code', 'no_review', 'decorated_json', 'omitted_nulls'
+    'malformed',
+    'unknown_employee',
+    'wrong_code',
+    'no_review',
+    'decorated_json',
+    'omitted_nulls',
+    'empty_nulls',
 ]
 
 
@@ -81,6 +87,7 @@ class DraftingFake(FakeChatModel):
         if len(self.received) <= self.failing_calls and self.failure not in (
             'decorated_json',
             'omitted_nulls',
+            'empty_nulls',
         ):
             if self.failure == 'malformed':
                 del message.tool_calls[0]['args']['submission']
@@ -101,6 +108,8 @@ class DraftingFake(FakeChatModel):
                 message = structured_response(failing_draft)
         if self.failure == 'omitted_nulls' and len(self.received) <= self.failing_calls:
             message.tool_calls[0]['args'] = _without_nulls(message.tool_calls[0]['args'])
+        if self.failure == 'empty_nulls' and len(self.received) <= self.failing_calls:
+            message.tool_calls[0]['args'] = _nulls_as_empty_text(message.tool_calls[0]['args'])
         if self.structured_output_calls[-1][0] == 'json_schema':
             decoration = (
                 '**'
@@ -187,6 +196,14 @@ def _without_nulls(value: Any) -> Any:
     if isinstance(value, list):
         return [_without_nulls(item) for item in value]
     return value
+
+
+def _nulls_as_empty_text(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _nulls_as_empty_text(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_nulls_as_empty_text(item) for item in value]
+    return '' if value is None else value
 
 
 class DrafterPool:
@@ -674,13 +691,12 @@ def test_a_json_reply_with_text_around_the_object_is_still_read(tmp_path: Path) 
     assert len(drafters.models['fake_gpt'].received) == 9
 
 
+@pytest.mark.parametrize('failure', ['omitted_nulls', 'empty_nulls'])
 @pytest.mark.parametrize('drafts_invoices', [False, True])
-def test_a_draft_that_leaves_out_its_null_fields_is_read_with_them_as_null(
-    tmp_path: Path, drafts_invoices: bool
+def test_a_draft_that_leaves_out_or_empties_its_null_fields_is_read_with_them_as_null(
+    tmp_path: Path, drafts_invoices: bool, failure: FailureKind
 ) -> None:
-    drafters = DrafterPool(
-        failures={'fake_nova': ('omitted_nulls', 9)}, drafts_invoices=drafts_invoices
-    )
+    drafters = DrafterPool(failures={'fake_nova': (failure, 9)}, drafts_invoices=drafts_invoices)
 
     exit_code = run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
 
@@ -698,3 +714,22 @@ def test_a_draft_that_leaves_out_its_null_fields_is_read_with_them_as_null(
             isinstance(submission, SupplierInvoice) and submission.purchase_order is None
             for submission in nova_submissions
         )
+
+
+def test_a_draft_still_failing_after_its_retries_is_not_saved(tmp_path: Path) -> None:
+    drafters = DrafterPool(failures={'fake_gpt': ('unknown_employee', 3)})
+
+    run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    staged = {path.name for path in (tmp_path / 'drafts').glob('*.yaml')}
+    assert 'test-judgement-positive-01.yaml' in staged
+    assert 'test-judgement-positive-02.yaml' not in staged
+
+
+def test_drafters_are_told_to_leave_out_fields_that_do_not_apply(tmp_path: Path) -> None:
+    drafters = DrafterPool()
+
+    run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    system_prompt = str(drafters.models['fake_nova'].received[0][0].content)
+    assert 'Leave out any field that does not apply' in system_prompt

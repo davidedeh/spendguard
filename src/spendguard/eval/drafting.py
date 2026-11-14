@@ -48,7 +48,9 @@ Draft a realistic submission and label it as a careful reviewer applying the pol
 Use only employees, approvers, suppliers, purchase orders and cost centres that appear in \
 the company records. Label each expected finding with its finding code and the references \
 of the clauses it rests on, such as §3.4. Set the expected route and the expected \
-recommendation as the policy decides them.
+recommendation as the policy decides them. Leave out any field that does not apply, \
+such as a claimed exchange rate on a submission in the base currency, rather than giving \
+it an empty or placeholder value.
 
 The slices are:
 - judgement_positive: the submission breaks the policy in a way that needs a reading of \
@@ -204,7 +206,7 @@ def draft_case(
     if not isinstance(output, dict):
         raise DraftFailedError(str(result['parsing_error'] or 'the reply holds no draft'))
     try:
-        drafted = DraftedCase.model_validate(_with_omitted_nulls(output, DRAFTED_CASE_SCHEMA))
+        drafted = DraftedCase.model_validate(_with_nulls_filled_in(output, DRAFTED_CASE_SCHEMA))
     except ValidationError as error:
         raise DraftFailedError(
             '; '.join(describe_validation_error(detail) for detail in error.errors())
@@ -236,14 +238,17 @@ def _draft_until_valid(
             outcome = error
             rejection = str(error)
             continue
-        problems = [
-            *case_problems(outcome, policy, seed_data),
-            *_request_problems(request, outcome),
-        ]
+        problems = _draft_problems(request, outcome, policy, seed_data)
         if not problems:
             return outcome
         rejection = '; '.join(problems)
     return outcome
+
+
+def _draft_problems(
+    request: CaseRequest, case: EvalCase, policy: Policy, seed_data: SeedData
+) -> list[str]:
+    return [*case_problems(case, policy, seed_data), *_request_problems(request, case)]
 
 
 def _request_problems(request: CaseRequest, case: EvalCase) -> Iterator[str]:
@@ -325,7 +330,9 @@ def run(arguments: list[str], run_settings: settings.Settings, build_model: Mode
             outcomes[staged_path.name] = staged_case
             continue
         outcome = _draft_until_valid(request, drafter, context, policy, seed_data)
-        if isinstance(outcome, EvalCase):
+        if isinstance(outcome, EvalCase) and not _draft_problems(
+            request, outcome, policy, seed_data
+        ):
             _write_case(staged_path, outcome)
         outcomes[staged_path.name] = outcome
     documents = {
@@ -350,14 +357,17 @@ def run(arguments: list[str], run_settings: settings.Settings, build_model: Mode
     return 0
 
 
-def _with_omitted_nulls(value: Any, schema: dict[str, Any]) -> Any:
+def _with_nulls_filled_in(value: Any, schema: dict[str, Any]) -> Any:
     if isinstance(value, list):
-        return [_with_omitted_nulls(item, schema.get('items', {})) for item in value]
+        return [_with_nulls_filled_in(item, schema.get('items', {})) for item in value]
     if not isinstance(value, dict):
         return value
     properties = _object_schema_for(value, schema).get('properties', {})
     filled = {
-        key: _with_omitted_nulls(item, properties.get(key, {})) for key, item in value.items()
+        key: None
+        if item == '' and _allows_null(properties.get(key, {}))
+        else _with_nulls_filled_in(item, properties.get(key, {}))
+        for key, item in value.items()
     }
     for key, property_schema in properties.items():
         if key not in filled and _allows_null(property_schema):
@@ -409,7 +419,7 @@ def _staged_case(
     )
     if (case.split, case.slice, case.drafted_by) != (request.split, request.slice, drafted_by):
         return None
-    if any(case_problems(case, policy, seed_data)) or any(_request_problems(request, case)):
+    if _draft_problems(request, case, policy, seed_data):
         return None
     return case
 
