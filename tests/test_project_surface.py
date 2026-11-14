@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from spendguard.settings import Settings
+from spendguard.settings import MissingEnvFileError, Settings
 from spendguard.settings import load_settings as load_settings_from_files
 
 REPOSITORY_ROOT = Path(__file__).parent.parent
@@ -55,3 +55,17 @@ def test_the_env_example_file_loads_into_valid_settings(monkeypatch: pytest.Monk
     assert settings.allowed_providers == ('bedrock', 'google_genai')
     assert settings.primary_model_key in settings.chat_models
     assert set(settings.drafting_model_keys) <= set(settings.chat_models)
+
+
+def test_a_missing_env_file_is_named_instead_of_listing_every_missing_setting(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    for key in env_example_keys():
+        monkeypatch.delenv(key, raising=False)
+    missing_env_file = tmp_path / '.env'
+
+    with pytest.raises(MissingEnvFileError) as raised:
+        load_settings_from_files(missing_env_file)
+
+    assert str(missing_env_file) in str(raised.value)
+    assert '.env.example' in str(raised.value)
