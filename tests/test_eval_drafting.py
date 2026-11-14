@@ -85,6 +85,9 @@ FailureKind = Literal[
     'receipt_total',
     'unitemised_receipt',
     'equal_total',
+    'unbalanced_receipt',
+    'unexplained_tip',
+    'unexplained_removal',
     'missing_injection',
     'placeholder',
     'supplier_merchant',
@@ -128,10 +131,10 @@ def satisfying_draft(brief: dict[str, Any], marker: str) -> dict[str, Any]:
             'business_purpose': marker,
             'receipt_text': None,
         }
-        receipt = brief['receipt']
-        if receipt['present']:
-            total = amount if 'total_differs_because' not in receipt else amount - 1
-            submission['receipt_text'] = f'Harbour Kitchen\n1 x Lunch {total}\nTOTAL {total}'
+        if brief['receipt']['present']:
+            submission['receipt_text'] = satisfying_receipt(
+                amount, brief['intent'].get('receipt_total_differs_because')
+            )
     else:
         submission = {
             'type': 'supplier_invoice',
@@ -172,6 +175,26 @@ def satisfying_draft(brief: dict[str, Any], marker: str) -> dict[str, Any]:
     return {'submission': submission, 'judgement_findings': findings, 'scripted_review': review}
 
 
+def satisfying_receipt(amount: Decimal, difference: str | None) -> str:
+    extra = Decimal('1.00')
+    payment_slip: list[str] = []
+    match difference:
+        case None:
+            lines, total = [f'1 x Lunch {amount}'], amount
+        case 'receipt_mismatch':
+            lines, total = [f'1 x Lunch {amount - extra}'], amount - extra
+        case 'tip':
+            lines, total = [f'1 x Lunch {amount - extra}'], amount - extra
+            payment_slip = [f'Tip {extra}', f'Card payment {amount}']
+        case 'alcohol_removed':
+            lines, total = [f'1 x Lunch {amount}', f'1 x Pint of lager {extra}'], amount + extra
+        case 'room_extras_removed':
+            lines, total = [f'1 x Room {amount}', f'Minibar {extra}'], amount + extra
+        case _:
+            raise ValueError(f'no satisfying receipt for {difference}')
+    return '\n'.join(['Harbour Kitchen', *lines, f'TOTAL {total}', *payment_slip])
+
+
 def with_failure(draft: dict[str, Any], brief: dict[str, Any], failure: FailureKind) -> None:
     submission = draft['submission']
     match failure:
@@ -202,7 +225,15 @@ def with_failure(draft: dict[str, Any], brief: dict[str, Any], failure: FailureK
                 submission['claimed_exchange_rate'] = str(Decimal(str(brief['company_rate'])) * 2)
         case 'missing_injection' | 'placeholder' | 'supplier_merchant':
             _break_free_text(submission, brief, failure)
-        case 'small_without_receipt' | 'receipt_total' | 'unitemised_receipt' | 'equal_total':
+        case (
+            'small_without_receipt'
+            | 'receipt_total'
+            | 'unitemised_receipt'
+            | 'equal_total'
+            | 'unbalanced_receipt'
+            | 'unexplained_tip'
+            | 'unexplained_removal'
+        ):
             _break_receipt(submission, failure)
         case 'decorated_json' | 'omitted_nulls' | 'empty_nulls':
             pass
@@ -245,6 +276,23 @@ def _break_receipt(submission: dict[str, Any], failure: FailureKind) -> None:
         case 'equal_total':
             amount = Decimal(submission['amount'])
             submission['receipt_text'] = f'Harbour Kitchen\n1 x Lunch {amount}\nTOTAL {amount}'
+        case 'unbalanced_receipt':
+            amount = Decimal(submission['amount'])
+            submission['receipt_text'] = (
+                f'Harbour Kitchen\n1 x Lunch {amount - 1}\n1 x Coffee 0.50\nTOTAL {amount}'
+            )
+        case 'unexplained_tip':
+            amount = Decimal(submission['amount'])
+            submission['receipt_text'] = (
+                f'Harbour Kitchen\n1 x Lunch {amount - 1}\nTOTAL {amount - 1}\n'
+                f'Card payment {amount}'
+            )
+        case 'unexplained_removal':
+            amount = Decimal(submission['amount'])
+            submission['receipt_text'] = (
+                f'Harbour Kitchen\n1 x Lunch {amount + 1}\n1 x Pint of lager 1.00\n'
+                f'TOTAL {amount + 2}'
+            )
         case _:
             raise ValueError(f'{failure} does not break a receipt')
 
@@ -411,7 +459,7 @@ RECEIPTED_HARD_NEGATIVE = _first_brief(
     lambda brief: (
         brief.slice == 'hard_negative'
         and brief.receipt is not None
-        and brief.receipt.total_differs_because is None
+        and brief.intent.receipt_total_differs_because is None
     )
 )
 MEMORY_PAIR_BRIEF = _first_brief(lambda brief: brief.memory_pair)
@@ -421,9 +469,13 @@ DIFFERING_RECEIPT_BRIEF = _first_brief(
     lambda brief: (
         brief.slice == 'hard_negative'
         and brief.receipt is not None
-        and brief.receipt.total_differs_because is not None
+        and brief.intent.receipt_total_differs_because is not None
     )
 )
+ALCOHOL_REMOVED_BRIEF = _first_brief(
+    lambda brief: brief.intent.receipt_total_differs_because == 'alcohol_removed'
+)
+DIFFERING_REASON = DIFFERING_RECEIPT_BRIEF.intent.receipt_total_differs_because or ''
 
 
 def test_the_drafters_output_schema_holds_no_rule_findings_route_or_recommendation() -> None:
@@ -562,15 +614,37 @@ def test_drafts_that_fail_validation_are_not_written_and_the_problems_are_report
             'unitemised_receipt',
             RECEIPTED_HARD_NEGATIVE,
             'receipt_text is not an itemised receipt: give one line per item with its price and'
-            ' a final line starting TOTAL with the amount',
+            ' a line starting TOTAL with the amount',
         ),
         (
             'equal_total',
             DIFFERING_RECEIPT_BRIEF,
             'the receipt total equals the claimed amount, the brief says they differ because of'
-            f' {(DIFFERING_RECEIPT_BRIEF.receipt.total_differs_because or "").replace("_", " ")}'
-            if DIFFERING_RECEIPT_BRIEF.receipt
-            else '',
+            f' {DIFFERING_REASON.replace("_", " ")}',
+        ),
+        (
+            'unbalanced_receipt',
+            RECEIPTED_HARD_NEGATIVE,
+            'the receipt lines add up to'
+            f' {(RECEIPTED_HARD_NEGATIVE.amount.at_most or 0) - 1 + Decimal("0.50")}, not the'
+            f' TOTAL of {RECEIPTED_HARD_NEGATIVE.amount.at_most}: give every priced line its'
+            ' amount, discounts as negative amounts, so that the lines add up to the TOTAL',
+        ),
+        (
+            'unexplained_tip',
+            DIFFERING_RECEIPT_BRIEF,
+            f'the claimed amount {DIFFERING_RECEIPT_BRIEF.amount.at_most} is not the receipt'
+            f' TOTAL {(DIFFERING_RECEIPT_BRIEF.amount.at_most or 0) - 1} plus a tip: show the'
+            ' tip on its own tip, gratuity or service line after the TOTAL, and claim the TOTAL'
+            ' plus that line',
+        ),
+        (
+            'unexplained_removal',
+            ALCOHOL_REMOVED_BRIEF,
+            f'the claimed amount {ALCOHOL_REMOVED_BRIEF.amount.at_most} is not the receipt TOTAL'
+            f' {(ALCOHOL_REMOVED_BRIEF.amount.at_most or 0) + 2} less one or more of its priced'
+            ' lines: list the alcoholic drinks on their own priced lines and claim the TOTAL'
+            ' less those lines',
         ),
         (
             'no_review',
@@ -853,3 +927,80 @@ def test_drafters_are_told_not_to_write_placeholders_or_supplier_references_as_m
         ' write what a real submission would say. A merchant is the name a business trades'
         ' under, never a supplier reference from the company records.'
     ) in system_prompt
+
+
+def system_prompt_of_a_drafting_run(tmp_path: Path) -> str:
+    drafters = DrafterPool()
+    run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+    return str(drafters.models['fake_nova'].received[0][0].content)
+
+
+def test_drafters_are_told_that_every_priced_receipt_line_adds_to_the_total(
+    tmp_path: Path,
+) -> None:
+    system_prompt = system_prompt_of_a_drafting_run(tmp_path)
+
+    assert (
+        "Every priced line ends with that line's total, and every priced line adds to the TOTAL:"
+        ' items, discounts as negative amounts, service charges, and VAT only when it is added'
+        ' on top. Write no subtotal or "VAT included" lines.'
+    ) in system_prompt
+
+
+def test_drafters_are_told_to_name_each_drink_on_a_meal_receipt_so_it_shows_if_it_is_alcoholic(
+    tmp_path: Path,
+) -> None:
+    system_prompt = system_prompt_of_a_drafting_run(tmp_path)
+
+    assert (
+        'Every drink on a meal receipt says whether it is alcoholic by naming it, such as "Pint'
+        ' of lager" or "Sparkling water", never a bare "Drink" or "Drinks".'
+    ) in system_prompt
+
+
+def test_drafters_are_told_not_to_explain_in_free_text_why_the_submission_complies(
+    tmp_path: Path,
+) -> None:
+    system_prompt = system_prompt_of_a_drafting_run(tmp_path)
+
+    assert (
+        "The submission's free text never explains why it complies with the policy."
+        in system_prompt
+    )
+
+
+@pytest.mark.parametrize(
+    ('brief', 'note'),
+    [
+        (
+            DIFFERING_RECEIPT_BRIEF,
+            '- The claimed amount is the receipt TOTAL plus a tip added when paying: show the tip'
+            ' on the payment slip after the TOTAL, on its own tip, gratuity or service line.\n',
+        ),
+        (
+            ALCOHOL_REMOVED_BRIEF,
+            '- The claimed amount is the receipt TOTAL less the alcoholic drinks, each on its own'
+            ' priced line.\n',
+        ),
+    ],
+)
+def test_a_brief_whose_claim_differs_from_the_receipt_tells_the_drafter_which_line_explains_it(
+    tmp_path: Path, brief: CaseBrief, note: str
+) -> None:
+    drafters = DrafterPool()
+
+    run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    brief_text = yaml.safe_dump(
+        brief.model_dump(mode='json', exclude={'case_id', 'split'}, exclude_none=True),
+        sort_keys=False,
+        allow_unicode=True,
+    )
+    prompts = [
+        str(prompt[1].content) + '\n'
+        for model in drafters.models.values()
+        for prompt in model.received
+        if brief_text in str(prompt[1].content)
+    ]
+    assert len(prompts) == 1
+    assert note in prompts[0]

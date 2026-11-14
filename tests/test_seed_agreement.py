@@ -214,8 +214,8 @@ def broken_seed_data(collection: str, index: int, **fields: object) -> SeedData:
             'historical_claims',
             0,
             {'quantity': 1},
-            'historical claim CLM-0001: a client entertainment quantity of 1'
-            ' leaves no guest besides the claimant',
+            'historical claim CLM-0001: a client entertainment quantity counts the claimant and'
+            ' every guest, so it is at least 2, not 1',
         ),
         (
             'purchase_orders',

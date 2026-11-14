@@ -6,6 +6,7 @@ intent:
   judgement_codes: []
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
   type: supplier_invoice
   supplier: SUP-001

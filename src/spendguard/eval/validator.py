@@ -18,10 +18,12 @@ from spendguard.eval.cases import (
     ExpectedFinding,
     InjectionField,
     InjectionPlan,
+    ReceiptDifference,
     Slice,
     SlicePlan,
     Split,
 )
+from spendguard.eval.receipts import TIP_LABEL_TEXT, read_receipt
 from spendguard.policy.loader import CheckKind, FindingCode, Policy
 from spendguard.rules.checks import (
     WEEKEND_CODE,
@@ -31,6 +33,7 @@ from spendguard.rules.checks import (
     raised_rule_codes,
 )
 from spendguard.rules.decisions import Recommendation, ReviewedFinding, Route, recommend, route
+from spendguard.seed.agreement import quantity_problem
 from spendguard.seed.schema import SUPPLIER_REFERENCE_PATTERN, SeedData
 from spendguard.submission import ExpenseClaim, Submission, SupplierInvoice
 
@@ -38,6 +41,11 @@ PLACEHOLDER_TEXTS = ('Merchant Name', 'Item 1', 'Item Description', 'XYZ')
 PLACEHOLDER_PATTERNS = {
     placeholder: re.compile(rf'\b{re.escape(placeholder)}\b', re.IGNORECASE)
     for placeholder in PLACEHOLDER_TEXTS
+}
+RECEIPT_ROUNDING_TOLERANCE = Decimal('0.01')
+REMOVED_ITEMS: dict[ReceiptDifference, str] = {
+    'alcohol_removed': 'alcoholic drinks',
+    'room_extras_removed': 'room extras',
 }
 MERCHANT_SUPPLIER_REFERENCE_PATTERN = re.compile(
     rf'\b{SUPPLIER_REFERENCE_PATTERN}\b', re.IGNORECASE
@@ -100,7 +108,11 @@ def case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iterat
     references: list[tuple[str, str | None]]
     if isinstance(submission, ExpenseClaim):
         yield from _category_problems(submission, policy)
+        problem = quantity_problem(submission.category, submission.quantity)
+        if problem is not None:
+            yield problem
         yield from _supplier_reference_problems(submission)
+        yield from _receipt_problems(case, submission, policy, seed_data)
         references = [('employee', submission.claimant)]
     else:
         references = [
@@ -141,6 +153,67 @@ def _category_problems(claim: ExpenseClaim, policy: Policy) -> Iterator[str]:
     if claim.category not in policy.expense_categories:
         category_keys = ', '.join(sorted(policy.expense_categories))
         yield f'category {claim.category!r} is not a policy category ({category_keys})'
+
+
+def _receipt_problems(
+    case: EvalCase, claim: ExpenseClaim, policy: Policy, seed_data: SeedData
+) -> Iterator[str]:
+    if claim.receipt_text is None:
+        return
+    receipt = read_receipt(claim.receipt_text)
+    if receipt is None:
+        yield (
+            'receipt_text is not an itemised receipt: give one line per item with its price'
+            ' and a line starting TOTAL with the amount'
+        )
+        return
+    difference = case.intent.receipt_total_differs_because
+    if difference is None and receipt.total != claim.amount:
+        yield f'the receipt total {receipt.total} differs from the claimed amount {claim.amount}'
+    if difference is not None and receipt.total == claim.amount:
+        yield (
+            'the receipt total equals the claimed amount, the brief says they differ because'
+            f' of {difference.replace("_", " ")}'
+        )
+    if (
+        difference == 'tip'
+        and receipt.total != claim.amount
+        and claim.amount - receipt.total not in receipt.tips
+    ):
+        yield (
+            f'the claimed amount {claim.amount} is not the receipt TOTAL {receipt.total} plus'
+            f' a tip: show the tip on its own {TIP_LABEL_TEXT} line after the TOTAL,'
+            ' and claim the TOTAL plus that line'
+        )
+    if (
+        difference in REMOVED_ITEMS
+        and receipt.total != claim.amount
+        and receipt.total - claim.amount not in receipt.removable_amounts
+    ):
+        yield (
+            f'the claimed amount {claim.amount} is not the receipt TOTAL {receipt.total} less one'
+            f' or more of its priced lines: list the {REMOVED_ITEMS[difference]} on their own'
+            ' priced lines and claim the TOTAL less those lines'
+        )
+    rate = (
+        Decimal(1)
+        if claim.currency == policy.base_currency
+        else seed_data.company_rate(claim.currency, claim.spent_on)
+    )
+    if rate is None:
+        return
+    if 'RECEIPT_MISMATCH' not in case.intent.judgement_codes and not _within_rounding(
+        receipt.line_sum - receipt.total, rate
+    ):
+        yield (
+            f'the receipt lines add up to {receipt.line_sum}, not the TOTAL of {receipt.total}:'
+            ' give every priced line its amount, discounts as negative amounts, so that the'
+            ' lines add up to the TOTAL'
+        )
+
+
+def _within_rounding(difference: Decimal, rate: Decimal) -> bool:
+    return abs(difference) * rate <= RECEIPT_ROUNDING_TOLERANCE
 
 
 def _placeholder_problems(submission: Submission) -> Iterator[str]:

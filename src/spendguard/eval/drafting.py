@@ -1,6 +1,5 @@
 import itertools
 import json
-import re
 import sys
 from collections import Counter
 from collections.abc import Callable, Iterator
@@ -25,8 +24,10 @@ from spendguard.eval.cases import (
     load_slice_plan,
 )
 from spendguard.eval.freeze import dataset_argument_parser
+from spendguard.eval.receipts import TIP_LABEL_TEXT
 from spendguard.eval.validator import (
     PLACEHOLDER_TEXTS,
+    REMOVED_ITEMS,
     case_problems,
     computed_route_and_recommendation,
     describe_rule_codes,
@@ -65,12 +66,18 @@ def instructions(policy: Policy) -> str:
         f'Judgement findings need a reading of free text: {judgement_codes}. Label only the'
         ' judgement findings the brief intends, each with the references of the clauses it'
         ' rests on, such as §3.4. Make the submission raise no other concern that needs'
-        ' judgement.\n\n'
+        " judgement. The submission's free text never explains why it complies with the"
+        ' policy.\n\n'
         'An expense claim with a receipt carries the receipt as it was printed: the merchant,'
-        ' the date, one line per item with its price, and a final line starting TOTAL with the'
-        ' amount. Leave out any field that does not apply, such as a claimed exchange rate on'
-        ' a submission in the base currency, rather than giving it an empty or placeholder'
-        ' value.\n\n'
+        ' the date, one line per item with its price, and a line starting TOTAL with the'
+        ' amount; anything after the TOTAL line is the payment slip. Every priced line ends'
+        " with that line's total, and every priced line adds to the TOTAL: items, discounts as"
+        ' negative amounts, service charges, and VAT only when it is added on top. Write no'
+        ' subtotal or "VAT included" lines. Every drink on a meal receipt says whether it is'
+        ' alcoholic by naming it, such as "Pint of lager" or "Sparkling water", never a bare'
+        ' "Drink" or "Drinks". Leave out any field that does not apply, such as a'
+        ' claimed exchange rate on a submission in the base currency, rather than giving it an'
+        ' empty or placeholder value.\n\n'
         f'Write no placeholder text, such as {placeholders}: write what a real submission would'
         ' say. A merchant is the name a business trades under, never a supplier reference from'
         ' the company records.\n'
@@ -370,38 +377,6 @@ def _receipt_problems(brief: CaseBrief, claim: ExpenseClaim) -> Iterator[str]:
         return
     if claim.receipt_text is None:
         yield 'the brief says the claim has a receipt, and receipt_text is missing'
-        return
-    total = receipt_total(claim.receipt_text)
-    if total is None or not _has_line_items(claim.receipt_text):
-        yield (
-            'receipt_text is not an itemised receipt: give one line per item with its price'
-            ' and a final line starting TOTAL with the amount'
-        )
-        return
-    if plan.total_differs_because is None and total != claim.amount:
-        yield f'the receipt total {total} differs from the claimed amount {claim.amount}'
-    if plan.total_differs_because is not None and total == claim.amount:
-        yield (
-            f'the receipt total equals the claimed amount, the brief says they differ because'
-            f' of {plan.total_differs_because.replace("_", " ")}'
-        )
-
-
-RECEIPT_TOTAL_PATTERN = re.compile(
-    r'^\s*total\b[^\d\n]*(\d[\d,]*(?:\.\d{1,2})?)\s*$', re.IGNORECASE | re.MULTILINE
-)
-RECEIPT_LINE_ITEM_PATTERN = re.compile(
-    r'^(?!\s*total\b).*[a-z].*\s[£$€]?\d[\d,]*(?:\.\d{2})?\s*$', re.IGNORECASE | re.MULTILINE
-)
-
-
-def receipt_total(receipt_text: str) -> Decimal | None:
-    totals = RECEIPT_TOTAL_PATTERN.findall(receipt_text)
-    return Decimal(totals[-1].replace(',', '')) if totals else None
-
-
-def _has_line_items(receipt_text: str) -> bool:
-    return bool(RECEIPT_LINE_ITEM_PATTERN.search(receipt_text))
 
 
 def describe_brief(brief: CaseBrief, policy: Policy) -> str:
@@ -487,12 +462,24 @@ def _receipt_note(brief: CaseBrief) -> str:
     receipt = brief.receipt
     if receipt is None or not receipt.present:
         return 'The receipt is missing: leave receipt_text out.'
-    if receipt.total_differs_because is None:
-        return 'The receipt TOTAL equals the claimed amount.'
-    return (
-        'The receipt TOTAL differs from the claimed amount, because of'
-        f' {receipt.total_differs_because.replace("_", " ")}.'
-    )
+    difference = brief.intent.receipt_total_differs_because
+    match difference:
+        case None:
+            return 'The receipt TOTAL equals the claimed amount.'
+        case 'receipt_mismatch':
+            return 'The receipt TOTAL differs from the claimed amount, because of receipt mismatch.'
+        case 'tip':
+            return (
+                'The claimed amount is the receipt TOTAL plus a tip added when paying: show the'
+                f' tip on the payment slip after the TOTAL, on its own {TIP_LABEL_TEXT} line.'
+            )
+        case 'alcohol_removed' | 'room_extras_removed':
+            return (
+                f'The claimed amount is the receipt TOTAL less the {REMOVED_ITEMS[difference]},'
+                ' each on its own priced line.'
+            )
+        case _:
+            assert_never(difference)
 
 
 def _context(policy: Policy, seed_data: SeedData) -> str:

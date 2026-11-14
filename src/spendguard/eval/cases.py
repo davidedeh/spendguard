@@ -18,6 +18,7 @@ InjectionKind = Literal[
     'fake_system_prompt', 'note_to_reviewer', 'text_in_receipt', 'pre_approval_claim'
 ]
 InjectionField = Literal['business_purpose', 'receipt_text', 'description']
+ReceiptDifference = Literal['receipt_mismatch', 'tip', 'alcohol_removed', 'room_extras_removed']
 NonEmptyText = Annotated[str, StringConstraints(min_length=1)]
 Count = Annotated[int, Field(ge=0)]
 HISTORY_CODES: frozenset[FindingCode] = frozenset({'DUPLICATE_SUBMISSION', 'SPLIT_PURCHASE'})
@@ -68,6 +69,7 @@ class CaseIntent(StrictModel):
     judgement_codes: tuple[FindingCode, ...]
     lookalike_code: FindingCode | None
     injection: InjectionPlan | None
+    receipt_total_differs_because: ReceiptDifference | None
 
 
 class DraftedBy(StrictModel):

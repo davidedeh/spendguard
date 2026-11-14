@@ -14,6 +14,7 @@ from spendguard.eval.briefs import (
 from spendguard.eval.cases import Slice, Split, load_slice_plan
 from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.rules.checks import falls_on_weekend_or_holiday, rule_findings
+from spendguard.seed.agreement import CLIENT_ENTERTAINMENT, CLIENT_ENTERTAINMENT_MINIMUM_QUANTITY
 from spendguard.seed.loader import SEED_DIRECTORY, read_seed_directory
 
 PLAN = load_slice_plan(Path(__file__).parents[1] / 'evals' / 'slice_plan.yaml')
@@ -156,3 +157,15 @@ def test_injection_briefs_rotate_through_every_kind_of_injected_instruction() ->
 
 def test_brief_generation_is_deterministic() -> None:
     assert generate_briefs(PLAN, POLICY, SEED) == BRIEFS
+
+
+def test_no_client_entertainment_brief_has_fewer_people_than_the_claimant_and_a_guest() -> None:
+    entertainment_quantities = [
+        brief.quantity for brief in BRIEFS if brief.category == CLIENT_ENTERTAINMENT
+    ]
+
+    assert entertainment_quantities
+    assert all(
+        quantity is not None and quantity >= CLIENT_ENTERTAINMENT_MINIMUM_QUANTITY
+        for quantity in entertainment_quantities
+    ), entertainment_quantities

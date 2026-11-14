@@ -6,6 +6,7 @@ intent:
   judgement_codes: []
   lookalike_code: WEEKEND_SPEND_UNJUSTIFIED
   injection: null
+  receipt_total_differs_because: null
 submission:
   type: expense_claim
   claimant: EMP-003
@@ -17,7 +18,11 @@ submission:
   currency: GBP
   claimed_exchange_rate: null
   business_purpose: Taxi to the data centre to restore service after the Sunday outage call-out.
-  receipt_text: City Taxis, 22.00 GBP
+  receipt_text: |-
+    City Taxis
+    2026-10-11
+    Home to data centre  22.00
+    TOTAL  22.00
 expected_findings: []
 expected_route: auto_approve
 expected_recommendation: approve

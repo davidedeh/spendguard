@@ -3,7 +3,7 @@ import itertools
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
-from typing import Literal, assert_never, get_args
+from typing import assert_never, get_args
 
 from spendguard.eval.cases import (
     HISTORY_CODES,
@@ -11,6 +11,7 @@ from spendguard.eval.cases import (
     InjectionField,
     InjectionKind,
     InjectionPlan,
+    ReceiptDifference,
     Slice,
     SlicePlan,
     Split,
@@ -26,11 +27,11 @@ from spendguard.rules.checks import (
     prior_unordered_invoices,
     raised_rule_codes,
 )
+from spendguard.seed.agreement import minimum_quantity
 from spendguard.seed.schema import HistoricalClaim, HistoricalInvoice, SeedData
 from spendguard.strict_model import StrictModel
 from spendguard.submission import ExpenseClaim, Submission, SubmissionType, SupplierInvoice
 
-ReceiptDifference = Literal['receipt_mismatch', 'tip', 'alcohol_removed', 'room_extras_removed']
 CENT = Decimal('0.01')
 OVER_LIMIT_HEADROOM = Decimal('1.5')
 MISSING_PO_HEADROOM = Decimal('3')
@@ -72,7 +73,6 @@ class BriefError(ValueError):
 
 class ReceiptPlan(StrictModel):
     present: bool
-    total_differs_because: ReceiptDifference | None
 
 
 class AmountBounds(StrictModel):
@@ -124,6 +124,7 @@ def _target(
             judgement_codes=judgement_codes,
             lookalike_code=lookalike_code,
             injection=None,
+            receipt_total_differs_because=None,
         ),
     )
 
@@ -420,9 +421,9 @@ class _BriefBuilder:
         rate = self._company_rate(currency, dated_on)
         category = self._category(target)
         unit = self.policy.expense_categories[category].unit
-        quantity = 1
+        quantity = minimum_quantity(category)
         if unit in MULTI_UNIT_QUANTITIES and self.rotation.take('multi-unit', [False, True]):
-            quantity = MULTI_UNIT_QUANTITIES[unit]
+            quantity = max(quantity, MULTI_UNIT_QUANTITIES[unit])
         over_budget = 'BUDGET_EXCEEDED' in target.intent.rule_codes
         claimants = [
             employee
@@ -447,7 +448,9 @@ class _BriefBuilder:
             split=split,
             slice=target.slice,
             submission_type='expense_claim',
-            intent=target.intent,
+            intent=target.intent.model_copy(
+                update={'receipt_total_differs_because': self._receipt_difference(target, category)}
+            ),
             party=claimant.reference,
             cost_centre=claimant.cost_centre,
             purchase_order=None,
@@ -459,7 +462,7 @@ class _BriefBuilder:
             amount=self._bounds(rate, more_than, at_most),
             company_rate=rate,
             claimed_rate_must_deviate='CURRENCY_ANOMALY' in target.intent.rule_codes,
-            receipt=self._receipt(target, category),
+            receipt=ReceiptPlan(present='MISSING_RECEIPT' not in target.intent.rule_codes),
             memory_pair=memory_pair,
             history_claims=(),
             history_invoices=(),
@@ -486,18 +489,14 @@ class _BriefBuilder:
         ]
         return self.rotation.take(key, available or list(self.policy.expense_categories))
 
-    def _receipt(self, target: _Target, category: str) -> ReceiptPlan:
-        difference: ReceiptDifference | None = None
+    def _receipt_difference(self, target: _Target, category: str) -> ReceiptDifference | None:
         if 'RECEIPT_MISMATCH' in target.intent.judgement_codes:
-            difference = 'receipt_mismatch'
-        elif target.intent.lookalike_code == 'RECEIPT_MISMATCH':
-            difference = 'tip' if category == 'subsistence' else 'room_extras_removed'
-        elif target.intent.lookalike_code == 'ALCOHOL_NOT_PERMITTED' and category == 'subsistence':
-            difference = 'alcohol_removed'
-        return ReceiptPlan(
-            present='MISSING_RECEIPT' not in target.intent.rule_codes,
-            total_differs_because=difference,
-        )
+            return 'receipt_mismatch'
+        if target.intent.lookalike_code == 'RECEIPT_MISMATCH':
+            return 'tip' if category == 'subsistence' else 'room_extras_removed'
+        if target.intent.lookalike_code == 'ALCOHOL_NOT_PERMITTED' and category == 'subsistence':
+            return 'alcohol_removed'
+        return None
 
     def _duplicate_claim_brief(
         self, case_id: str, split: Split, target: _Target, memory_pair: bool
@@ -532,7 +531,7 @@ class _BriefBuilder:
             amount=AmountBounds(more_than=None, at_most=None, exactly=prior.amount),
             company_rate=None,
             claimed_rate_must_deviate=False,
-            receipt=ReceiptPlan(present=True, total_differs_because=None),
+            receipt=ReceiptPlan(present=True),
             memory_pair=memory_pair,
             history_claims=(prior,),
             history_invoices=(),

@@ -6,6 +6,7 @@ intent:
   judgement_codes: [PURPOSE_UNCLEAR]
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
   type: expense_claim
   claimant: EMP-003
@@ -17,7 +18,11 @@ submission:
   currency: GBP
   claimed_exchange_rate: null
   business_purpose: Catch-up.
-  receipt_text: Harbour Kitchen, 2 mains, 31.20 GBP
+  receipt_text: |-
+    Harbour Kitchen
+    2026-10-07
+    2 x Fish and chips  31.20
+    TOTAL  31.20
 expected_findings:
   - id: purpose
     code: PURPOSE_UNCLEAR

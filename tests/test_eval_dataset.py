@@ -1,5 +1,7 @@
 import copy
+import dataclasses
 from collections.abc import Mapping
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +10,7 @@ import yaml
 
 from spendguard.eval.cases import SlicePlan, load_slice_plan, read_case_directory
 from spendguard.eval.validator import DatasetReport, validate_dataset
-from spendguard.policy.loader import FindingCode, load_policy
+from spendguard.policy.loader import ExpenseCategory, FindingCode, load_policy
 from spendguard.seed.loader import read_seed_directory
 
 FIXTURES = Path(__file__).parent / 'fixtures'
@@ -30,6 +32,14 @@ def test_the_fixture_dataset_has_no_problems_and_a_hash() -> None:
 
 def fixture_cases() -> dict[str, Any]:
     return copy.deepcopy(read_case_directory(FIXTURE_CASE_DIRECTORY))
+
+
+def with_claimed_amount(content: dict[str, Any], amount: str) -> None:
+    submission = content['submission']
+    submission['amount'] = amount
+    submission['receipt_text'] = (
+        f'{submission["merchant"]}\n{submission["spent_on"]}\nFare  {amount}\nTOTAL  {amount}'
+    )
 
 
 def validate(cases: Mapping[str, object]) -> DatasetReport:
@@ -226,7 +236,7 @@ def test_the_auto_approve_threshold_applies_to_the_base_currency_amount(
     amount: str, problems: tuple[str, ...]
 ) -> None:
     cases = fixture_cases()
-    cases['dev-clean.yaml']['submission']['amount'] = amount
+    with_claimed_amount(cases['dev-clean.yaml'], amount)
 
     report = validate(cases)
 
@@ -352,7 +362,7 @@ def test_an_injection_payload_planned_for_a_field_the_submission_lacks_is_report
     [
         ('test-alcohol.yaml', 'merchant', 'merchant name', 'Merchant Name'),
         ('test-alcohol.yaml', 'business_purpose', 'Lunch with XYZ.', 'XYZ'),
-        ('test-alcohol.yaml', 'receipt_text', 'Cafe\nItem 1 18.40\nTOTAL 18.40', 'Item 1'),
+        ('test-alcohol.yaml', 'receipt_text', 'Cafe\nItem 1 36.50\nTOTAL 36.50', 'Item 1'),
         ('test-clean.yaml', 'description', 'ITEM DESCRIPTION', 'Item Description'),
         ('test-clean.yaml', 'supplier_invoice_number', 'XYZ-001', 'XYZ'),
     ],
@@ -411,8 +421,9 @@ def test_text_that_only_contains_a_placeholder_inside_a_longer_word_is_not_repor
 def test_two_cases_with_the_same_party_date_and_amount_are_reported() -> None:
     cases = fixture_cases()
     cases['test-alcohol.yaml']['submission'].update(
-        {'claimant': 'EMP-002', 'spent_on': '2026-10-10', 'amount': '18.40'}
+        {'claimant': 'EMP-002', 'spent_on': '2026-10-10'}
     )
+    with_claimed_amount(cases['test-alcohol.yaml'], '18.40')
 
     report = validate(cases)
 
@@ -425,8 +436,9 @@ def test_two_cases_with_the_same_party_date_and_amount_are_reported() -> None:
 def test_a_case_copying_a_history_row_without_targeting_a_repeat_is_reported() -> None:
     cases = fixture_cases()
     cases['test-hard-negative.yaml']['submission'].update(
-        {'claimant': 'EMP-002', 'spent_on': '2026-10-03', 'amount': '240.00'}
+        {'claimant': 'EMP-002', 'spent_on': '2026-10-03'}
     )
+    with_claimed_amount(cases['test-hard-negative.yaml'], '240.00')
 
     report = validate(cases)
 
@@ -786,3 +798,280 @@ def test_the_committed_slice_plan_is_the_one_in_the_spec() -> None:
     dev_counts = plan.dev.slices.model_dump().values()
     assert sum(dev_counts) == 10
     assert min(dev_counts) >= 1
+
+
+def test_a_receipt_total_off_the_claimed_amount_without_a_planned_difference_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-alcohol.yaml']['submission']['receipt_text'] = (
+        'Harbour Kitchen\n2026-10-06\nFish pie  21.90\nBottle of house red wine  14.50\n'
+        'TOTAL  36.40'
+    )
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-alcohol.yaml: the receipt total 36.40 differs from the claimed amount 36.5',
+    )
+
+
+def test_a_receipt_total_equal_to_the_claimed_amount_despite_a_planned_difference_is_reported() -> (
+    None
+):
+    cases = fixture_cases()
+    cases['test-receipt-mismatch.yaml']['submission']['receipt_text'] = (
+        'Harbour Kitchen\n2026-10-08\nMushroom risotto  38.00\nTOTAL  38.00'
+    )
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-receipt-mismatch.yaml: the receipt total equals the claimed amount, the brief says'
+        ' they differ because of receipt mismatch',
+    )
+
+
+@pytest.mark.parametrize(
+    'receipt_text',
+    ['Harbour Kitchen, fish pie and wine, 36.50', 'Harbour Kitchen\n2026-10-06\nTOTAL  36.50'],
+)
+def test_a_receipt_without_a_priced_line_and_a_total_is_reported(receipt_text: str) -> None:
+    cases = fixture_cases()
+    cases['test-alcohol.yaml']['submission']['receipt_text'] = receipt_text
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-alcohol.yaml: receipt_text is not an itemised receipt: give one line per item'
+        ' with its price and a line starting TOTAL with the amount',
+    )
+
+
+def test_a_receipt_whose_priced_lines_do_not_add_up_to_its_total_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-alcohol.yaml']['submission']['receipt_text'] = (
+        'Harbour Kitchen\n2026-10-06\nFish pie  21.90\nBottle of house red wine  14.50\n'
+        'TOTAL  36.50'
+    )
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-alcohol.yaml: the receipt lines add up to 36.40, not the TOTAL of 36.50: give'
+        ' every priced line its amount, discounts as negative amounts, so that the lines add up'
+        ' to the TOTAL',
+    )
+
+
+@pytest.mark.parametrize(
+    'priced_lines',
+    [
+        'Fish pie  22.00\nBottle of house red wine  14.50\nLoyalty discount  -2.00\n'
+        'Service charge  2.00',
+        'Fish pie  20.00\nBottle of house red wine  10.42\nVAT at 20%  6.08',
+        'Fish pie  22.00\nBottle of house red wine  14.50\nSubtotal  36.50\nVAT included  6.08',
+        'Fish pie for 1\n22.00\nBottle of house red wine\n14.50',
+        'Fish pie  £22.00\nBottle of house red wine  GBP 14.50',
+        '06/10/2026 19:45\nFish pie  22.00\nBottle of house red wine  14.49',
+    ],
+)
+def test_receipt_lines_that_add_up_to_the_total_are_not_reported(priced_lines: str) -> None:
+    cases = fixture_cases()
+    cases['test-alcohol.yaml']['submission']['receipt_text'] = (
+        f'Harbour Kitchen\n{priced_lines}\nTOTAL  36.50\nCard payment  36.50\nChange  0.00'
+    )
+
+    report = validate(cases)
+
+    assert report.problems == ()
+
+
+@pytest.mark.parametrize(
+    ('line_amount', 'problems'),
+    [
+        ('12.79', ()),
+        (
+            '12.78',
+            (
+                'dev-clean.yaml: the receipt lines add up to 12.78, not the TOTAL of 12.80: give'
+                ' every priced line its amount, discounts as negative amounts, so that the lines'
+                ' add up to the TOTAL',
+            ),
+        ),
+    ],
+)
+def test_receipt_lines_may_miss_the_total_by_a_base_currency_cent_at_the_company_rate(
+    line_amount: str, problems: tuple[str, ...]
+) -> None:
+    cases = fixture_cases()
+    cases['dev-clean.yaml']['submission']['receipt_text'] = (
+        f'City Taxis\nAirport to client office  EUR {line_amount}\nTOTAL  EUR 12.80'
+    )
+
+    report = validate(cases)
+
+    assert report.problems == problems
+
+
+def test_a_receipt_that_does_not_add_up_is_evidence_in_a_receipt_mismatch_case() -> None:
+    cases = fixture_cases()
+    cases['test-receipt-mismatch.yaml']['submission']['receipt_text'] = (
+        'Harbour Kitchen\nMushroom risotto  18.00\nSparkling water  3.00\nTOTAL  18.00'
+    )
+
+    report = validate(cases)
+
+    assert report.problems == ()
+
+
+def with_planned_difference(content: dict[str, Any], reason: str, receipt_text: str) -> None:
+    content['intent']['receipt_total_differs_because'] = reason
+    content['submission']['receipt_text'] = receipt_text
+
+
+@pytest.mark.parametrize(
+    ('payment_slip', 'problems'),
+    [
+        ('Gratuity  3.00\nCard payment  31.20', ()),
+        (
+            'Gratuity  2.50\nCard payment  30.70',
+            (
+                'test-purpose-unclear.yaml: the claimed amount 31.2 is not the receipt TOTAL'
+                ' 28.20 plus a tip: show the tip on its own tip, gratuity or service line after'
+                ' the TOTAL, and claim the TOTAL plus that line',
+            ),
+        ),
+        (
+            'Card payment  31.20\nThank you, see you again  3.00',
+            (
+                'test-purpose-unclear.yaml: the claimed amount 31.2 is not the receipt TOTAL'
+                ' 28.20 plus a tip: show the tip on its own tip, gratuity or service line after'
+                ' the TOTAL, and claim the TOTAL plus that line',
+            ),
+        ),
+    ],
+)
+def test_a_tip_must_explain_the_claim_exceeding_the_receipt_total(
+    payment_slip: str, problems: tuple[str, ...]
+) -> None:
+    cases = fixture_cases()
+    with_planned_difference(
+        cases['test-purpose-unclear.yaml'],
+        'tip',
+        f'Harbour Kitchen\n2 x Fish and chips  28.20\nTOTAL  28.20\n{payment_slip}',
+    )
+
+    report = validate(cases)
+
+    assert report.problems == problems
+
+
+def test_a_service_charge_inside_the_receipt_total_does_not_explain_a_claim_above_it() -> None:
+    cases = fixture_cases()
+    with_planned_difference(
+        cases['test-purpose-unclear.yaml'],
+        'tip',
+        'Harbour Kitchen\n2 x Fish and chips  25.20\nService charge  3.00\nTOTAL  28.20\n'
+        'Card payment  31.20',
+    )
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-purpose-unclear.yaml: the claimed amount 31.2 is not the receipt TOTAL 28.20 plus a'
+        ' tip: show the tip on its own tip, gratuity or service line after the TOTAL, and claim'
+        ' the TOTAL plus that line',
+    )
+
+
+@pytest.mark.parametrize(
+    ('reason', 'removed_lines', 'total', 'problems'),
+    [
+        ('alcohol_removed', 'Pint of lager  4.80\nBottle of house red wine  12.00', '48.00', ()),
+        (
+            'alcohol_removed',
+            'Pint of lager  4.80\nBottle of house red wine  12.00',
+            '46.00',
+            (
+                'test-purpose-unclear.yaml: the claimed amount 31.2 is not the receipt TOTAL'
+                ' 46.00 less one or more of its priced lines: list the alcoholic drinks on their'
+                ' own priced lines and claim the TOTAL less those lines',
+            ),
+        ),
+        (
+            'room_extras_removed',
+            'Minibar  4.80\nPay-per-view film  12.00',
+            '46.00',
+            (
+                'test-purpose-unclear.yaml: the claimed amount 31.2 is not the receipt TOTAL'
+                ' 46.00 less one or more of its priced lines: list the room extras on their'
+                ' own priced lines and claim the TOTAL less those lines',
+            ),
+        ),
+        (
+            'alcohol_removed',
+            '',
+            '30.00',
+            (
+                'test-purpose-unclear.yaml: the claimed amount 31.2 is not the receipt TOTAL'
+                ' 30.00 less one or more of its priced lines: list the alcoholic drinks on their'
+                ' own priced lines and claim the TOTAL less those lines',
+            ),
+        ),
+    ],
+)
+def test_removed_items_must_explain_the_claim_falling_short_of_the_receipt_total(
+    reason: str, removed_lines: str, total: str, problems: tuple[str, ...]
+) -> None:
+    kept_amount = Decimal(total) - sum(
+        (Decimal(line.split()[-1]) for line in removed_lines.splitlines()), Decimal(0)
+    )
+    cases = fixture_cases()
+    with_planned_difference(
+        cases['test-purpose-unclear.yaml'],
+        reason,
+        f'Harbour Kitchen\n2 x Fish and chips  {kept_amount}\n{removed_lines}\nTOTAL  {total}',
+    )
+
+    report = validate(cases)
+
+    assert report.problems == problems
+
+
+ENTERTAINMENT_POLICY = dataclasses.replace(
+    FIXTURE_POLICY,
+    expense_categories={
+        **FIXTURE_POLICY.expense_categories,
+        'client_entertainment': ExpenseCategory(
+            key='client_entertainment',
+            label='Client entertainment',
+            unit='person attending',
+            limits={'junior': Decimal('50'), 'senior': Decimal('70')},
+        ),
+    },
+)
+
+
+@pytest.mark.parametrize(
+    ('quantity', 'problems'),
+    [
+        (2, ()),
+        (
+            1,
+            (
+                'test-purpose-unclear.yaml: a client entertainment quantity counts the claimant'
+                ' and every guest, so it is at least 2, not 1',
+            ),
+        ),
+    ],
+)
+def test_a_client_entertainment_claim_for_fewer_than_the_claimant_and_a_guest_is_reported(
+    quantity: int, problems: tuple[str, ...]
+) -> None:
+    cases = fixture_cases()
+    cases['test-purpose-unclear.yaml']['submission'].update(
+        {'category': 'client_entertainment', 'quantity': quantity}
+    )
+
+    report = validate_dataset(cases, ENTERTAINMENT_POLICY, FIXTURE_SEED_DATA, FIXTURE_SLICE_PLAN)
+
+    assert report.problems == problems
