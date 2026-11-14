@@ -1,11 +1,12 @@
 import datetime
 import hashlib
 import json
+import re
 from collections import Counter, defaultdict
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import get_args
+from typing import assert_never, get_args
 
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails
@@ -15,6 +16,8 @@ from spendguard.eval.cases import (
     SINGLE_FINDING_SLICES,
     EvalCase,
     ExpectedFinding,
+    InjectionField,
+    InjectionPlan,
     Slice,
     SlicePlan,
     Split,
@@ -28,8 +31,17 @@ from spendguard.rules.checks import (
     raised_rule_codes,
 )
 from spendguard.rules.decisions import Recommendation, ReviewedFinding, Route, recommend, route
-from spendguard.seed.schema import SeedData
+from spendguard.seed.schema import SUPPLIER_REFERENCE_PATTERN, SeedData
 from spendguard.submission import ExpenseClaim, Submission, SupplierInvoice
+
+PLACEHOLDER_TEXTS = ('Merchant Name', 'Item 1', 'Item Description', 'XYZ')
+PLACEHOLDER_PATTERNS = {
+    placeholder: re.compile(rf'\b{re.escape(placeholder)}\b', re.IGNORECASE)
+    for placeholder in PLACEHOLDER_TEXTS
+}
+MERCHANT_SUPPLIER_REFERENCE_PATTERN = re.compile(
+    rf'\b{SUPPLIER_REFERENCE_PATTERN}\b', re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -88,6 +100,7 @@ def case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iterat
     references: list[tuple[str, str | None]]
     if isinstance(submission, ExpenseClaim):
         yield from _category_problems(submission, policy)
+        yield from _supplier_reference_problems(submission)
         references = [('employee', submission.claimant)]
     else:
         references = [
@@ -96,6 +109,8 @@ def case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iterat
             ('cost centre', submission.cost_centre),
         ]
     yield from _currency_problems(submission, policy, seed_data)
+    yield from _placeholder_problems(submission)
+    yield from _injection_plan_problems(case)
     if case.scripted_review is not None:
         references.append(('approver', case.scripted_review.approver))
         finding_ids = {finding.id for finding in case.expected_findings}
@@ -126,6 +141,66 @@ def _category_problems(claim: ExpenseClaim, policy: Policy) -> Iterator[str]:
     if claim.category not in policy.expense_categories:
         category_keys = ', '.join(sorted(policy.expense_categories))
         yield f'category {claim.category!r} is not a policy category ({category_keys})'
+
+
+def _placeholder_problems(submission: Submission) -> Iterator[str]:
+    for field_name, text in _free_text_fields(submission).items():
+        for placeholder, pattern in PLACEHOLDER_PATTERNS.items():
+            if text is not None and pattern.search(text):
+                yield (
+                    f'{field_name} holds the placeholder {placeholder!r}:'
+                    ' write what a real submission would say instead'
+                )
+
+
+def _supplier_reference_problems(claim: ExpenseClaim) -> Iterator[str]:
+    match = MERCHANT_SUPPLIER_REFERENCE_PATTERN.search(claim.merchant)
+    if match is not None:
+        yield (
+            f'merchant holds the supplier reference {match.group()}: give the name the merchant'
+            ' trades under'
+        )
+
+
+def _free_text_fields(submission: Submission) -> dict[str, str | None]:
+    if isinstance(submission, ExpenseClaim):
+        return {
+            'merchant': submission.merchant,
+            'business_purpose': submission.business_purpose,
+            'receipt_text': submission.receipt_text,
+        }
+    return {
+        'description': submission.description,
+        'supplier_invoice_number': submission.supplier_invoice_number,
+    }
+
+
+def _injection_plan_problems(case: EvalCase) -> Iterator[str]:
+    if case.intent.injection is not None:
+        yield from _injection_problems(case.submission, case.intent.injection)
+    elif case.slice == 'injection':
+        yield 'an injection case needs an injected instruction in its intent'
+
+
+def _injection_problems(submission: Submission, injection: InjectionPlan) -> Iterator[str]:
+    text = _free_text(submission, injection.field)
+    if text is None or injection.payload not in text:
+        yield (
+            f'{injection.field} does not contain the injected instruction word for word: put'
+            f' the payload from the brief in {injection.field} exactly as given'
+        )
+
+
+def _free_text(submission: Submission, field_name: InjectionField) -> str | None:
+    match field_name:
+        case 'business_purpose':
+            return submission.business_purpose if isinstance(submission, ExpenseClaim) else None
+        case 'receipt_text':
+            return submission.receipt_text if isinstance(submission, ExpenseClaim) else None
+        case 'description':
+            return submission.description if isinstance(submission, SupplierInvoice) else None
+        case _:
+            assert_never(field_name)
 
 
 def _currency_problems(

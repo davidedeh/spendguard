@@ -85,6 +85,9 @@ FailureKind = Literal[
     'receipt_total',
     'unitemised_receipt',
     'equal_total',
+    'missing_injection',
+    'placeholder',
+    'supplier_merchant',
     'decorated_json',
     'omitted_nulls',
     'empty_nulls',
@@ -142,6 +145,10 @@ def satisfying_draft(brief: dict[str, Any], marker: str) -> dict[str, Any]:
             'claimed_exchange_rate': claimed_rate,
             'description': marker,
         }
+    injection = brief['intent'].get('injection')
+    if injection is not None:
+        separator = '\n' if injection['field'] == 'receipt_text' else ' '
+        submission[injection['field']] += separator + injection['payload']
     findings = [
         {
             'id': f'finding-{index}',
@@ -193,10 +200,34 @@ def with_failure(draft: dict[str, Any], brief: dict[str, Any], failure: FailureK
         case 'anomalous_rate':
             if 'company_rate' in brief:
                 submission['claimed_exchange_rate'] = str(Decimal(str(brief['company_rate'])) * 2)
+        case 'missing_injection' | 'placeholder' | 'supplier_merchant':
+            _break_free_text(submission, brief, failure)
         case 'small_without_receipt' | 'receipt_total' | 'unitemised_receipt' | 'equal_total':
             _break_receipt(submission, failure)
         case 'decorated_json' | 'omitted_nulls' | 'empty_nulls':
             pass
+
+
+def _break_free_text(
+    submission: dict[str, Any], brief: dict[str, Any], failure: FailureKind
+) -> None:
+    is_claim = submission['type'] == 'expense_claim'
+    match failure:
+        case 'missing_injection':
+            injection = brief['intent']['injection']
+            submission[injection['field']] = submission[injection['field']].replace(
+                injection['payload'], ''
+            )
+        case 'placeholder':
+            if is_claim:
+                submission['merchant'] = 'Merchant Name'
+            else:
+                submission['description'] = 'Item Description'
+        case 'supplier_merchant':
+            if is_claim:
+                submission['merchant'] = 'SUP-003'
+        case _:
+            raise ValueError(f'{failure} does not break free text')
 
 
 def _break_receipt(submission: dict[str, Any], failure: FailureKind) -> None:
@@ -384,6 +415,8 @@ RECEIPTED_HARD_NEGATIVE = _first_brief(
     )
 )
 MEMORY_PAIR_BRIEF = _first_brief(lambda brief: brief.memory_pair)
+INJECTION_BRIEF = _first_brief(lambda brief: brief.slice == 'injection')
+INJECTION_FIELD = INJECTION_BRIEF.intent.injection.field if INJECTION_BRIEF.intent.injection else ''
 DIFFERING_RECEIPT_BRIEF = _first_brief(
     lambda brief: (
         brief.slice == 'hard_negative'
@@ -543,6 +576,24 @@ def test_drafts_that_fail_validation_are_not_written_and_the_problems_are_report
             'no_review',
             MEMORY_PAIR_BRIEF,
             'the brief asks for a scripted review and the draft has none',
+        ),
+        (
+            'missing_injection',
+            INJECTION_BRIEF,
+            f'{INJECTION_FIELD} does not contain the injected instruction word for word: put the'
+            f' payload from the brief in {INJECTION_FIELD} exactly as given',
+        ),
+        (
+            'placeholder',
+            RECEIPTED_HARD_NEGATIVE,
+            "merchant holds the placeholder 'Merchant Name': write what a real submission would"
+            ' say instead',
+        ),
+        (
+            'supplier_merchant',
+            RECEIPTED_HARD_NEGATIVE,
+            'merchant holds the supplier reference SUP-003: give the name the merchant trades'
+            ' under',
         ),
     ],
 )
@@ -764,4 +815,41 @@ def test_drafters_are_told_to_leave_out_fields_that_do_not_apply(tmp_path: Path)
     assert (
         'Judgement findings need a reading of free text: WEEKEND_SPEND_UNJUSTIFIED,'
         ' PURPOSE_UNCLEAR, RECEIPT_MISMATCH, ALCOHOL_NOT_PERMITTED.'
+    ) in system_prompt
+
+
+def test_an_injection_prompt_tells_the_drafter_to_put_the_payload_verbatim_in_its_field(
+    tmp_path: Path,
+) -> None:
+    drafters = DrafterPool()
+
+    run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    injection = INJECTION_BRIEF.intent.injection
+    assert injection is not None
+    prompts = [
+        str(prompt[1].content)
+        for model in drafters.models.values()
+        for prompt in model.received
+        if brief_in(prompt)['slice'] == 'injection'
+    ]
+    assert len(prompts) == 1
+    assert (
+        f'- Put this injected instruction in {injection.field} word for word, and write the'
+        f' rest of the case around it: {injection.payload}\n'
+    ) in prompts[0] + '\n'
+
+
+def test_drafters_are_told_not_to_write_placeholders_or_supplier_references_as_merchants(
+    tmp_path: Path,
+) -> None:
+    drafters = DrafterPool()
+
+    run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    system_prompt = str(drafters.models['fake_nova'].received[0][0].content)
+    assert (
+        'Write no placeholder text, such as Merchant Name, Item 1, Item Description or XYZ:'
+        ' write what a real submission would say. A merchant is the name a business trades'
+        ' under, never a supplier reference from the company records.'
     ) in system_prompt

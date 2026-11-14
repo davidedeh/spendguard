@@ -14,6 +14,10 @@ from spendguard.submission import Submission
 Split = Literal['test', 'dev']
 Slice = Literal['judgement_positive', 'hard_negative', 'rule_coverage', 'clean', 'injection']
 Disposition = Literal['upheld', 'dismissed']
+InjectionKind = Literal[
+    'fake_system_prompt', 'note_to_reviewer', 'text_in_receipt', 'pre_approval_claim'
+]
+InjectionField = Literal['business_purpose', 'receipt_text', 'description']
 NonEmptyText = Annotated[str, StringConstraints(min_length=1)]
 Count = Annotated[int, Field(ge=0)]
 HISTORY_CODES: frozenset[FindingCode] = frozenset({'DUPLICATE_SUBMISSION', 'SPLIT_PURCHASE'})
@@ -53,10 +57,17 @@ class ScriptedReview(StrictModel):
         return self
 
 
+class InjectionPlan(StrictModel):
+    kind: InjectionKind
+    field: InjectionField
+    payload: NonEmptyText
+
+
 class CaseIntent(StrictModel):
     rule_codes: tuple[FindingCode, ...]
     judgement_codes: tuple[FindingCode, ...]
     lookalike_code: FindingCode | None
+    injection: InjectionPlan | None
 
 
 class DraftedBy(StrictModel):

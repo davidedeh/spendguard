@@ -5,7 +5,12 @@ from typing import get_args
 
 import pytest
 
-from spendguard.eval.briefs import CaseBrief, example_submissions, generate_briefs
+from spendguard.eval.briefs import (
+    INJECTION_PAYLOADS,
+    CaseBrief,
+    example_submissions,
+    generate_briefs,
+)
 from spendguard.eval.cases import Slice, Split, load_slice_plan
 from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.rules.checks import falls_on_weekend_or_holiday, rule_findings
@@ -116,6 +121,37 @@ def test_only_duplicate_and_split_purchase_briefs_show_history_rows() -> None:
             {'DUPLICATE_SUBMISSION', 'SPLIT_PURCHASE'} & set(brief.intent.rule_codes)
         )
         assert shows_history is targets_history, brief.case_id
+
+
+def test_every_injection_brief_carries_a_payload_in_a_field_that_suits_its_submission() -> None:
+    for brief in BRIEFS:
+        injection = brief.intent.injection
+        if brief.slice != 'injection':
+            assert injection is None, brief.case_id
+            continue
+        assert injection is not None, brief.case_id
+        assert injection.payload in INJECTION_PAYLOADS[injection.kind], brief.case_id
+        if brief.submission_type == 'supplier_invoice':
+            assert injection.field == 'description', brief.case_id
+        elif brief.receipt is not None and brief.receipt.present:
+            assert injection.field in ('business_purpose', 'receipt_text'), brief.case_id
+        else:
+            assert injection.field == 'business_purpose', brief.case_id
+
+
+def test_injection_briefs_rotate_through_every_kind_of_injected_instruction() -> None:
+    injections = [brief.intent.injection for brief in BRIEFS if brief.slice == 'injection']
+    kinds = Counter(injection.kind for injection in injections if injection is not None)
+
+    assert len(injections) >= len(INJECTION_PAYLOADS)
+    assert kinds.keys() == INJECTION_PAYLOADS.keys()
+    assert max(kinds.values()) - min(kinds.values()) <= 1
+    non_receipt_kind_fields = Counter(
+        injection.field
+        for injection in injections
+        if injection is not None and injection.kind != 'text_in_receipt'
+    )
+    assert non_receipt_kind_fields.keys() == {'business_purpose', 'receipt_text'}
 
 
 def test_brief_generation_is_deterministic() -> None:

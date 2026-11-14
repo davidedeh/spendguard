@@ -8,7 +8,8 @@ from spendguard.strict_model import StrictModel
 
 EmployeeReference = Annotated[str, StringConstraints(pattern=r'^EMP-\d{3,}$')]
 CostCentreReference = Annotated[str, StringConstraints(pattern=r'^CC-\d{3,}$')]
-SupplierReference = Annotated[str, StringConstraints(pattern=r'^SUP-\d{3,}$')]
+SUPPLIER_REFERENCE_PATTERN = r'SUP-\d{3,}'
+SupplierReference = Annotated[str, StringConstraints(pattern=rf'^{SUPPLIER_REFERENCE_PATTERN}$')]
 PurchaseOrderReference = Annotated[str, StringConstraints(pattern=r'^PO-\d{4,}$')]
 ClaimReference = Annotated[str, StringConstraints(pattern=r'^CLM-\d{4,}$')]
 InvoiceReference = Annotated[str, StringConstraints(pattern=r'^INV-\d{4,}$')]

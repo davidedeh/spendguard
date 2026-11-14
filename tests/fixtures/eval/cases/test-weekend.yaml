@@ -5,6 +5,7 @@ intent:
   rule_codes: []
   judgement_codes: [WEEKEND_SPEND_UNJUSTIFIED]
   lookalike_code: null
+  injection: null
 submission:
   type: expense_claim
   claimant: EMP-002

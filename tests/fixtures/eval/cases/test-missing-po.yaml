@@ -5,6 +5,7 @@ intent:
   rule_codes: [MISSING_PO]
   judgement_codes: []
   lookalike_code: null
+  injection: null
 submission:
   type: supplier_invoice
   supplier: SUP-001
