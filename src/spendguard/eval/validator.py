@@ -10,7 +10,15 @@ from typing import get_args
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 
-from spendguard.eval.cases import SINGLE_FINDING_SLICES, EvalCase, Slice, SlicePlan, Split
+from spendguard.eval.cases import (
+    SINGLE_FINDING_SLICES,
+    EvalCase,
+    ExpectedFinding,
+    Recommendation,
+    Slice,
+    SlicePlan,
+    Split,
+)
 from spendguard.policy.loader import CheckKind, FindingCode, Policy
 from spendguard.seed.schema import SeedData
 from spendguard.submission import ExpenseClaim, SupplierInvoice
@@ -79,6 +87,7 @@ def case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iterat
         ]
     yield from _currency_problems(submission, policy, seed_data)
     yield from _route_problems(case, policy, seed_data)
+    yield from _recommendation_problems(case, policy)
     if case.scripted_review is not None:
         references.append(('approver', case.scripted_review.approver))
         finding_ids = {finding.id for finding in case.expected_findings}
@@ -134,6 +143,23 @@ def _route_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iter
             f'a case over the {policy.base_currency} {policy.auto_approve_threshold}'
             ' auto-approve threshold routes to human_review, not auto_approve'
         )
+
+
+def _recommendation_problems(case: EvalCase, policy: Policy) -> Iterator[str]:
+    expected = _rule_recommendation(case.expected_findings, policy)
+    if case.expected_recommendation != expected:
+        yield (
+            f'the recommendation rule gives {expected} with no precedents,'
+            f' not {case.expected_recommendation}'
+        )
+
+
+def _rule_recommendation(findings: tuple[ExpectedFinding, ...], policy: Policy) -> Recommendation:
+    if any(policy.finding_codes[finding.code].severity == 'high' for finding in findings):
+        return 'reject'
+    if not findings:
+        return 'approve'
+    return 'none'
 
 
 def _split_problems(cases: Mapping[str, EvalCase]) -> Iterator[str]:

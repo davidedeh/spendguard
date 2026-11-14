@@ -19,7 +19,7 @@ expected_findings:
     code: ALCOHOL_NOT_PERMITTED
     gold_clauses: ['§2.2']
 expected_route: human_review
-expected_recommendation: reject
+expected_recommendation: none
 drafted_by:
   provider: fake
   model_id: fake-drafter-b

@@ -15,7 +15,7 @@ from settings_factory import make_test_settings
 from spendguard.eval.cases import DraftedBy, EvalCase, load_slice_plan, read_case_directory
 from spendguard.eval.drafting import DraftedCase, plan_requests, run
 from spendguard.models.fake import FakeChatModel, structured_response
-from spendguard.policy.loader import POLICY_PATH, load_policy
+from spendguard.policy.loader import POLICY_PATH, FindingCode, load_policy
 from spendguard.settings import ChatModelSettings, Settings
 from spendguard.submission import ExpenseClaim, SupplierInvoice
 
@@ -188,7 +188,7 @@ class DraftingFake(FakeChatModel):
                 'submission': self.submission(),
                 'expected_findings': findings,
                 'expected_route': 'human_review' if findings else 'auto_approve',
-                'expected_recommendation': 'none' if findings else 'approve',
+                'expected_recommendation': _recommendation_for(requested_codes),
                 'scripted_review': scripted_review,
             }
         )
@@ -200,6 +200,12 @@ def _without_nulls(value: Any) -> Any:
     if isinstance(value, list):
         return [_without_nulls(item) for item in value]
     return value
+
+
+def _recommendation_for(codes: list[FindingCode]) -> str:
+    if any(FIXTURE_POLICY.finding_codes[code].severity == 'high' for code in codes):
+        return 'reject'
+    return 'none' if codes else 'approve'
 
 
 def _nulls_as_empty_text(value: Any) -> Any:

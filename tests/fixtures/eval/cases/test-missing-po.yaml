@@ -17,7 +17,7 @@ expected_findings:
     code: MISSING_PO
     gold_clauses: ['§3.2']
 expected_route: human_review
-expected_recommendation: reject
+expected_recommendation: none
 drafted_by:
   provider: fake
   model_id: fake-drafter-c

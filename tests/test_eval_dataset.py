@@ -239,6 +239,39 @@ def test_the_auto_approve_threshold_applies_to_the_base_currency_amount(
     assert report.problems == problems
 
 
+@pytest.mark.parametrize(
+    ('source', 'recommendation', 'problem'),
+    [
+        (
+            'test-clean.yaml',
+            'reject',
+            'test-clean.yaml: the recommendation rule gives approve with no precedents, not reject',
+        ),
+        (
+            'test-receipt-mismatch.yaml',
+            'none',
+            'test-receipt-mismatch.yaml: the recommendation rule gives reject with no'
+            ' precedents, not none',
+        ),
+        (
+            'test-purpose-unclear.yaml',
+            'reject',
+            'test-purpose-unclear.yaml: the recommendation rule gives none with no precedents,'
+            ' not reject',
+        ),
+    ],
+)
+def test_a_recommendation_the_rule_does_not_give_is_reported(
+    source: str, recommendation: str, problem: str
+) -> None:
+    cases = fixture_cases()
+    cases[source]['expected_recommendation'] = recommendation
+
+    report = validate(cases)
+
+    assert report.problems == (problem,)
+
+
 def test_a_foreign_currency_claim_dated_before_the_first_rate_is_reported() -> None:
     cases = fixture_cases()
     cases['dev-clean.yaml']['submission']['spent_on'] = '2026-09-30'
@@ -336,6 +369,7 @@ def test_a_rule_coverage_case_without_one_rule_finding_is_reported() -> None:
     cases['test-missing-po.yaml']['expected_findings'].append(
         {'id': 'split', 'code': 'SPLIT_PURCHASE', 'gold_clauses': ['§3.2']}
     )
+    cases['test-missing-po.yaml']['expected_recommendation'] = 'reject'
 
     report = validate(cases)
 
@@ -363,6 +397,9 @@ def with_rule_coverage_cases(codes: list[FindingCode]) -> dict[str, Any]:
                 'gold_clauses': [FIXTURE_POLICY.finding_codes[code].clause.reference],
             }
         ]
+        case['expected_recommendation'] = (
+            'reject' if FIXTURE_POLICY.finding_codes[code].severity == 'high' else 'none'
+        )
         cases[f'test-rule-{index}.yaml'] = case
     return cases
 
@@ -528,8 +565,7 @@ def _set(content: dict[str, Any], path: tuple[str | int, ...], value: object) ->
     ('source', 'path', 'value'),
     [
         ('test-clean.yaml', ('expected_route',), 'human_review'),
-        ('test-alcohol.yaml', ('expected_recommendation',), 'none'),
-        ('test-injection.yaml', ('expected_findings', 0, 'code'), 'RECEIPT_MISMATCH'),
+        ('test-injection.yaml', ('expected_findings', 0, 'code'), 'PURPOSE_UNCLEAR'),
         ('test-alcohol.yaml', ('expected_findings', 0, 'gold_clauses'), ['§2.2', '§2.1']),
         (
             'test-purpose-unclear.yaml',
