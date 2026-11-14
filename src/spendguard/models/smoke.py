@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from spendguard import settings as settings_module
 from spendguard.models.factory import EMBEDDING_DIMENSIONS, build_chat_model, build_embedder
-from spendguard.settings import Settings
+from spendguard.settings import ChatModelSettings, Settings
 
 REASONING_BLOCK_TYPES = frozenset({'reasoning', 'reasoning_content', 'thinking'})
 
@@ -45,8 +45,10 @@ def _reasoning_block_count(message: AIMessage) -> int:
     )
 
 
-def check_structured_output(model: BaseChatModel) -> str:
-    structured_model = model.with_structured_output(ClauseCitation, include_raw=True)
+def check_structured_output(model: BaseChatModel, model_settings: ChatModelSettings) -> str:
+    structured_model = model.with_structured_output(
+        ClauseCitation, include_raw=True, method=model_settings.structured_output_method
+    )
     result = structured_model.invoke(
         'A policy clause with reference 3.4 carries severity medium. '
         'Report its clause reference and severity.'
@@ -65,7 +67,7 @@ def check_structured_output(model: BaseChatModel) -> str:
     )
 
 
-def check_tool_call(model: BaseChatModel) -> str:
+def check_tool_call(model: BaseChatModel, model_settings: ChatModelSettings) -> str:
     response = model.bind_tools([look_up_clause]).invoke(
         'Use the look_up_clause tool to fetch policy clause 3.4. Do not answer from memory.'
     )
@@ -99,9 +101,9 @@ def _check_embedding(settings: Settings) -> str:
 
 
 def _build_and_check(
-    check: Callable[[BaseChatModel], str], settings: Settings, model_key: str
+    check: Callable[[BaseChatModel, ChatModelSettings], str], settings: Settings, model_key: str
 ) -> str:
-    return check(build_chat_model(settings, model_key))
+    return check(build_chat_model(settings, model_key), settings.chat_models[model_key])
 
 
 def run_smoke_checks(settings: Settings) -> list[SmokeResult]:

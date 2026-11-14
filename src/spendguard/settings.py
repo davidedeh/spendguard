@@ -8,6 +8,7 @@ from spendguard.branch_names import current_branch_name
 
 Provider = Literal['bedrock', 'google_genai', 'fake']
 AppEnvironment = Literal['local', 'test', 'deployed']
+StructuredOutputMethod = Literal['function_calling', 'json_schema']
 
 
 class ModelSettings(BaseModel):
@@ -15,6 +16,10 @@ class ModelSettings(BaseModel):
 
     provider: Provider
     model_id: str
+
+
+class ChatModelSettings(ModelSettings):
+    structured_output_method: StructuredOutputMethod
 
 
 class Settings(BaseSettings):
@@ -36,7 +41,7 @@ class Settings(BaseSettings):
     ssm_parameter_prefix: str | None
 
     allowed_providers: tuple[Provider, ...]
-    chat_models: dict[str, ModelSettings]
+    chat_models: dict[str, ChatModelSettings]
     primary_model_key: str
     drafting_model_keys: tuple[str, ...]
     embedding_model: ModelSettings

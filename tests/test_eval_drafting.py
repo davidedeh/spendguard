@@ -14,7 +14,7 @@ from spendguard.eval.cases import DraftedBy, EvalCase, load_slice_plan, read_cas
 from spendguard.eval.drafting import DraftedCase, plan_requests, run
 from spendguard.models.fake import FakeChatModel, structured_response
 from spendguard.policy.loader import POLICY_PATH, load_policy
-from spendguard.settings import ModelSettings, Settings
+from spendguard.settings import ChatModelSettings, Settings
 
 FIXTURES = Path(__file__).parent / 'fixtures'
 FIXTURE_POLICY_PATH = FIXTURES / 'policy' / 'valid_policy.yaml'
@@ -153,7 +153,9 @@ class DrafterPool:
 def drafting_settings() -> Settings:
     return make_test_settings(
         chat_models={
-            key: ModelSettings(provider='fake', model_id=model_id)
+            key: ChatModelSettings(
+                provider='fake', model_id=model_id, structured_output_method='function_calling'
+            )
             for key, model_id in DRAFTER_MODEL_IDS.items()
         },
         primary_model_key='fake_claude',

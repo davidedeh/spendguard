@@ -1,7 +1,7 @@
 from typing import Any
 
 from spendguard.branch_names import current_branch_name
-from spendguard.settings import ModelSettings, Settings
+from spendguard.settings import ChatModelSettings, ModelSettings, Settings
 
 
 def make_test_settings(**overrides: Any) -> Settings:
@@ -19,7 +19,9 @@ def make_test_settings(**overrides: Any) -> Settings:
         'ssm_parameter_prefix': None,
         'allowed_providers': ('fake',),
         'chat_models': {
-            'fake_primary': ModelSettings(provider='fake', model_id='fake-chat'),
+            'fake_primary': ChatModelSettings(
+                provider='fake', model_id='fake-chat', structured_output_method='function_calling'
+            ),
         },
         'primary_model_key': 'fake_primary',
         'drafting_model_keys': ('fake_primary',),
