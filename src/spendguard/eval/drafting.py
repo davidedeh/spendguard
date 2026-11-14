@@ -326,6 +326,10 @@ def _context(policy: Policy, seed_data: SeedData) -> str:
         'An expense claim names one of these category keys and a quantity: a whole number,'
         " at least 1, counting the unit the category's limit applies per.\n\n"
         f'{expense_categories}\n\n'
+        '## Route\n\n'
+        'The expected route is auto_approve only when the case has no findings and its amount'
+        f' in {policy.base_currency} is at or under {policy.base_currency}'
+        f' {policy.auto_approve_threshold}; otherwise it is human_review.\n\n'
         f'## Company records\n\n{seed_text}'
     )
 

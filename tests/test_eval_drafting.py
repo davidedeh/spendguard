@@ -758,3 +758,16 @@ def test_cases_a_drafter_cannot_draft_go_to_the_other_drafters_in_turn(tmp_path:
     for case in cases:
         assert isinstance(case.submission, ExpenseClaim)
         assert case.submission.merchant.split(' call ')[0] == case.drafted_by.model_id
+
+
+def test_prompts_state_the_route_rule_with_the_policy_threshold(tmp_path: Path) -> None:
+    drafters = DrafterPool()
+
+    run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    prompt_text = str(drafters.models['fake_gpt'].received[0][1].content)
+    assert (
+        '## Route\n\n'
+        'The expected route is auto_approve only when the case has no findings and its amount'
+        ' in GBP is at or under GBP 250; otherwise it is human_review.'
+    ) in prompt_text
