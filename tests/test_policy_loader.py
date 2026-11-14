@@ -1,3 +1,4 @@
+import datetime
 from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
@@ -101,6 +102,40 @@ def test_each_expense_category_carries_the_unit_its_limit_applies_per() -> None:
             limits={'junior': Decimal('30'), 'senior': Decimal('30')},
         ),
     }
+
+
+def test_the_policy_carries_its_grades_currencies_approval_limits_and_budget_year() -> None:
+    policy = load_policy(FIXTURE_POLICY_PATH)
+
+    assert policy.base_currency == 'GBP'
+    assert policy.grades == ('junior', 'senior')
+    assert policy.accepted_currencies == ('GBP', 'EUR', 'USD')
+    assert policy.approval_limits == {'senior': Decimal('1000')}
+    assert policy.budget_year_start.latest_on_or_before(datetime.date(2026, 3, 31)) == (
+        datetime.date(2025, 4, 1)
+    )
+    assert policy.budget_year_start.latest_on_or_before(datetime.date(2026, 4, 1)) == (
+        datetime.date(2026, 4, 1)
+    )
+
+
+@pytest.mark.parametrize(
+    ('parameter', 'value'),
+    [
+        ('grades', 'junior'),
+        ('approval_limits', {'senior': 'a lot'}),
+        ('budget_year_start', 'April the first'),
+        ('base_currency', ['GBP']),
+    ],
+)
+def test_a_policy_with_a_malformed_typed_parameter_fails_to_load(
+    tmp_path: Path, parameter: str, value: object
+) -> None:
+    def replace_parameter(policy_source: dict[str, Any]) -> None:
+        policy_source['parameters'][parameter] = value
+
+    with pytest.raises(PolicyError, match=parameter):
+        load_policy(write_edited_policy(tmp_path, replace_parameter))
 
 
 def test_a_category_with_no_unit_fails_to_load(tmp_path: Path) -> None:

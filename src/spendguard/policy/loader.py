@@ -1,3 +1,4 @@
+import datetime
 import hashlib
 import re
 from collections import Counter
@@ -9,7 +10,7 @@ from typing import Literal, get_args
 
 import jinja2
 import yaml
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, field_validator
 
 from spendguard.strict_model import StrictModel
 from spendguard.submission import SubmissionType
@@ -67,6 +68,35 @@ class _ExpenseCategorySource(StrictModel):
 
 
 _CATEGORY_LIMITS_ADAPTER = TypeAdapter(dict[str, _ExpenseCategorySource])
+BUDGET_YEAR_START_FORMAT = '%d %B'
+
+
+@dataclass(frozen=True)
+class MonthDay:
+    month: int
+    day: int
+
+    def latest_on_or_before(self, on: datetime.date) -> datetime.date:
+        start = datetime.date(on.year, self.month, self.day)
+        return start if start <= on else start.replace(year=on.year - 1)
+
+
+class _TypedParameters(BaseModel):
+    model_config = ConfigDict(extra='ignore', frozen=True)
+
+    base_currency: str
+    accepted_currencies: tuple[str, ...]
+    grades: tuple[str, ...]
+    approval_limits: dict[str, Decimal]
+    budget_year_start: MonthDay
+
+    @field_validator('budget_year_start', mode='before')
+    @classmethod
+    def _parse_day_and_month(cls, value: object) -> MonthDay:
+        if not isinstance(value, str):
+            raise ValueError(f'expected a day and month such as 1 April, got {value!r}')
+        parsed = datetime.datetime.strptime(value, BUDGET_YEAR_START_FORMAT)
+        return MonthDay(month=parsed.month, day=parsed.day)
 
 
 class _ApplicabilitySource(StrictModel):
@@ -114,6 +144,11 @@ class Policy:
     title: str
     version: str
     parameters: Mapping[str, ParameterValue]
+    base_currency: str
+    accepted_currencies: tuple[str, ...]
+    grades: tuple[str, ...]
+    approval_limits: Mapping[str, Decimal]
+    budget_year_start: MonthDay
     clauses: tuple[Clause, ...]
     finding_codes: Mapping[FindingCode, FindingCodeDefinition]
     applicability: Mapping[SubmissionType, tuple[FindingCode, ...]]
@@ -124,13 +159,6 @@ class Policy:
         return tuple(
             code for code, definition in self.finding_codes.items() if definition.check == check
         )
-
-    @property
-    def base_currency(self) -> str:
-        value = self.parameters['base_currency']
-        if not isinstance(value, str):
-            raise TypeError(f'policy parameter base_currency is not a string: {value!r}')
-        return value
 
 
 _WHITESPACE_PATTERN = re.compile(r'\s+')
@@ -197,10 +225,19 @@ def load_policy(path: Path) -> Policy:
         )
         for code, code_source in source.finding_codes.items()
     }
+    try:
+        typed_parameters = _TypedParameters.model_validate(source.parameters)
+    except ValidationError as error:
+        raise PolicyError(f'{path} has invalid parameters:\n{error}') from error
     return Policy(
         title=source.title,
         version=source.version,
         parameters=source.parameters,
+        base_currency=typed_parameters.base_currency,
+        accepted_currencies=typed_parameters.accepted_currencies,
+        grades=typed_parameters.grades,
+        approval_limits=typed_parameters.approval_limits,
+        budget_year_start=typed_parameters.budget_year_start,
         clauses=clauses,
         finding_codes=finding_codes,
         applicability={

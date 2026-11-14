@@ -3,6 +3,11 @@ version: fixture-1
 
 parameters:
   base_currency: GBP
+  accepted_currencies: [GBP, EUR, USD]
+  grades: [junior, senior]
+  approval_limits:
+    senior: 1000
+  budget_year_start: 1 April
   receipt_threshold: 25
   meal_limit: 40
   purchase_order_threshold: 500
