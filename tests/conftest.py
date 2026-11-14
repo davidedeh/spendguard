@@ -1,0 +1,39 @@
+from collections.abc import Iterator
+
+import psycopg
+import pytest
+
+from settings_factory import make_test_settings
+from spendguard.db.database import ensure_branch_database
+from spendguard.queue.sqs import ensure_branch_queue, sqs_client
+from spendguard.settings import Settings
+
+
+@pytest.fixture(scope='session')
+def test_settings() -> Settings:
+    return make_test_settings()
+
+
+@pytest.fixture(scope='session')
+def branch_database(test_settings: Settings) -> str:
+    return ensure_branch_database(test_settings)
+
+
+@pytest.fixture(scope='session')
+def _branch_queue_url(test_settings: Settings) -> str:
+    return ensure_branch_queue(test_settings)
+
+
+@pytest.fixture
+def branch_queue(test_settings: Settings, _branch_queue_url: str) -> str:
+    sqs_client(test_settings).purge_queue(QueueUrl=_branch_queue_url)
+    return _branch_queue_url
+
+
+@pytest.fixture
+def database_connection(branch_database: str) -> Iterator[psycopg.Connection]:
+    with (
+        psycopg.connect(branch_database) as connection,
+        connection.transaction(force_rollback=True),
+    ):
+        yield connection

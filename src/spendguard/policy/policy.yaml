@@ -1,0 +1,506 @@
+# Every value marked "gut pick" is a draft for the project owner to set at review.
+title: Halden Group Expenses and Purchasing Policy
+version: draft-1
+
+parameters:
+  base_currency: GBP
+  accepted_currencies: [GBP, EUR, USD] # gut pick
+  grades: [associate, manager, executive] # gut pick
+  receipt_threshold: 20 # gut pick
+  claim_deadline_days: 60 # gut pick
+  subsistence_minimum_hours: 5 # gut pick
+  tip_limit_percent: 10 # gut pick
+  currency_deviation_percent: 3 # gut pick
+  purchase_order_threshold: 1000 # gut pick
+  split_purchase_window_days: 30 # gut pick
+  auto_approve_threshold: 100 # gut pick
+  budget_year_start: 1 April # gut pick
+  approval_limits:
+    manager: 2500 # gut pick
+    executive: 25000 # gut pick
+  category_limits:
+    subsistence:
+      label: Meals and subsistence
+      unit: person per day
+      limits:
+        associate: 35 # gut pick
+        manager: 45 # gut pick
+        executive: 60 # gut pick
+    accommodation:
+      label: Hotel accommodation
+      unit: night
+      limits:
+        associate: 140 # gut pick
+        manager: 160 # gut pick
+        executive: 200 # gut pick
+    client_entertainment:
+      label: Client entertainment
+      unit: person attending
+      limits:
+        associate: 50 # gut pick
+        manager: 70 # gut pick
+        executive: 90 # gut pick
+    taxi:
+      label: Taxis
+      unit: journey
+      limits:
+        associate: 40 # gut pick
+        manager: 40 # gut pick
+        executive: 60 # gut pick
+    public_transport:
+      label: Local public transport
+      unit: journey
+      limits:
+        associate: 75 # gut pick
+        manager: 75 # gut pick
+        executive: 75 # gut pick
+    office_supplies:
+      label: Stationery and small office supplies
+      unit: item
+      limits:
+        associate: 50 # gut pick
+        manager: 50 # gut pick
+        executive: 50 # gut pick
+  gift_declaration_threshold: 50 # gut pick
+  advance_booking_days: 14 # gut pick
+  business_class_minimum_flight_hours: 6 # gut pick
+  conference_approval_threshold: 500 # gut pick
+
+sections:
+  - heading: About this policy
+    clauses:
+      - id: policy_purpose
+        heading: Purpose
+        text: |-
+          This policy sets out how Halden Group pays for business spend, whether an
+          employee asks to be reimbursed through an expense claim or a supplier asks to
+          be paid through an invoice. It explains what may be claimed, what evidence is
+          needed and who may approve the spend.
+
+          The finance team checks every submission against this policy. Where a
+          submission does not meet it, the finance team records which part was not
+          met, and an approver decides whether to pay.
+      - id: policy_scope
+        heading: Who this policy covers
+        text: >-
+          The policy applies to every employee of every Halden Group company, and to
+          contractors who have agreed to work under it. Anyone who approves a
+          submission is responsible for checking it against this policy before
+          deciding it.
+      - id: grades_and_figures
+        heading: Grades and figures
+        text: >-
+          Every employee holds one of the grades {{ grades[:-1] | join(', ') }} or
+          {{ grades[-1] }}. Where a
+          limit depends on grade, the claimant's grade on the date of the spend
+          applies. All figures in this policy are in {{ base_currency }} and include
+          any sales tax.
+
+  - heading: Principles for spending
+    clauses:
+      - id: business_purpose
+        heading: Business purpose
+        text: |-
+          Halden Group pays only for spend that was incurred solely for its business
+          and that the employee could not reasonably have avoided. Every submission
+          states its business purpose in enough detail for an approver who was not
+          there to see why the spend was needed: what the activity was, and who it
+          was for or with.
+
+          A purpose such as "business", "meeting" or "sundries" on its own is not
+          enough, and nor is a purpose that does not fit the spend, such as a
+          training course given as the reason for a hotel in a different city on a
+          different date.
+      - id: value_for_money
+        heading: Value for money
+        text: >-
+          Spend Halden Group's money as carefully as your own. Choose the cheapest option that
+          meets the business need, and do not upgrade travel, rooms or meals for
+          personal comfort.
+      - id: claim_deadline
+        heading: When to claim
+        text: >-
+          Submit expense claims within {{ claim_deadline_days }} days of the spend.
+          Late claims may still be paid, but the claimant explains the delay and the
+          approver decides.
+      - id: weekend_and_holiday_spend
+        heading: Weekend and public holiday spend
+        text: |-
+          Spend on a Saturday, a Sunday or a Halden Group public holiday is unusual
+          and needs a written justification in the submission explaining why the work
+          could not take place on a working day. A justification that only restates
+          the purpose does not meet this requirement.
+
+          Acceptable reasons include a client event fixed for that day, an incident
+          that needed someone on site, or travel that could only be booked for that
+          day. Convenience, catching up on work or a personal preference are not.
+
+  - heading: Receipts and evidence
+    clauses:
+      - id: receipts_required
+        heading: Receipts
+        text: |-
+          Every item of spend over £{{ receipt_threshold }} needs an itemised receipt
+          showing the supplier, the date, what was bought and the amount paid. A card
+          statement or payment slip alone is not a receipt. Electronic receipts and
+          clear photographs of paper receipts are accepted.
+
+          If a receipt has been lost, the claimant says so in the claim and describes
+          the spend. The approver decides whether to pay it.
+      - id: receipt_matches_claim
+        heading: Receipts must match the claim
+        text: |-
+          The amount, date and supplier on the receipt must agree with the claim, and
+          the items on the receipt must be the items claimed for. A receipt for a
+          different amount, date, supplier or purpose does not support the claim.
+
+          Where a receipt also covers personal items, the claimant marks the business
+          items and claims only those.
+      - id: single_submission
+        heading: Claiming once
+        text: >-
+          Each item of spend is claimed or invoiced once only. An employee must not
+          claim spend already paid by a company card, by a supplier invoice or by
+          another claim, and a supplier must not invoice twice for the same goods or
+          services.
+
+  - heading: Category limits
+    clauses:
+      - id: category_limits
+        heading: Limits by category and grade
+        text: |-
+          A claim names one of the categories below and states a quantity: how many of
+          that category's unit the claim covers. The limit for the category and the
+          claimant's grade applies to each unit, so the amount claimed divided by the
+          quantity must not exceed it. Limits are ceilings, not allowances: claim only
+          what was actually spent.
+
+          | Category | Limit applies per |{% for grade in grades %} {{ grade | capitalize }} |{% endfor %}
+          |---|---|{% for grade in grades %}---|{% endfor %}
+          {% for category in category_limits.values() %}| {{ category.label }} | {{ category.unit }} |{% for grade in grades %} £{{ category.limits[grade] }} |{% endfor %}
+          {% endfor %}
+
+  - heading: Meals and subsistence
+    clauses:
+      - id: subsistence_eligibility
+        heading: When meals can be claimed
+        text: >-
+          Meals can be claimed when business takes an employee away from their usual
+          workplace for more than {{ subsistence_minimum_hours }} hours. Meals taken at
+          or near the usual workplace, including during internal meetings, are a
+          personal cost.
+      - id: meals_with_colleagues
+        heading: Meals with colleagues
+        text: >-
+          When colleagues travel together, each claims their own meals. Where one
+          person pays for the group, the claim lists everyone who ate, and its quantity
+          is the number of people who ate multiplied by the number of days, so the limit
+          applies to each person for each day.
+      - id: no_alcohol
+        heading: Alcohol
+        text: >-
+          Halden Group does not pay for alcohol. This covers drinks with a meal, in a
+          hotel bar, on a train or at a team event. Any alcoholic drink on a receipt
+          is removed from the amount claimed.
+      - id: tips
+        heading: Tips and service charges
+        text: >-
+          A tip or service charge of up to {{ tip_limit_percent }}% of the bill may be
+          claimed on a meal. When the tip was added at the time of payment, the amount
+          paid will be higher than the itemised receipt total; the difference is not a
+          mismatch, provided the payment slip shows it.
+
+  - heading: Travel and accommodation
+    clauses:
+      - id: accommodation
+        heading: Hotels
+        text: >-
+          Book a hotel only when the business day makes it unreasonable to travel home.
+          The nightly limit covers the room and breakfast; an evening meal is claimed
+          as subsistence. Minibar, films and other extras charged to the room are
+          personal costs.
+      - id: local_travel
+        heading: Taxis and local transport
+        text: >-
+          Use public transport where it is practical. A taxi may be claimed when
+          public transport is not available, when carrying heavy equipment, or when
+          travelling late at night, and the claim says which applies.
+      - id: trips_over_weekends
+        heading: Trips that span a weekend
+        text: >-
+          When an approved business trip runs over a weekend or public holiday, the
+          trip itself justifies the employee's meals, hotel and local travel on those
+          days. Quoting the trip approval in the submission is enough; no further
+          explanation is needed.
+
+  - heading: Client entertainment
+    clauses:
+      - id: entertainment_guests
+        heading: Who counts as a guest
+        text: >-
+          Client entertainment means hospitality given to people from outside Halden
+          Group for a clear business reason. The claim names the guests' organisation,
+          says how many people from each side attended and explains the business
+          reason. Hospitality for Halden staff alone is not client entertainment.
+      - id: entertainment_limit
+        heading: How the limit applies
+        text: >-
+          The client entertainment limit is a limit per person attending, counting
+          Halden staff as well as guests, at the grade of the employee who claims.
+          The claim's quantity is the number of people attending, and the limit applies
+          to the total claimed divided by it.
+      - id: entertainment_alcohol
+        heading: Alcohol at client events
+        text: >-
+          Alcohol served as part of a client entertainment meal may be claimed when
+          the claimant's line manager approved the event in writing before it took
+          place. The claim quotes that approval, and the whole bill, including the
+          alcohol, stays within the per-person limit.
+
+  - heading: Foreign currency
+    clauses:
+      - id: accepted_currencies
+        heading: Accepted currencies
+        text: >-
+          Claims and invoices can be submitted in
+          {{ accepted_currencies[:-1] | join(', ') }} or {{ accepted_currencies[-1] }}.
+          Spend in any other currency is claimed in {{ base_currency }} with the card
+          statement showing the converted amount.
+      - id: company_rates
+        heading: Company exchange rates
+        text: >-
+          Foreign currency amounts are converted to {{ base_currency }} at the company
+          rate for the date of the spend, or the invoice date for an invoice. The
+          finance team publishes these rates and they are the only rates used for
+          limits, thresholds and payment.
+      - id: claimed_rate_deviation
+        heading: Stated exchange rates
+        text: >-
+          Where a submission states the exchange rate used, and that rate differs from
+          the company rate for the same currency and date by more than
+          {{ currency_deviation_percent }}%, the submission is queried.
+      - id: foreign_currency_receipts
+        heading: Receipts in a foreign currency
+        text: >-
+          A receipt in a foreign currency will not show the {{ base_currency }} amount
+          claimed. It still matches the claim if the amount in its own currency
+          agrees with the original amount on the claim.
+
+  - heading: Purchasing and suppliers
+    clauses:
+      - id: approved_suppliers
+        heading: Approved suppliers
+        text: |-
+          Goods and services are bought from suppliers on the Halden Group approved
+          supplier list, and invoices from any other supplier are not paid without
+          review.
+
+          A team that needs a new supplier asks the procurement team to assess and add
+          it before ordering. A supplier is not approved until the procurement team
+          has added it to the list, even while its assessment is under way.
+      - id: purchase_orders
+        heading: Purchase orders
+        text: >-
+          Any purchase over £{{ '{:,}'.format(purchase_order_threshold) }} needs a purchase order
+          raised and approved before the order is placed. The employee who needs the
+          goods or services raises the purchase order against their cost centre, and
+          the supplier's invoice quotes the purchase order number. A purchase order
+          raised after the invoice arrives does not meet this requirement.
+      - id: split_purchases
+        heading: Splitting purchases
+        text: >-
+          A single requirement must not be divided into smaller orders or invoices to
+          stay under the purchase order threshold or an approval limit. Invoices from
+          one supplier to one cost centre within {{ split_purchase_window_days }} days
+          whose combined value exceeds the purchase order threshold are treated as one
+          purchase.
+
+  - heading: Budgets and approval
+    clauses:
+      - id: cost_centre_budgets
+        heading: Budgets
+        text: >-
+          Spend is charged to a cost centre, and must not take that cost centre's
+          spend for the year over its budget. The budget year starts on
+          {{ budget_year_start }}. The cost centre owner is responsible for finding the
+          money, through a budget transfer agreed with the finance team, before
+          committing to spend that would.
+      - id: approval_limits
+        heading: Who can approve
+        text: >-
+          A manager may approve submissions up to
+          £{{ '{:,}'.format(approval_limits.manager) }} and an executive up to
+          £{{ '{:,}'.format(approval_limits.executive) }}. Spend above that is approved
+          by the Group board outside this process. Associates do not approve
+          submissions.
+      - id: no_self_approval
+        heading: Approving your own spend
+        text: >-
+          Nobody may approve a submission for spend they are accountable for: their
+          own expense claim, or an invoice against a purchase order they raised or a
+          cost centre they own.
+      - id: automatic_payment
+        heading: Payment without manual approval
+        text: >-
+          A submission of £{{ auto_approve_threshold }} or less that passes every
+          check in this policy may be paid without an approver. Anything larger, or
+          anything that raises a question under this policy, goes to an approver.
+      - id: standing_approvals
+        heading: Standing approvals
+        text: >-
+          Some spend recurs on the same terms, such as a monthly travel pass for a role
+          that visits sites every week. A manager may give a standing approval for it,
+          and each later claim then quotes the standing approval instead of restating
+          the business purpose.
+      - id: standing_reasons
+        heading: Standing reasons recorded by approvers
+        text: >-
+          An approver decides each submission on its own facts. When an approver
+          accepts a submission because of a lasting fact about a supplier or an
+          employee, such as a supplier that is part way through being approved, or an
+          employee whose role routinely involves weekend work or recurring site
+          visits, that reason may be shown to approvers of later submissions from the
+          same supplier or employee. It informs their decision and never makes it.
+
+  - heading: Booking travel
+    clauses:
+      - id: booking_channel
+        heading: How to book
+        text: >-
+          Rail, flights and hotels are booked through the Halden travel desk, at least
+          {{ advance_booking_days }} days ahead where the trip is known in advance.
+          Bookings made by the travel desk are paid centrally and are never claimed.
+          Changes and cancellations also go through the travel desk.
+      - id: class_of_travel
+        heading: Class of travel
+        text: >-
+          Rail travel is standard class. Flights are economy, except that an executive
+          may approve business class for a flight scheduled to last more than
+          {{ business_class_minimum_flight_hours }} hours.
+
+  - heading: Gifts and hospitality received
+    clauses:
+      - id: gifts_register
+        heading: Declaring gifts
+        text: >-
+          Any gift or hospitality offered to an employee by a supplier, client or
+          other outside party with an estimated value over £{{ gift_declaration_threshold }}
+          is recorded in the gifts register promptly, whether it was accepted or
+          not.
+      - id: gifts_refused
+        heading: Gifts that must be refused
+        text: >-
+          Cash, vouchers and any gift offered while a contract with the giver is being
+          tendered or negotiated are always refused. Small promotional items, such as
+          branded stationery, and food shared with a whole team need not be declared.
+
+  - heading: IT equipment
+    clauses:
+      - id: it_provision
+        heading: Requesting equipment
+        text: >-
+          Laptops, phones, monitors and other IT equipment are requested from the IT
+          service desk, which buys, configures and records them. Equipment bought
+          personally is not reimbursed.
+      - id: it_return
+        heading: Returning equipment
+        text: >-
+          IT equipment remains Halden Group property and is returned to the IT service
+          desk when it is replaced or when the employee leaves. Lost or stolen
+          equipment is reported to the IT service desk on the same day.
+
+  - heading: Conference and course fees
+    clauses:
+      - id: conference_booking
+        heading: Booking conferences and courses
+        text: >-
+          Conference, course and exam fees are booked by the people team and paid
+          centrally. Fees over £{{ conference_approval_threshold }} need an
+          executive's approval before booking.
+      - id: conference_cancellation
+        heading: Cancelling
+        text: >-
+          An employee who cannot attend a booked conference or course tells the people
+          team as early as possible, so that the place can be transferred or the fee
+          recovered.
+
+finding_codes:
+  OVER_CATEGORY_LIMIT:
+    severity: medium # gut pick
+    clause: category_limits
+    check: rule
+    precedent_eligible: false
+  MISSING_RECEIPT:
+    severity: medium # gut pick
+    clause: receipts_required
+    check: rule
+    precedent_eligible: false
+  DUPLICATE_SUBMISSION:
+    severity: high # gut pick
+    clause: single_submission
+    check: rule
+    precedent_eligible: false
+  SPLIT_PURCHASE:
+    severity: high # gut pick
+    clause: split_purchases
+    check: rule
+    precedent_eligible: false
+  NON_APPROVED_SUPPLIER:
+    severity: medium # gut pick
+    clause: approved_suppliers
+    check: rule
+    precedent_eligible: true
+    precedent_scope: supplier
+  MISSING_PO:
+    severity: medium # gut pick
+    clause: purchase_orders
+    check: rule
+    precedent_eligible: false
+  BUDGET_EXCEEDED:
+    severity: medium # gut pick
+    clause: cost_centre_budgets
+    check: rule
+    precedent_eligible: false
+  CURRENCY_ANOMALY:
+    severity: low # gut pick
+    clause: claimed_rate_deviation
+    check: rule
+    precedent_eligible: false
+  WEEKEND_SPEND_UNJUSTIFIED:
+    severity: low # gut pick
+    clause: weekend_and_holiday_spend
+    check: judgement
+    precedent_eligible: true
+    precedent_scope: employee
+  PURPOSE_UNCLEAR:
+    severity: medium # gut pick
+    clause: business_purpose
+    check: judgement
+    precedent_eligible: true
+    precedent_scope: employee
+  RECEIPT_MISMATCH:
+    severity: high # gut pick
+    clause: receipt_matches_claim
+    check: judgement
+    precedent_eligible: false
+  ALCOHOL_NOT_PERMITTED:
+    severity: medium # gut pick
+    clause: no_alcohol
+    check: judgement
+    precedent_eligible: false
+
+applicability:
+  expense_claim:
+    - OVER_CATEGORY_LIMIT
+    - MISSING_RECEIPT
+    - DUPLICATE_SUBMISSION
+    - BUDGET_EXCEEDED
+    - CURRENCY_ANOMALY
+    - WEEKEND_SPEND_UNJUSTIFIED
+  supplier_invoice:
+    - DUPLICATE_SUBMISSION
+    - SPLIT_PURCHASE
+    - NON_APPROVED_SUPPLIER
+    - MISSING_PO
+    - BUDGET_EXCEEDED
+    - CURRENCY_ANOMALY

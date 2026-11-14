@@ -1,0 +1,150 @@
+title: Fixture Expenses Policy
+version: fixture-1
+
+parameters:
+  base_currency: GBP
+  accepted_currencies: [GBP, EUR, USD]
+  grades: [junior, senior]
+  approval_limits:
+    senior: 1000
+  budget_year_start: 1 April
+  receipt_threshold: 25
+  meal_limit: 40
+  purchase_order_threshold: 500
+  currency_deviation_percent: 3
+  category_limits:
+    subsistence:
+      label: Meals
+      unit: person per day
+      limits:
+        junior: 40
+        senior: 55
+    accommodation:
+      label: Hotels
+      unit: night
+      limits:
+        junior: 120
+        senior: 150
+    taxi:
+      label: Taxis
+      unit: journey
+      limits:
+        junior: 30
+        senior: 30
+
+sections:
+  - heading: Claiming expenses
+    clauses:
+      - id: business_purpose
+        heading: Business purpose
+        text: Every claim states the business purpose of the spend.
+      - id: receipts
+        heading: Receipts
+        text: >-
+          A receipt is required for any item over {{ receipt_threshold }} GBP,
+          and it must match the amount claimed.
+      - id: weekend_spend
+        text: Spend on a weekend or public holiday needs a written justification.
+  - heading: Meals
+    clauses:
+      - id: meal_limit
+        heading: Meal limit
+        text: A meal may cost up to {{ meal_limit }} GBP per person.
+      - id: no_alcohol
+        text: Alcohol is not reimbursed.
+  - heading: Suppliers and purchasing
+    clauses:
+      - id: approved_suppliers
+        text: Invoices are paid only to approved suppliers.
+      - id: purchase_orders
+        text: >-
+          Any purchase over {{ purchase_order_threshold }} GBP needs a purchase order,
+          and a purchase must not be split to stay under that amount.
+      - id: budgets
+        text: Spend must not take a cost centre over its budget.
+      - id: duplicates
+        text: The same spend is never claimed or invoiced twice.
+      - id: currency
+        text: >-
+          Foreign currency is converted at the company rate. A claimed rate more than
+          {{ currency_deviation_percent }}% away from that rate is queried.
+
+finding_codes:
+  OVER_CATEGORY_LIMIT:
+    severity: medium
+    clause: meal_limit
+    check: rule
+    precedent_eligible: false
+  MISSING_RECEIPT:
+    severity: medium
+    clause: receipts
+    check: rule
+    precedent_eligible: false
+  DUPLICATE_SUBMISSION:
+    severity: high
+    clause: duplicates
+    check: rule
+    precedent_eligible: false
+  SPLIT_PURCHASE:
+    severity: high
+    clause: purchase_orders
+    check: rule
+    precedent_eligible: false
+  NON_APPROVED_SUPPLIER:
+    severity: medium
+    clause: approved_suppliers
+    check: rule
+    precedent_eligible: true
+    precedent_scope: supplier
+  MISSING_PO:
+    severity: medium
+    clause: purchase_orders
+    check: rule
+    precedent_eligible: false
+  BUDGET_EXCEEDED:
+    severity: high
+    clause: budgets
+    check: rule
+    precedent_eligible: false
+  CURRENCY_ANOMALY:
+    severity: low
+    clause: currency
+    check: rule
+    precedent_eligible: false
+  WEEKEND_SPEND_UNJUSTIFIED:
+    severity: low
+    clause: weekend_spend
+    check: judgement
+    precedent_eligible: true
+    precedent_scope: employee
+  PURPOSE_UNCLEAR:
+    severity: medium
+    clause: business_purpose
+    check: judgement
+    precedent_eligible: true
+    precedent_scope: employee
+  RECEIPT_MISMATCH:
+    severity: high
+    clause: receipts
+    check: judgement
+    precedent_eligible: false
+  ALCOHOL_NOT_PERMITTED:
+    severity: medium
+    clause: no_alcohol
+    check: judgement
+    precedent_eligible: false
+
+applicability:
+  expense_claim:
+    - OVER_CATEGORY_LIMIT
+    - MISSING_RECEIPT
+    - DUPLICATE_SUBMISSION
+    - CURRENCY_ANOMALY
+    - WEEKEND_SPEND_UNJUSTIFIED
+  supplier_invoice:
+    - DUPLICATE_SUBMISSION
+    - SPLIT_PURCHASE
+    - NON_APPROVED_SUPPLIER
+    - MISSING_PO
+    - BUDGET_EXCEEDED
+    - CURRENCY_ANOMALY

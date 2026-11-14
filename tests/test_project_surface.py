@@ -1,0 +1,57 @@
+import re
+from pathlib import Path
+
+import pytest
+
+from spendguard.settings import Settings
+from spendguard.settings import load_settings as load_settings_from_files
+
+REPOSITORY_ROOT = Path(__file__).parent.parent
+ENV_EXAMPLE = REPOSITORY_ROOT / '.env.example'
+
+TARGETS_THE_SPECS_NAME = {
+    'seed',
+    'smoke-providers',
+    'draft-cases',
+    'freeze',
+    'issue-token',
+    'bootstrap',
+    'secrets',
+    'deploy',
+    'destroy',
+    'destroy-bootstrap',
+}
+
+env_key_pattern = re.compile(r'^([A-Z][A-Z0-9_]*)=', re.MULTILINE)
+make_target_pattern = re.compile(r'^([a-z][a-z0-9-]*):', re.MULTILINE)
+
+
+def env_example_keys() -> list[str]:
+    return env_key_pattern.findall(ENV_EXAMPLE.read_text())
+
+
+def test_every_makefile_target_the_specs_name_exists() -> None:
+    targets = set(make_target_pattern.findall((REPOSITORY_ROOT / 'Makefile').read_text()))
+
+    assert TARGETS_THE_SPECS_NAME - targets == set()
+
+
+def test_every_env_example_key_is_a_setting_and_every_setting_has_a_key() -> None:
+    top_level_keys = {key.split('__')[0].lower() for key in env_example_keys()}
+
+    assert top_level_keys == set(Settings.model_fields) - {'branch_name'}
+    assert len(env_example_keys()) == len(set(env_example_keys()))
+
+
+def test_the_env_example_file_loads_into_valid_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in env_example_keys():
+        monkeypatch.delenv(key, raising=False)
+
+    settings = load_settings_from_files(ENV_EXAMPLE)
+
+    assert settings.app_environment == 'local'
+    assert settings.google_api_key is None
+    assert settings.chat_models['gpt_oss'].provider == 'bedrock'
+    assert settings.allowed_providers == ('bedrock', 'google_genai')
+    assert settings.primary_model_key in settings.chat_models
+    assert set(settings.drafting_model_keys) <= set(settings.chat_models)
