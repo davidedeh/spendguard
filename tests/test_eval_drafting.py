@@ -83,7 +83,13 @@ class DraftingFake(FakeChatModel):
         if 'scripted review' in request:
             scripted_review = {
                 'approver': 'EMP-001',
-                'dispositions': [{'finding_id': 'finding-1', 'disposition': 'dismissed'}],
+                'dispositions': [
+                    {
+                        'finding_id': 'finding-1',
+                        'disposition': 'dismissed',
+                        'reason': 'A standing arrangement agreed with the manager.',
+                    }
+                ],
             }
         return DraftedCase.model_validate(
             {

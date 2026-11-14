@@ -297,6 +297,39 @@ def test_a_disposition_for_a_finding_the_case_does_not_expect_is_reported() -> N
     )
 
 
+@pytest.mark.parametrize('reason_is_null', [False, True])
+def test_a_dismissed_disposition_without_a_reason_is_reported_alongside_other_problems(
+    reason_is_null: bool,
+) -> None:
+    cases = fixture_cases()
+    disposition = cases['test-purpose-unclear.yaml']['scripted_review']['dispositions'][0]
+    if reason_is_null:
+        disposition['reason'] = None
+    else:
+        del disposition['reason']
+    cases['test-alcohol.yaml']['submission']['claimant'] = 'EMP-999'
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-purpose-unclear.yaml: scripted_review:'
+        ' Value error, dismissing finding purpose needs a reason',
+        'test-alcohol.yaml: unknown employee EMP-999',
+    )
+    assert report.dataset_hash is None
+
+
+def test_an_upheld_disposition_needs_no_reason() -> None:
+    cases = fixture_cases()
+    disposition = cases['test-purpose-unclear.yaml']['scripted_review']['dispositions'][0]
+    disposition['disposition'] = 'upheld'
+    del disposition['reason']
+
+    report = validate(cases)
+
+    assert report.problems == ()
+
+
 def test_several_faults_are_all_reported_in_one_run() -> None:
     cases = fixture_cases()
     del cases['test-weekend.yaml']['drafted_by']

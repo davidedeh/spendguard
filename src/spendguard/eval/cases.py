@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from spendguard.policy.loader import FindingCode
 from spendguard.seed.schema import EmployeeReference
@@ -37,6 +37,19 @@ class ScriptedDisposition(_CaseModel):
 class ScriptedReview(_CaseModel):
     approver: EmployeeReference
     dispositions: Annotated[tuple[ScriptedDisposition, ...], Field(min_length=1)]
+
+    @model_validator(mode='after')
+    def _dismissals_have_a_reason(self) -> Self:
+        unexplained_finding_ids = [
+            disposition.finding_id
+            for disposition in self.dispositions
+            if disposition.disposition == 'dismissed' and disposition.reason is None
+        ]
+        if unexplained_finding_ids:
+            raise ValueError(
+                f'dismissing finding {", ".join(unexplained_finding_ids)} needs a reason'
+            )
+        return self
 
 
 class DraftedBy(_CaseModel):
