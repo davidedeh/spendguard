@@ -1,0 +1,6 @@
+- currency: EUR
+  rate_date: 2026-10-01
+  gbp_per_unit: 0.86
+- currency: USD
+  rate_date: 2026-10-01
+  gbp_per_unit: 0.79
