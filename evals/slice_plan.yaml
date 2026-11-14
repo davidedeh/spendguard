@@ -7,6 +7,8 @@ test:
     injection: 4
   judgement_positives_per_code: 4
   memory_pairs: 3
+  supplier_invoices: 10 # gut pick
+  foreign_currency: 6 # gut pick
 dev:
   slices:
     judgement_positive: 4
@@ -16,3 +18,5 @@ dev:
     injection: 1
   judgement_positives_per_code: 1
   memory_pairs: 1
+  supplier_invoices: 1 # gut pick
+  foreign_currency: 1 # gut pick

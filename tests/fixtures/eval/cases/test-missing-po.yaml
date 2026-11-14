@@ -1,6 +1,10 @@
 id: test-missing-po
 split: test
 slice: rule_coverage
+intent:
+  rule_codes: [MISSING_PO]
+  judgement_codes: []
+  lookalike_code: null
 submission:
   type: supplier_invoice
   supplier: SUP-001

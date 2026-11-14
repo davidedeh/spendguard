@@ -1,0 +1,8 @@
+- reference: CC-100
+  owner: EMP-001
+  budget_gbp: 50000.00
+  spend_to_date_gbp: 12000.00
+- reference: CC-200
+  owner: EMP-002
+  budget_gbp: 8000.00
+  spend_to_date_gbp: 8100.00

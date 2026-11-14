@@ -192,8 +192,7 @@ finish() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────
-# STAGES: author this section. One stage() per step the human takes.
-# Replace the example below. Set TOTAL_STAGES to match the stages you write.
+# STAGES: one stage() per step the human takes.
 # Keep every stage inside run_wizard and the last line as is: bash then parses
 # the whole file before the first prompt, so an edit mid-run can't break it.
 # ──────────────────────────────────────────────────────────────────────────

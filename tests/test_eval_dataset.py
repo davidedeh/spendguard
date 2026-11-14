@@ -266,6 +266,71 @@ def test_a_recommendation_the_rule_does_not_give_is_reported(
     assert report.problems == (problem,)
 
 
+def test_a_rule_label_the_rule_checks_disagree_with_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-missing-po.yaml']['submission']['amount'] = '480.00'
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-missing-po.yaml: the rule checks give no rule findings, the case expects MISSING_PO',
+    )
+
+
+def test_a_weekend_finding_on_a_working_day_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-weekend.yaml']['submission']['spent_on'] = '2026-10-09'
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-weekend.yaml: WEEKEND_SPEND_UNJUSTIFIED needs a weekend or public holiday,'
+        ' and 2026-10-09 is a working day',
+    )
+
+
+def test_a_judgement_finding_outside_the_cases_brief_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-injection.yaml']['expected_findings'].append(
+        {'id': 'purpose', 'code': 'PURPOSE_UNCLEAR', 'gold_clauses': ['§1.1']}
+    )
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-injection.yaml: judgement finding PURPOSE_UNCLEAR is outside the case brief,'
+        ' which allows ALCOHOL_NOT_PERMITTED',
+    )
+
+
+def test_two_cases_with_the_same_party_date_and_amount_are_reported() -> None:
+    cases = fixture_cases()
+    cases['test-alcohol.yaml']['submission'].update(
+        {'claimant': 'EMP-002', 'spent_on': '2026-10-10', 'amount': '18.40'}
+    )
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-alcohol.yaml and test-weekend.yaml have the same claimant or supplier,'
+        ' date and amount',
+    )
+
+
+def test_a_case_copying_a_history_row_without_targeting_a_repeat_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-hard-negative.yaml']['submission'].update(
+        {'claimant': 'EMP-002', 'spent_on': '2026-10-03', 'amount': '240.00'}
+    )
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-hard-negative.yaml: copies historical claim CLM-0002 without targeting'
+        ' DUPLICATE_SUBMISSION or SPLIT_PURCHASE',
+    )
+
+
 def test_a_foreign_currency_claim_dated_before_the_first_rate_is_reported() -> None:
     cases = fixture_cases()
     cases['dev-clean.yaml']['submission']['spent_on'] = '2026-09-30'
@@ -351,7 +416,7 @@ def test_judgement_positives_off_the_plan_for_a_code_are_reported() -> None:
 
     report = validate(cases)
 
-    assert report.problems == (
+    assert without_label_problems(report.problems) == (
         'the test split has 0 judgement_positive cases for WEEKEND_SPEND_UNJUSTIFIED,'
         ' the plan says 1',
         'the test split has 2 judgement_positive cases for PURPOSE_UNCLEAR, the plan says 1',
@@ -372,7 +437,12 @@ def test_a_rule_coverage_case_without_one_rule_finding_is_reported() -> None:
     )
 
 
-LABEL_PROBLEM_MARKERS = (': the rule checks give', ': the route rule', ': the recommendation rule')
+LABEL_PROBLEM_MARKERS = (
+    ': the rule checks give',
+    ': the route rule',
+    ': the recommendation rule',
+    'is outside the case brief',
+)
 
 
 def without_label_problems(problems: tuple[str, ...]) -> tuple[str, ...]:
@@ -395,6 +465,8 @@ def with_rule_coverage_cases(codes: list[FindingCode]) -> dict[str, Any]:
         case = copy.deepcopy(template)
         case['id'] = f'test-rule-{index}'
         case['submission']['supplier_invoice_number'] = f'R-{index}'
+        case['submission']['amount'] = f'{780 + index}.00'
+        case['intent']['rule_codes'] = [code]
         case['expected_findings'] = [
             {
                 'id': 'rule',
@@ -569,7 +641,7 @@ def _set(content: dict[str, Any], path: tuple[str | int, ...], value: object) ->
 @pytest.mark.parametrize(
     ('source', 'path', 'value'),
     [
-        ('test-injection.yaml', ('expected_findings', 0, 'code'), 'PURPOSE_UNCLEAR'),
+        ('test-hard-negative.yaml', ('intent', 'lookalike_code'), 'ALCOHOL_NOT_PERMITTED'),
         ('test-alcohol.yaml', ('expected_findings', 0, 'gold_clauses'), ['§2.2', '§2.1']),
         (
             'test-purpose-unclear.yaml',

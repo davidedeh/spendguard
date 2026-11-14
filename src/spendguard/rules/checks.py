@@ -4,10 +4,17 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from spendguard.policy.loader import FindingCode, Policy, Severity
-from spendguard.seed.schema import ExpenseClaimFields, SeedData, SupplierInvoiceFields
+from spendguard.seed.schema import (
+    Employee,
+    ExpenseClaimFields,
+    HistoricalInvoice,
+    SeedData,
+    SupplierInvoiceFields,
+)
 from spendguard.submission import ExpenseClaim, Submission, SupplierInvoice
 
 SATURDAY = 5
+WEEKEND_CODE: FindingCode = 'WEEKEND_SPEND_UNJUSTIFIED'
 
 
 class MissingCompanyRateError(ValueError):
@@ -21,16 +28,19 @@ class Finding:
     severity: Severity
 
 
+def company_rate(currency: str, on: datetime.date, seed_data: SeedData, policy: Policy) -> Decimal:
+    if currency == policy.base_currency:
+        return Decimal(1)
+    rate = seed_data.company_rate(currency, on)
+    if rate is None:
+        raise MissingCompanyRateError(f'no company rate for {currency} on {on.isoformat()}')
+    return rate
+
+
 def base_currency_amount(
     submission: ExpenseClaimFields | SupplierInvoiceFields, seed_data: SeedData, policy: Policy
 ) -> Decimal:
-    if submission.currency == policy.base_currency:
-        return submission.amount
-    rate = seed_data.company_rate(submission.currency, submission.dated_on)
-    if rate is None:
-        raise MissingCompanyRateError(
-            f'no company rate for {submission.currency} on {submission.dated_on.isoformat()}'
-        )
+    rate = company_rate(submission.currency, submission.dated_on, seed_data, policy)
     return submission.amount * rate
 
 
@@ -40,20 +50,20 @@ def falls_on_weekend_or_holiday(on: datetime.date, seed_data: SeedData) -> bool:
     )
 
 
-def _over_category_limit(claim: ExpenseClaim, seed_data: SeedData, policy: Policy) -> bool:
-    category = policy.expense_categories.get(claim.category)
-    grade = next(
-        (
-            employee.grade
-            for employee in seed_data.employees
-            if employee.reference == claim.claimant
-        ),
+def _claimant(claim: ExpenseClaim, seed_data: SeedData) -> Employee | None:
+    return next(
+        (employee for employee in seed_data.employees if employee.reference == claim.claimant),
         None,
     )
-    if category is None or grade is None or grade not in category.limits:
+
+
+def _over_category_limit(claim: ExpenseClaim, seed_data: SeedData, policy: Policy) -> bool:
+    category = policy.expense_categories.get(claim.category)
+    claimant = _claimant(claim, seed_data)
+    if category is None or claimant is None or claimant.grade not in category.limits:
         return False
     per_unit = base_currency_amount(claim, seed_data, policy) / claim.quantity
-    return per_unit > category.limits[grade]
+    return per_unit > category.limits[claimant.grade]
 
 
 def _missing_receipt(claim: ExpenseClaim, seed_data: SeedData, policy: Policy) -> bool:
@@ -72,14 +82,8 @@ def _duplicate_claim(claim: ExpenseClaim, seed_data: SeedData, policy: Policy) -
 
 
 def _claim_budget_exceeded(claim: ExpenseClaim, seed_data: SeedData, policy: Policy) -> bool:
-    cost_centre = next(
-        (
-            employee.cost_centre
-            for employee in seed_data.employees
-            if employee.reference == claim.claimant
-        ),
-        None,
-    )
+    claimant = _claimant(claim, seed_data)
+    cost_centre = None if claimant is None else claimant.cost_centre
     return _takes_cost_centre_over_budget(cost_centre, claim, seed_data, policy)
 
 
@@ -104,12 +108,8 @@ def _currency_anomaly(
 ) -> bool:
     if submission.claimed_exchange_rate is None or submission.currency == policy.base_currency:
         return False
-    company_rate = seed_data.company_rate(submission.currency, submission.dated_on)
-    if company_rate is None:
-        raise MissingCompanyRateError(
-            f'no company rate for {submission.currency} on {submission.dated_on.isoformat()}'
-        )
-    deviation = abs(submission.claimed_exchange_rate - company_rate) / company_rate
+    rate = company_rate(submission.currency, submission.dated_on, seed_data, policy)
+    deviation = abs(submission.claimed_exchange_rate - rate) / rate
     return deviation * 100 > policy.currency_deviation_percent
 
 
@@ -153,19 +153,29 @@ def _split_purchase(invoice: SupplierInvoice, seed_data: SeedData, policy: Polic
     own_amount = base_currency_amount(invoice, seed_data, policy)
     if own_amount > policy.purchase_order_threshold:
         return False
-    window = datetime.timedelta(days=policy.split_purchase_window_days)
+    if invoice.cost_centre is None:
+        return False
+    priors = prior_unordered_invoices(
+        invoice.supplier, invoice.cost_centre, invoice.issued_on, seed_data, policy
+    )
     combined = own_amount + sum(
-        (
-            base_currency_amount(prior, seed_data, policy)
-            for prior in seed_data.historical_invoices
-            if prior.purchase_order is None
-            and prior.supplier == invoice.supplier
-            and prior.cost_centre == invoice.cost_centre
-            and abs(prior.issued_on - invoice.issued_on) <= window
-        ),
-        Decimal(0),
+        (base_currency_amount(prior, seed_data, policy) for prior in priors), Decimal(0)
     )
     return combined > policy.purchase_order_threshold
+
+
+def prior_unordered_invoices(
+    supplier: str, cost_centre: str, on: datetime.date, seed_data: SeedData, policy: Policy
+) -> tuple[HistoricalInvoice, ...]:
+    window = datetime.timedelta(days=policy.split_purchase_window_days)
+    return tuple(
+        prior
+        for prior in seed_data.historical_invoices
+        if prior.purchase_order is None
+        and prior.supplier == supplier
+        and prior.cost_centre == cost_centre
+        and abs(prior.issued_on - on) <= window
+    )
 
 
 def _duplicate_invoice(invoice: SupplierInvoice, seed_data: SeedData, policy: Policy) -> bool:
@@ -219,6 +229,12 @@ def rule_findings(
             and SUPPLIER_INVOICE_CHECKS[code](invoice, seed_data, policy)
         ]
     return tuple(finding_for(code, policy) for code in raised)
+
+
+def raised_rule_codes(
+    submission: Submission, seed_data: SeedData, policy: Policy
+) -> list[FindingCode]:
+    return sorted(finding.code for finding in rule_findings(submission, seed_data, policy))
 
 
 def finding_for(code: FindingCode, policy: Policy) -> Finding:

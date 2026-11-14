@@ -1,6 +1,10 @@
 id: test-alcohol
 split: test
 slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes: [ALCOHOL_NOT_PERMITTED]
+  lookalike_code: null
 submission:
   type: expense_claim
   claimant: EMP-003

@@ -23,7 +23,7 @@ class FakeChatModel(BaseChatModel):
     model_id: str
     responses: list[AIMessage] = Field(default_factory=list)
     received: list[list[BaseMessage]] = Field(default_factory=list)
-    structured_output_calls: list[tuple[str, Any]] = Field(default_factory=list)
+    structured_output_calls: list[tuple[StructuredOutputMethod, Any]] = Field(default_factory=list)
 
     @property
     def _llm_type(self) -> str:

@@ -1,0 +1,16 @@
+- reference: INV-0001
+  supplier: SUP-001
+  supplier_invoice_number: A-77
+  purchase_order: PO-0001
+  cost_centre: null
+  issued_on: 2026-10-20
+  amount: 1200.00
+  currency: GBP
+- reference: INV-0002
+  supplier: SUP-003
+  supplier_invoice_number: '3301'
+  purchase_order: null
+  cost_centre: CC-100
+  issued_on: 2026-10-05
+  amount: 300.00
+  currency: GBP

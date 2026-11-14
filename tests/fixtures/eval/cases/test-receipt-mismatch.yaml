@@ -1,6 +1,10 @@
 id: test-receipt-mismatch
 split: test
 slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes: [RECEIPT_MISMATCH]
+  lookalike_code: null
 submission:
   type: expense_claim
   claimant: EMP-002

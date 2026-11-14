@@ -7,6 +7,8 @@ test:
     injection: 1
   judgement_positives_per_code: 1
   memory_pairs: 1
+  supplier_invoices: 1
+  foreign_currency: 1
 dev:
   slices:
     judgement_positive: 0
@@ -16,3 +18,5 @@ dev:
     injection: 0
   judgement_positives_per_code: 0
   memory_pairs: 0
+  supplier_invoices: 0
+  foreign_currency: 0

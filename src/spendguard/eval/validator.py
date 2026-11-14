@@ -2,7 +2,7 @@ import datetime
 import hashlib
 import json
 from collections import Counter, defaultdict
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import get_args
@@ -11,17 +11,25 @@ from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 
 from spendguard.eval.cases import (
+    HISTORY_CODES,
     SINGLE_FINDING_SLICES,
     EvalCase,
+    ExpectedFinding,
     Slice,
     SlicePlan,
     Split,
 )
 from spendguard.policy.loader import CheckKind, FindingCode, Policy
-from spendguard.rules.checks import base_currency_amount, finding_for
-from spendguard.rules.decisions import ReviewedFinding, recommend, route
+from spendguard.rules.checks import (
+    WEEKEND_CODE,
+    base_currency_amount,
+    falls_on_weekend_or_holiday,
+    finding_for,
+    raised_rule_codes,
+)
+from spendguard.rules.decisions import Recommendation, ReviewedFinding, Route, recommend, route
 from spendguard.seed.schema import SeedData
-from spendguard.submission import ExpenseClaim, SupplierInvoice
+from spendguard.submission import ExpenseClaim, Submission, SupplierInvoice
 
 
 @dataclass(frozen=True)
@@ -46,7 +54,9 @@ def validate_dataset(
         problems.extend(
             f'{source}: {problem}' for problem in case_problems(case, policy, seed_data)
         )
+        problems.extend(f'{source}: {problem}' for problem in intent_problems(case, policy))
     problems.extend(_split_problems(parsed_cases))
+    problems.extend(_repeated_submission_problems(parsed_cases))
     problems.extend(_slice_count_problems(cases, plan))
     if len(parsed_cases) == len(cases):
         problems.extend(_judgement_and_memory_problems(list(parsed_cases.values()), policy, plan))
@@ -136,7 +146,41 @@ def _label_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iter
         submission.currency, submission.dated_on, policy.base_currency
     ):
         return
-    findings = [finding_for(finding.code, policy) for finding in case.expected_findings]
+    computed_rule_codes = raised_rule_codes(submission, seed_data, policy)
+    labelled_rule_codes = sorted(_codes_with_check(case, policy, 'rule'))
+    if computed_rule_codes != labelled_rule_codes:
+        yield (
+            f'the rule checks give {describe_rule_codes(computed_rule_codes)},'
+            f' the case expects {describe_rule_codes(labelled_rule_codes)}'
+        )
+    labelled_codes = {finding.code for finding in case.expected_findings}
+    if WEEKEND_CODE in labelled_codes and not falls_on_weekend_or_holiday(
+        submission.dated_on, seed_data
+    ):
+        yield (
+            f'{WEEKEND_CODE} needs a weekend or public holiday, and'
+            f' {submission.dated_on.isoformat()} is a working day'
+        )
+    yield from _history_copy_problems(case, seed_data)
+    expected_route, expected_recommendation = computed_route_and_recommendation(
+        case.expected_findings, submission, seed_data, policy
+    )
+    if case.expected_route != expected_route:
+        yield f'the route rule gives {expected_route}, not {case.expected_route}'
+    if case.expected_recommendation != expected_recommendation:
+        yield (
+            f'the recommendation rule gives {expected_recommendation} with no precedents,'
+            f' not {case.expected_recommendation}'
+        )
+
+
+def computed_route_and_recommendation(
+    expected_findings: Sequence[ExpectedFinding],
+    submission: Submission,
+    seed_data: SeedData,
+    policy: Policy,
+) -> tuple[Route, Recommendation]:
+    findings = [finding_for(finding.code, policy) for finding in expected_findings]
     expected_route = route(
         findings=findings,
         cleared_by_precedent=False,
@@ -144,16 +188,67 @@ def _label_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iter
         policy=policy,
         force_human_review=False,
     )
-    if case.expected_route != expected_route:
-        yield f'the route rule gives {expected_route}, not {case.expected_route}'
     expected_recommendation = recommend(
         [ReviewedFinding(finding, has_precedent=False) for finding in findings]
     )
-    if case.expected_recommendation != expected_recommendation:
-        yield (
-            f'the recommendation rule gives {expected_recommendation} with no precedents,'
-            f' not {case.expected_recommendation}'
+    return expected_route, expected_recommendation
+
+
+def intent_problems(case: EvalCase, policy: Policy) -> Iterator[str]:
+    allowed_judgement_codes = set(case.intent.judgement_codes)
+    for code in _codes_with_check(case, policy, 'judgement'):
+        if code not in allowed_judgement_codes:
+            allowed = ', '.join(case.intent.judgement_codes) or 'no judgement findings'
+            yield f'judgement finding {code} is outside the case brief, which allows {allowed}'
+
+
+def describe_rule_codes(codes: Sequence[FindingCode]) -> str:
+    return ', '.join(codes) if codes else 'no rule findings'
+
+
+def _history_copy_problems(case: EvalCase, seed_data: SeedData) -> Iterator[str]:
+    if HISTORY_CODES & set(case.intent.rule_codes):
+        return
+    rows: list[tuple[str, str, tuple[str, datetime.date, Decimal]]] = [
+        ('historical claim', claim.reference, (claim.claimant, claim.spent_on, claim.amount))
+        for claim in seed_data.historical_claims
+    ] + [
+        (
+            'historical invoice',
+            invoice.reference,
+            (invoice.supplier, invoice.issued_on, invoice.amount),
         )
+        for invoice in seed_data.historical_invoices
+    ]
+    key = _party_date_amount(case)
+    for kind, reference, row_key in rows:
+        if row_key == key:
+            yield (
+                f'copies {kind} {reference} without targeting'
+                ' DUPLICATE_SUBMISSION or SPLIT_PURCHASE'
+            )
+
+
+def _party_date_amount(case: EvalCase) -> tuple[str, datetime.date, Decimal]:
+    submission = case.submission
+    party = submission.claimant if isinstance(submission, ExpenseClaim) else submission.supplier
+    return (party, submission.dated_on, submission.amount)
+
+
+def _repeated_submission_problems(cases: Mapping[str, EvalCase]) -> Iterator[str]:
+    sources_by_key: dict[tuple[str, datetime.date, Decimal], list[str]] = defaultdict(list)
+    for source, case in cases.items():
+        sources_by_key[_party_date_amount(case)].append(source)
+    for sources in sources_by_key.values():
+        submissions = {cases[source].submission.model_dump_json() for source in sources}
+        splits = {cases[source].split for source in sources}
+        if len(submissions) == 1 and len(splits) > 1:
+            continue
+        if len(sources) > 1:
+            yield (
+                f'{" and ".join(sorted(sources))} have the same claimant or supplier,'
+                ' date and amount'
+            )
 
 
 def _split_problems(cases: Mapping[str, EvalCase]) -> Iterator[str]:

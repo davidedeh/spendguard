@@ -1,0 +1,6 @@
+- reference: SUP-001
+  approved: true
+- reference: SUP-002
+  approved: false
+- reference: SUP-003
+  approved: true

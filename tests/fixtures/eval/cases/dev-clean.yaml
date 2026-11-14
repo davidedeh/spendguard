@@ -1,6 +1,10 @@
 id: dev-clean
 split: dev
 slice: clean
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
 submission:
   type: expense_claim
   claimant: EMP-002

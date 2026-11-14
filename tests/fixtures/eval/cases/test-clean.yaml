@@ -1,6 +1,10 @@
 id: test-clean
 split: test
 slice: clean
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
 submission:
   type: supplier_invoice
   supplier: SUP-001

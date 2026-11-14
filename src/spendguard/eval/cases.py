@@ -16,6 +16,7 @@ Slice = Literal['judgement_positive', 'hard_negative', 'rule_coverage', 'clean',
 Disposition = Literal['upheld', 'dismissed']
 NonEmptyText = Annotated[str, StringConstraints(min_length=1)]
 Count = Annotated[int, Field(ge=0)]
+HISTORY_CODES: frozenset[FindingCode] = frozenset({'DUPLICATE_SUBMISSION', 'SPLIT_PURCHASE'})
 SINGLE_FINDING_SLICES: dict[Slice, CheckKind] = {
     'judgement_positive': 'judgement',
     'rule_coverage': 'rule',
@@ -52,6 +53,12 @@ class ScriptedReview(StrictModel):
         return self
 
 
+class CaseIntent(StrictModel):
+    rule_codes: tuple[FindingCode, ...]
+    judgement_codes: tuple[FindingCode, ...]
+    lookalike_code: FindingCode | None
+
+
 class DraftedBy(StrictModel):
     provider: Provider
     model_id: NonEmptyText
@@ -61,6 +68,7 @@ class EvalCase(StrictModel):
     id: NonEmptyText
     split: Split
     slice: Slice
+    intent: CaseIntent
     submission: Submission
     expected_findings: tuple[ExpectedFinding, ...]
     expected_route: Route
@@ -81,6 +89,8 @@ class SplitPlan(StrictModel):
     slices: SliceCounts
     judgement_positives_per_code: Count
     memory_pairs: Count
+    supplier_invoices: Count
+    foreign_currency: Count
 
 
 class SlicePlan(StrictModel):
