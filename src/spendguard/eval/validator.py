@@ -13,7 +13,7 @@ from pydantic_core import ErrorDetails
 from spendguard.eval.cases import EvalCase, Slice, SlicePlan, Split
 from spendguard.policy.loader import FindingCode, Policy
 from spendguard.seed.schema import SeedData
-from spendguard.submission import ExpenseClaim
+from spendguard.submission import ExpenseClaim, SupplierInvoice
 
 
 @dataclass(frozen=True)
@@ -75,6 +75,7 @@ def _case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Itera
             ('purchase order', submission.purchase_order),
             ('cost centre', submission.cost_centre),
         ]
+    yield from _currency_problems(submission, policy, seed_data)
     if case.scripted_review is not None:
         references.append(('approver', case.scripted_review.approver))
         finding_ids = {finding.id for finding in case.expected_findings}
@@ -100,6 +101,17 @@ def _category_problems(claim: ExpenseClaim, policy: Policy) -> Iterator[str]:
     if claim.category not in policy.expense_categories:
         category_keys = ', '.join(sorted(policy.expense_categories))
         yield f'category {claim.category!r} is not a policy category ({category_keys})'
+
+
+def _currency_problems(
+    submission: ExpenseClaim | SupplierInvoice, policy: Policy, seed_data: SeedData
+) -> Iterator[str]:
+    dated_on = submission.spent_on if isinstance(submission, ExpenseClaim) else submission.issued_on
+    if (
+        submission.currency != policy.base_currency
+        and seed_data.company_rate(submission.currency, dated_on) is None
+    ):
+        yield f'no company rate for {submission.currency} on {dated_on.isoformat()}'
 
 
 def _split_problems(cases: Mapping[str, EvalCase]) -> Iterator[str]:

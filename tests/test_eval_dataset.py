@@ -149,6 +149,53 @@ def test_a_reference_missing_from_the_seed_data_is_reported(
     assert report.problems == (f'{source}: {problem}',)
 
 
+def test_a_foreign_currency_claim_dated_after_the_last_rate_is_reported() -> None:
+    cases = fixture_cases()
+    cases['dev-clean.yaml']['submission']['spent_on'] = '2026-10-02'
+
+    report = validate(cases)
+
+    assert report.problems == ('dev-clean.yaml: no company rate for EUR on 2026-10-02',)
+    assert report.dataset_hash is None
+
+
+def test_a_base_currency_claim_needs_no_company_rate() -> None:
+    cases = fixture_cases()
+    cases['test-alcohol.yaml']['submission']['spent_on'] = '2026-10-02'
+
+    report = validate(cases)
+
+    assert report.problems == ()
+
+
+def test_a_foreign_currency_claim_dated_before_the_first_rate_is_reported() -> None:
+    cases = fixture_cases()
+    cases['dev-clean.yaml']['submission']['spent_on'] = '2026-09-30'
+
+    report = validate(cases)
+
+    assert report.problems == ('dev-clean.yaml: no company rate for EUR on 2026-09-30',)
+
+
+@pytest.mark.parametrize(
+    ('issued_on', 'problems'),
+    [
+        ('2026-10-01', ()),
+        ('2026-10-02', ('test-clean.yaml: no company rate for USD on 2026-10-02',)),
+    ],
+)
+def test_a_foreign_currency_invoice_needs_a_company_rate_on_its_issue_date(
+    issued_on: str, problems: tuple[str, ...]
+) -> None:
+    cases = fixture_cases()
+    cases['test-clean.yaml']['submission']['currency'] = 'USD'
+    cases['test-clean.yaml']['submission']['issued_on'] = issued_on
+
+    report = validate(cases)
+
+    assert report.problems == problems
+
+
 def test_a_case_in_both_splits_is_reported() -> None:
     cases = fixture_cases()
     del cases['dev-clean.yaml']
@@ -256,11 +303,13 @@ def test_several_faults_are_all_reported_in_one_run() -> None:
     cases['test-alcohol.yaml']['submission']['claimant'] = 'EMP-999'
     cases['test-injection.yaml']['expected_findings'][0]['gold_clauses'] = ['§7.1']
     cases['test-clean.yaml']['split'] = 'dev'
+    cases['dev-clean.yaml']['submission']['spent_on'] = '2026-10-02'
 
     report = validate(cases)
 
     assert report.problems == (
         'test-weekend.yaml: drafted_by: Field required',
+        'dev-clean.yaml: no company rate for EUR on 2026-10-02',
         'test-alcohol.yaml: unknown employee EMP-999',
         'test-injection.yaml: gold clause §7.1 is not in the policy',
         'the test split has 0 clean cases, the plan says 1',

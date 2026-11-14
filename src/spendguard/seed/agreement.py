@@ -135,8 +135,6 @@ def _budget_year_start(policy: Policy, on: datetime.date) -> datetime.date:
 
 
 def _budget_problems(seed_data: SeedData, policy: Policy) -> Iterator[str]:
-    base_currency = _base_currency(policy)
-    rates = {(rate.currency, rate.rate_date): rate.gbp_per_unit for rate in seed_data.fx_rates}
     spend = [record for record in _priced_records(seed_data) if record.charged_to is not None]
     dates = [record.dated_on for record in spend if record.dated_on is not None]
     if not dates:
@@ -148,8 +146,8 @@ def _budget_problems(seed_data: SeedData, policy: Policy) -> Iterator[str]:
             continue
         rate = (
             Decimal(1)
-            if record.currency == base_currency
-            else rates.get((record.currency, record.dated_on))
+            if record.currency == policy.base_currency
+            else seed_data.company_rate(record.currency, record.dated_on)
         )
         if rate is None:
             continue
@@ -166,28 +164,20 @@ def _budget_problems(seed_data: SeedData, policy: Policy) -> Iterator[str]:
             )
 
 
-def _base_currency(policy: Policy) -> str:
-    value = policy.parameters['base_currency']
-    if not isinstance(value, str):
-        raise TypeError(f'policy parameter base_currency is not a string: {value!r}')
-    return value
-
-
 def _currency_problems(seed_data: SeedData, policy: Policy) -> Iterator[str]:
-    base_currency = _base_currency(policy)
+    base_currency = policy.base_currency
     accepted_currencies = _string_list(policy, 'accepted_currencies')
     rate_currencies = {rate.currency for rate in seed_data.fx_rates}
     for currency in accepted_currencies:
         if currency != base_currency and currency not in rate_currencies:
             yield f'the fx table has no rate for {currency}, a currency the policy accepts'
-    rate_dates = {(rate.currency, rate.rate_date) for rate in seed_data.fx_rates}
     for record in _priced_records(seed_data):
         if record.currency not in accepted_currencies:
             yield f'{record.label}: currency {record.currency} is not an accepted currency'
         elif (
             record.currency != base_currency
             and record.dated_on is not None
-            and (record.currency, record.dated_on) not in rate_dates
+            and seed_data.company_rate(record.currency, record.dated_on) is None
         ):
             yield (
                 f'{record.label}: no company rate for {record.currency}'

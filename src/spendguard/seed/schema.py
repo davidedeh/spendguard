@@ -103,6 +103,16 @@ class SeedData(SeedRecord):
     fx_rates: tuple[FxRate, ...]
     public_holidays: tuple[PublicHoliday, ...]
 
+    def company_rate(self, currency: str, on: datetime.date) -> Decimal | None:
+        return next(
+            (
+                rate.gbp_per_unit
+                for rate in self.fx_rates
+                if rate.currency == currency and rate.rate_date == on
+            ),
+            None,
+        )
+
     def invoice_requester(
         self, purchase_order: str | None, cost_centre: str | None
     ) -> EmployeeReference | None:

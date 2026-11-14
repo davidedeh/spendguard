@@ -2,6 +2,7 @@ title: Fixture Expenses Policy
 version: fixture-1
 
 parameters:
+  base_currency: GBP
   receipt_threshold: 25
   meal_limit: 40
   purchase_order_threshold: 500

@@ -122,6 +122,13 @@ class Policy:
     expense_categories: Mapping[str, ExpenseCategory]
     rendered_text: str
 
+    @property
+    def base_currency(self) -> str:
+        value = self.parameters['base_currency']
+        if not isinstance(value, str):
+            raise TypeError(f'policy parameter base_currency is not a string: {value!r}')
+        return value
+
 
 _WHITESPACE_PATTERN = re.compile(r'\s+')
 _TEMPLATE_ENVIRONMENT = jinja2.Environment(

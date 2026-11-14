@@ -4,7 +4,7 @@ slice: clean
 submission:
   type: expense_claim
   claimant: EMP-002
-  spent_on: 2026-10-05
+  spent_on: 2026-10-01
   category: taxi
   quantity: 1
   merchant: City Taxis
