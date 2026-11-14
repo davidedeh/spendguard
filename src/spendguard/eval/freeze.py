@@ -3,16 +3,14 @@ import json
 import sys
 from pathlib import Path
 
-import spendguard.policy
 from spendguard.eval.cases import load_slice_plan, read_case_directory
 from spendguard.eval.validator import validate_dataset
-from spendguard.policy.loader import load_policy
+from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.seed.loader import SEED_DIRECTORY, read_seed_directory
 
 CASE_DIRECTORY = Path('evals/cases')
 SLICE_PLAN_PATH = Path('evals/slice_plan.yaml')
 LOCK_PATH = Path('evals/dataset.lock.json')
-POLICY_PATH = Path(spendguard.policy.__file__).parent / 'policy.yaml'
 
 
 def read_locked_hash(lock_path: Path) -> str:

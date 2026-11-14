@@ -26,6 +26,7 @@ FindingCode = Literal[
     'ALCOHOL_NOT_PERMITTED',
 ]
 FINDING_CODES: tuple[FindingCode, ...] = get_args(FindingCode)
+POLICY_PATH = Path(__file__).parent / 'policy.yaml'
 Severity = Literal['low', 'medium', 'high']
 CheckKind = Literal['rule', 'judgement']
 PrecedentScope = Literal['employee', 'supplier']
