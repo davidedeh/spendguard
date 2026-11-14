@@ -1,7 +1,7 @@
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, SecretStr
+from pydantic import BaseModel, ConfigDict, SecretStr, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from spendguard.branch_names import current_branch_name
@@ -57,6 +57,26 @@ class Settings(BaseSettings):
     worker_timeout_seconds: int
     queue_visibility_timeout_seconds: int
     sweeper_stuck_after_seconds: int
+
+    @model_validator(mode='after')
+    def _every_configured_provider_is_allowed(self) -> Self:
+        if self.app_environment == 'deployed' and self.allowed_providers != ('bedrock',):
+            raise ValueError(
+                'The deployed environment allows bedrock only, '
+                f'but ALLOWED_PROVIDERS is {list(self.allowed_providers)}'
+            )
+        for model_key, model in self.chat_models.items():
+            if model.provider not in self.allowed_providers:
+                raise ValueError(
+                    f'Chat model {model_key!r} uses provider {model.provider!r}, '
+                    f'which is not in ALLOWED_PROVIDERS {list(self.allowed_providers)}'
+                )
+        if self.embedding_model.provider not in self.allowed_providers:
+            raise ValueError(
+                f'The embedding model uses provider {self.embedding_model.provider!r}, '
+                f'which is not in ALLOWED_PROVIDERS {list(self.allowed_providers)}'
+            )
+        return self
 
     @classmethod
     def settings_customise_sources(

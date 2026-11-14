@@ -49,8 +49,8 @@ validate-template: ## Validate the SAM template with sam validate and cfn-lint
 seed: ## Load the seed data into the branch database (SEED_DIRECTORY=path to override)
 	uv run python -m spendguard.seed $(SEED_DIRECTORY)
 
-smoke-providers: ## Check structured output and tool calling against real providers
-	$(call not_built_yet,ticket #9)
+smoke-providers: ## Check structured output, tool calling and embeddings against real providers (not in CI)
+	uv run python -m spendguard.models.smoke
 
 draft-cases: ## Draft eval cases with provider rotation
 	$(call not_built_yet,ticket #11)
