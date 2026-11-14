@@ -52,8 +52,8 @@ seed: ## Load the seed data into the branch database (SEED_DIRECTORY=path to ove
 smoke-providers: ## Check structured output, tool calling and embeddings against real providers (not in CI)
 	uv run python -m spendguard.models.smoke
 
-draft-cases: ## Draft eval cases with provider rotation
-	$(call not_built_yet,ticket #11)
+draft-cases: ## Draft eval cases with provider rotation (calls the real drafting models)
+	uv run python -m spendguard.eval.drafting
 
 freeze: ## Validate the eval dataset and write the lock file
 	uv run python -m spendguard.eval.freeze
