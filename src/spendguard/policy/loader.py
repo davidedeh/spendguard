@@ -89,6 +89,7 @@ class _TypedParameters(BaseModel):
     grades: tuple[str, ...]
     approval_limits: dict[str, Decimal]
     budget_year_start: MonthDay
+    auto_approve_threshold: Decimal
 
     @field_validator('budget_year_start', mode='before')
     @classmethod
@@ -149,6 +150,7 @@ class Policy:
     grades: tuple[str, ...]
     approval_limits: Mapping[str, Decimal]
     budget_year_start: MonthDay
+    auto_approve_threshold: Decimal
     clauses: tuple[Clause, ...]
     finding_codes: Mapping[FindingCode, FindingCodeDefinition]
     applicability: Mapping[SubmissionType, tuple[FindingCode, ...]]
@@ -238,6 +240,7 @@ def load_policy(path: Path) -> Policy:
         grades=typed_parameters.grades,
         approval_limits=typed_parameters.approval_limits,
         budget_year_start=typed_parameters.budget_year_start,
+        auto_approve_threshold=typed_parameters.auto_approve_threshold,
         clauses=clauses,
         finding_codes=finding_codes,
         applicability={

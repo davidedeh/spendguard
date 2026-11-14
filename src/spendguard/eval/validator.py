@@ -78,6 +78,7 @@ def case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iterat
             ('cost centre', submission.cost_centre),
         ]
     yield from _currency_problems(submission, policy, seed_data)
+    yield from _route_problems(case, policy, seed_data)
     if case.scripted_review is not None:
         references.append(('approver', case.scripted_review.approver))
         finding_ids = {finding.id for finding in case.expected_findings}
@@ -115,6 +116,24 @@ def _currency_problems(
         yield problem
     if submission.currency == policy.base_currency and submission.claimed_exchange_rate is not None:
         yield (f'a {policy.base_currency} submission states a claimed exchange rate; leave it null')
+
+
+def _route_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iterator[str]:
+    if case.expected_route != 'auto_approve':
+        return
+    if case.expected_findings:
+        yield 'a case with findings routes to human_review, not auto_approve'
+    submission = case.submission
+    rate = (
+        Decimal(1)
+        if submission.currency == policy.base_currency
+        else seed_data.company_rate(submission.currency, submission.dated_on)
+    )
+    if rate is not None and submission.amount * rate > policy.auto_approve_threshold:
+        yield (
+            f'a case over the {policy.base_currency} {policy.auto_approve_threshold}'
+            ' auto-approve threshold routes to human_review, not auto_approve'
+        )
 
 
 def _split_problems(cases: Mapping[str, EvalCase]) -> Iterator[str]:

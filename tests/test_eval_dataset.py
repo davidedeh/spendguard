@@ -180,6 +180,65 @@ def test_a_claimed_exchange_rate_on_a_base_currency_submission_is_reported(sourc
     )
 
 
+def test_a_case_with_findings_routed_to_auto_approve_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-alcohol.yaml']['expected_route'] = 'auto_approve'
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-alcohol.yaml: a case with findings routes to human_review, not auto_approve',
+    )
+
+
+@pytest.mark.parametrize(
+    ('amount', 'problems'),
+    [
+        ('250.00', ()),
+        (
+            '250.01',
+            (
+                'test-clean.yaml: a case over the GBP 250 auto-approve threshold routes to'
+                ' human_review, not auto_approve',
+            ),
+        ),
+    ],
+)
+def test_a_case_over_the_auto_approve_threshold_routed_to_auto_approve_is_reported(
+    amount: str, problems: tuple[str, ...]
+) -> None:
+    cases = fixture_cases()
+    cases['test-clean.yaml']['submission']['amount'] = amount
+
+    report = validate(cases)
+
+    assert report.problems == problems
+
+
+@pytest.mark.parametrize(
+    ('amount', 'problems'),
+    [
+        ('280.00', ()),
+        (
+            '300.00',
+            (
+                'dev-clean.yaml: a case over the GBP 250 auto-approve threshold routes to'
+                ' human_review, not auto_approve',
+            ),
+        ),
+    ],
+)
+def test_the_auto_approve_threshold_applies_to_the_base_currency_amount(
+    amount: str, problems: tuple[str, ...]
+) -> None:
+    cases = fixture_cases()
+    cases['dev-clean.yaml']['submission']['amount'] = amount
+
+    report = validate(cases)
+
+    assert report.problems == problems
+
+
 def test_a_foreign_currency_claim_dated_before_the_first_rate_is_reported() -> None:
     cases = fixture_cases()
     cases['dev-clean.yaml']['submission']['spent_on'] = '2026-09-30'
@@ -468,7 +527,7 @@ def _set(content: dict[str, Any], path: tuple[str | int, ...], value: object) ->
 @pytest.mark.parametrize(
     ('source', 'path', 'value'),
     [
-        ('test-alcohol.yaml', ('expected_route',), 'auto_approve'),
+        ('test-clean.yaml', ('expected_route',), 'human_review'),
         ('test-alcohol.yaml', ('expected_recommendation',), 'none'),
         ('test-injection.yaml', ('expected_findings', 0, 'code'), 'RECEIPT_MISMATCH'),
         ('test-alcohol.yaml', ('expected_findings', 0, 'gold_clauses'), ['§2.2', '§2.1']),
