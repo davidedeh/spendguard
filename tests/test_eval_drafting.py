@@ -17,6 +17,7 @@ from spendguard.eval.drafting import DraftedCase, plan_requests, run
 from spendguard.models.fake import FakeChatModel, structured_response
 from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.settings import ChatModelSettings, Settings
+from spendguard.submission import SupplierInvoice
 
 FIXTURES = Path(__file__).parent / 'fixtures'
 FIXTURE_POLICY_PATH = FIXTURES / 'policy' / 'valid_policy.yaml'
@@ -52,7 +53,9 @@ DRAFTING_PLAN: dict[str, dict[str, Any]] = {
 }
 
 
-FailureKind = Literal['malformed', 'unknown_employee', 'wrong_code', 'no_review', 'decorated_json']
+FailureKind = Literal[
+    'malformed', 'unknown_employee', 'wrong_code', 'no_review', 'decorated_json', 'omitted_nulls'
+]
 
 
 class DraftingFake(FakeChatModel):
@@ -61,6 +64,7 @@ class DraftingFake(FakeChatModel):
     failure: FailureKind = 'malformed'
     tool_schemas: list[Any] = Field(default_factory=list)
     reviews_every_case: bool = False
+    drafts_invoices: bool = False
 
     def _generate(
         self,
@@ -74,7 +78,10 @@ class DraftingFake(FakeChatModel):
         request = str(messages[1].content).split('## Request')[-1].split('## Rejected draft')[0]
         drafted_case = self.draft(request)
         message = structured_response(drafted_case)
-        if len(self.received) <= self.failing_calls and self.failure != 'decorated_json':
+        if len(self.received) <= self.failing_calls and self.failure not in (
+            'decorated_json',
+            'omitted_nulls',
+        ):
             if self.failure == 'malformed':
                 del message.tool_calls[0]['args']['submission']
             elif self.failure == 'wrong_code':
@@ -92,6 +99,8 @@ class DraftingFake(FakeChatModel):
                     }
                 )
                 message = structured_response(failing_draft)
+        if self.failure == 'omitted_nulls' and len(self.received) <= self.failing_calls:
+            message.tool_calls[0]['args'] = _without_nulls(message.tool_calls[0]['args'])
         if self.structured_output_calls[-1][0] == 'json_schema':
             decoration = (
                 '**'
@@ -100,6 +109,34 @@ class DraftingFake(FakeChatModel):
             )
             message = AIMessage(content=decoration + json.dumps(message.tool_calls[0]['args']))
         return ChatResult(generations=[ChatGeneration(message=message)])
+
+    def submission(self) -> dict[str, Any]:
+        if self.drafts_invoices:
+            return {
+                'type': 'supplier_invoice',
+                'supplier': 'SUP-001',
+                'supplier_invoice_number': f'{self.model_id} call {len(self.received)}',
+                'purchase_order': None,
+                'cost_centre': 'CC-300',
+                'issued_on': '2026-10-06',
+                'amount': '240.00',
+                'currency': 'GBP',
+                'claimed_exchange_rate': None,
+                'description': 'Printer toner for the finance office.',
+            }
+        return {
+            'type': 'expense_claim',
+            'claimant': self.claimant,
+            'spent_on': '2026-10-06',
+            'category': 'subsistence',
+            'quantity': 1,
+            'merchant': f'{self.model_id} call {len(self.received)}',
+            'amount': '18.40',
+            'currency': 'GBP',
+            'claimed_exchange_rate': None,
+            'business_purpose': 'Working lunch with the audit team.',
+            'receipt_text': None,
+        }
 
     def draft(self, request: str, wrong_code: bool = False) -> DraftedCase:
         requested_codes = [code for code in FIXTURE_POLICY.finding_codes if code in request]
@@ -135,19 +172,7 @@ class DraftingFake(FakeChatModel):
             }
         return DraftedCase.model_validate(
             {
-                'submission': {
-                    'type': 'expense_claim',
-                    'claimant': self.claimant,
-                    'spent_on': '2026-10-06',
-                    'category': 'subsistence',
-                    'quantity': 1,
-                    'merchant': f'{self.model_id} call {len(self.received)}',
-                    'amount': '18.40',
-                    'currency': 'GBP',
-                    'claimed_exchange_rate': None,
-                    'business_purpose': 'Working lunch with the audit team.',
-                    'receipt_text': None,
-                },
+                'submission': self.submission(),
                 'expected_findings': findings,
                 'expected_route': 'human_review' if findings else 'auto_approve',
                 'expected_recommendation': 'none' if findings else 'approve',
@@ -156,14 +181,24 @@ class DraftingFake(FakeChatModel):
         )
 
 
+def _without_nulls(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _without_nulls(item) for key, item in value.items() if item is not None}
+    if isinstance(value, list):
+        return [_without_nulls(item) for item in value]
+    return value
+
+
 class DrafterPool:
     def __init__(
         self,
         claimants: dict[str, str] | None = None,
         failures: dict[str, tuple[FailureKind, int]] | None = None,
         reviews_every_case: bool = False,
+        drafts_invoices: bool = False,
     ) -> None:
         self.reviews_every_case = reviews_every_case
+        self.drafts_invoices = drafts_invoices
         self.claimants = claimants or {}
         self.failures = failures or {}
         self.models: dict[str, DraftingFake] = {}
@@ -176,6 +211,7 @@ class DrafterPool:
             failing_calls=failing_calls,
             failure=failure,
             reviews_every_case=self.reviews_every_case,
+            drafts_invoices=self.drafts_invoices and model_key == 'fake_nova',
         )
         self.models[model_key] = model
         return model
@@ -636,3 +672,29 @@ def test_a_json_reply_with_text_around_the_object_is_still_read(tmp_path: Path) 
 
     assert exit_code == 0
     assert len(drafters.models['fake_gpt'].received) == 9
+
+
+@pytest.mark.parametrize('drafts_invoices', [False, True])
+def test_a_draft_that_leaves_out_its_null_fields_is_read_with_them_as_null(
+    tmp_path: Path, drafts_invoices: bool
+) -> None:
+    drafters = DrafterPool(
+        failures={'fake_nova': ('omitted_nulls', 9)}, drafts_invoices=drafts_invoices
+    )
+
+    exit_code = run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    assert exit_code == 0
+    assert len(drafters.models['fake_nova'].received) == 9
+    nova_submissions = [
+        case.submission
+        for case in read_drafted_cases(tmp_path)
+        if case.drafted_by.model_id == 'fake-nova-drafter'
+    ]
+    assert len(nova_submissions) == 9
+    assert all(submission.claimed_exchange_rate is None for submission in nova_submissions)
+    if drafts_invoices:
+        assert all(
+            isinstance(submission, SupplierInvoice) and submission.purchase_order is None
+            for submission in nova_submissions
+        )

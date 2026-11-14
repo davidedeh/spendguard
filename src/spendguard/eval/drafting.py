@@ -204,7 +204,7 @@ def draft_case(
     if not isinstance(output, dict):
         raise DraftFailedError(str(result['parsing_error'] or 'the reply holds no draft'))
     try:
-        drafted = DraftedCase.model_validate(output)
+        drafted = DraftedCase.model_validate(_with_omitted_nulls(output, DRAFTED_CASE_SCHEMA))
     except ValidationError as error:
         raise DraftFailedError(
             '; '.join(describe_validation_error(detail) for detail in error.errors())
@@ -348,6 +348,35 @@ def run(arguments: list[str], run_settings: settings.Settings, build_model: Mode
     for file_name in documents:
         (options.drafts / file_name).replace(options.cases / file_name)
     return 0
+
+
+def _with_omitted_nulls(value: Any, schema: dict[str, Any]) -> Any:
+    if isinstance(value, list):
+        return [_with_omitted_nulls(item, schema.get('items', {})) for item in value]
+    if not isinstance(value, dict):
+        return value
+    properties = _object_schema_for(value, schema).get('properties', {})
+    filled = {
+        key: _with_omitted_nulls(item, properties.get(key, {})) for key, item in value.items()
+    }
+    for key, property_schema in properties.items():
+        if key not in filled and _allows_null(property_schema):
+            filled[key] = None
+    return filled
+
+
+def _object_schema_for(value: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
+    options: list[dict[str, Any]] = [
+        option for option in schema.get('anyOf', [schema]) if 'properties' in option
+    ]
+    for option in options:
+        if value.get('type') in option['properties'].get('type', {}).get('enum', []):
+            return option
+    return options[0] if options else {}
+
+
+def _allows_null(schema: dict[str, Any]) -> bool:
+    return any(option.get('type') == 'null' for option in schema.get('anyOf', [schema]))
 
 
 def _json_object_in(message: object) -> object:
