@@ -1,0 +1,12 @@
+- employee: EMP-001
+  approval_limit_gbp: 25000.00
+- employee: EMP-002
+  approval_limit_gbp: 25000.00
+- employee: EMP-003
+  approval_limit_gbp: 2500.00
+- employee: EMP-004
+  approval_limit_gbp: 2500.00
+- employee: EMP-005
+  approval_limit_gbp: 2500.00
+- employee: EMP-006
+  approval_limit_gbp: 2500.00

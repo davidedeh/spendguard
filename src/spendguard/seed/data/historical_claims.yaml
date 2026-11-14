@@ -1,0 +1,248 @@
+- reference: CLM-0001
+  claimant: EMP-007
+  spent_on: 2026-04-14
+  category: subsistence
+  quantity: 1
+  merchant: Station Café
+  amount: 18.40
+  currency: GBP
+- reference: CLM-0002
+  claimant: EMP-007
+  spent_on: 2026-04-15
+  category: accommodation
+  quantity: 2
+  merchant: Harbourside Hotel
+  amount: 268.00
+  currency: GBP
+- reference: CLM-0003
+  claimant: EMP-008
+  spent_on: 2026-05-06
+  category: taxi
+  quantity: 1
+  merchant: City Cabs
+  amount: 32.50
+  currency: GBP
+- reference: CLM-0004
+  claimant: EMP-003
+  spent_on: 2026-05-20
+  category: client_entertainment
+  quantity: 4
+  merchant: Old Mill Bistro
+  amount: 252.00
+  currency: GBP
+- reference: CLM-0005
+  claimant: EMP-009
+  spent_on: 2026-06-02
+  category: public_transport
+  quantity: 1
+  merchant: Northgate Rail
+  amount: 64.20
+  currency: GBP
+- reference: CLM-0006
+  claimant: EMP-010
+  spent_on: 2026-06-09
+  category: office_supplies
+  quantity: 3
+  merchant: Paper and Ink Supplies
+  amount: 41.85
+  currency: GBP
+- reference: CLM-0007
+  claimant: EMP-011
+  spent_on: 2026-06-17
+  category: accommodation
+  quantity: 3
+  merchant: Hotel du Parc
+  amount: 405.00
+  currency: EUR
+- reference: CLM-0008
+  claimant: EMP-011
+  spent_on: 2026-06-18
+  category: subsistence
+  quantity: 1
+  merchant: Brasserie de la Gare
+  amount: 29.50
+  currency: EUR
+- reference: CLM-0009
+  claimant: EMP-001
+  spent_on: 2026-06-24
+  category: client_entertainment
+  quantity: 6
+  merchant: Grand Central Diner
+  amount: 498.00
+  currency: USD
+- reference: CLM-0010
+  claimant: EMP-012
+  spent_on: 2026-07-07
+  category: taxi
+  quantity: 2
+  merchant: Yellow Line Taxis
+  amount: 58.00
+  currency: GBP
+- reference: CLM-0011
+  claimant: EMP-013
+  spent_on: 2026-07-15
+  category: subsistence
+  quantity: 3
+  merchant: The Copper Kettle
+  amount: 87.00
+  currency: GBP
+- reference: CLM-0012
+  claimant: EMP-014
+  spent_on: 2026-07-29
+  category: accommodation
+  quantity: 1
+  merchant: Bayview Suites
+  amount: 168.00
+  currency: USD
+- reference: CLM-0013
+  claimant: EMP-004
+  spent_on: 2026-08-04
+  category: public_transport
+  quantity: 1
+  merchant: Airport Express
+  amount: 22.00
+  currency: GBP
+- reference: CLM-0014
+  claimant: EMP-005
+  spent_on: 2026-08-12
+  category: accommodation
+  quantity: 2
+  merchant: Riverside Hotel
+  amount: 310.00
+  currency: GBP
+- reference: CLM-0015
+  claimant: EMP-005
+  spent_on: 2026-08-12
+  category: subsistence
+  quantity: 1
+  merchant: Riverside Hotel
+  amount: 38.60
+  currency: GBP
+- reference: CLM-0016
+  claimant: EMP-012
+  spent_on: 2026-08-29
+  category: subsistence
+  quantity: 1
+  merchant: Station Café
+  amount: 12.90
+  currency: GBP
+- reference: CLM-0017
+  claimant: EMP-012
+  spent_on: 2026-08-31
+  category: taxi
+  quantity: 1
+  merchant: Yellow Line Taxis
+  amount: 34.00
+  currency: GBP
+- reference: CLM-0018
+  claimant: EMP-015
+  spent_on: 2026-09-08
+  category: taxi
+  quantity: 1
+  merchant: City Cabs
+  amount: 27.00
+  currency: GBP
+- reference: CLM-0019
+  claimant: EMP-002
+  spent_on: 2026-09-16
+  category: accommodation
+  quantity: 2
+  merchant: Hotel du Parc
+  amount: 352.00
+  currency: EUR
+- reference: CLM-0020
+  claimant: EMP-002
+  spent_on: 2026-09-17
+  category: client_entertainment
+  quantity: 5
+  merchant: Marktplatz Café
+  amount: 390.00
+  currency: EUR
+- reference: CLM-0021
+  claimant: EMP-009
+  spent_on: 2026-09-23
+  category: office_supplies
+  quantity: 1
+  merchant: Paper and Ink Supplies
+  amount: 24.99
+  currency: GBP
+- reference: CLM-0022
+  claimant: EMP-010
+  spent_on: 2026-10-06
+  category: accommodation
+  quantity: 1
+  merchant: Harbourside Hotel
+  amount: 129.00
+  currency: GBP
+- reference: CLM-0023
+  claimant: EMP-010
+  spent_on: 2026-10-06
+  category: subsistence
+  quantity: 1
+  merchant: Harbourside Hotel
+  amount: 31.20
+  currency: GBP
+- reference: CLM-0024
+  claimant: EMP-012
+  spent_on: 2026-10-14
+  category: public_transport
+  quantity: 2
+  merchant: Northgate Rail
+  amount: 118.40
+  currency: GBP
+- reference: CLM-0025
+  claimant: EMP-007
+  spent_on: 2026-10-21
+  category: client_entertainment
+  quantity: 3
+  merchant: Canal Side Grill
+  amount: 141.00
+  currency: GBP
+- reference: CLM-0026
+  claimant: EMP-013
+  spent_on: 2026-10-28
+  category: taxi
+  quantity: 1
+  merchant: Yellow Line Taxis
+  amount: 36.50
+  currency: GBP
+- reference: CLM-0027
+  claimant: EMP-006
+  spent_on: 2026-11-03
+  category: subsistence
+  quantity: 2
+  merchant: Old Mill Bistro
+  amount: 84.00
+  currency: GBP
+- reference: CLM-0028
+  claimant: EMP-014
+  spent_on: 2026-11-05
+  category: accommodation
+  quantity: 4
+  merchant: Bayview Suites
+  amount: 620.00
+  currency: USD
+- reference: CLM-0029
+  claimant: EMP-011
+  spent_on: 2026-11-09
+  category: office_supplies
+  quantity: 2
+  merchant: Stationers Direct
+  amount: 37.00
+  currency: GBP
+- reference: CLM-0030
+  claimant: EMP-008
+  spent_on: 2026-11-10
+  category: taxi
+  quantity: 1
+  merchant: City Cabs
+  amount: 32.50
+  currency: GBP
+- reference: CLM-0031
+  claimant: EMP-003
+  spent_on: 2026-11-12
+  category: subsistence
+  quantity: 1
+  merchant: Station Café
+  amount: 22.80
+  currency: GBP
