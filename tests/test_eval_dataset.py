@@ -6,9 +6,9 @@ from typing import Any
 import pytest
 import yaml
 
-from spendguard.eval.cases import load_slice_plan, read_case_directory
+from spendguard.eval.cases import SlicePlan, load_slice_plan, read_case_directory
 from spendguard.eval.validator import DatasetReport, validate_dataset
-from spendguard.policy.loader import load_policy
+from spendguard.policy.loader import FindingCode, load_policy
 from spendguard.seed.loader import read_seed_directory
 
 FIXTURES = Path(__file__).parent / 'fixtures'
@@ -257,6 +257,85 @@ def test_judgement_positives_off_the_plan_for_a_code_are_reported() -> None:
         'the test split has 0 judgement_positive cases for WEEKEND_SPEND_UNJUSTIFIED,'
         ' the plan says 1',
         'the test split has 2 judgement_positive cases for PURPOSE_UNCLEAR, the plan says 1',
+    )
+
+
+def test_a_rule_coverage_case_without_one_rule_finding_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-missing-po.yaml']['expected_findings'].append(
+        {'id': 'split', 'code': 'SPLIT_PURCHASE', 'gold_clauses': ['§3.2']}
+    )
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-missing-po.yaml: a rule_coverage case needs exactly one rule finding, it has 2',
+    )
+
+
+RULE_CODES: list[FindingCode] = [
+    code for code, definition in FIXTURE_POLICY.finding_codes.items() if definition.check == 'rule'
+]
+
+
+def with_rule_coverage_cases(codes: list[FindingCode]) -> dict[str, Any]:
+    cases = fixture_cases()
+    template = cases.pop('test-missing-po.yaml')
+    for index, code in enumerate(codes, start=1):
+        case = copy.deepcopy(template)
+        case['id'] = f'test-rule-{index}'
+        case['submission']['supplier_invoice_number'] = f'R-{index}'
+        case['expected_findings'] = [
+            {
+                'id': 'rule',
+                'code': code,
+                'gold_clauses': [FIXTURE_POLICY.finding_codes[code].clause.reference],
+            }
+        ]
+        cases[f'test-rule-{index}.yaml'] = case
+    return cases
+
+
+def plan_with_test_rule_coverage(count: int) -> SlicePlan:
+    test_plan = FIXTURE_SLICE_PLAN.test
+    slices = test_plan.slices.model_copy(update={'rule_coverage': count})
+    return FIXTURE_SLICE_PLAN.model_copy(
+        update={'test': test_plan.model_copy(update={'slices': slices})}
+    )
+
+
+def test_rule_coverage_spread_evenly_over_the_rule_codes_has_no_problems() -> None:
+    cases = with_rule_coverage_cases(list(reversed(RULE_CODES)))
+
+    report = validate_dataset(
+        cases, FIXTURE_POLICY, FIXTURE_SEED_DATA, plan_with_test_rule_coverage(len(RULE_CODES))
+    )
+
+    assert report.problems == ()
+
+
+def test_rule_coverage_off_an_even_spread_over_the_rule_codes_is_reported() -> None:
+    cases = with_rule_coverage_cases([*RULE_CODES[:-1], 'MISSING_PO'])
+
+    report = validate_dataset(
+        cases, FIXTURE_POLICY, FIXTURE_SEED_DATA, plan_with_test_rule_coverage(len(RULE_CODES))
+    )
+
+    assert report.problems == (
+        'the test split has 2 rule_coverage cases for MISSING_PO, the plan says 1',
+        f'the test split has 0 rule_coverage cases for {RULE_CODES[-1]}, the plan says 1',
+    )
+
+
+def test_fewer_rule_coverage_cases_than_rule_codes_must_each_cover_a_different_code() -> None:
+    cases = with_rule_coverage_cases(['MISSING_PO', 'BUDGET_EXCEEDED', 'MISSING_PO'])
+
+    report = validate_dataset(
+        cases, FIXTURE_POLICY, FIXTURE_SEED_DATA, plan_with_test_rule_coverage(3)
+    )
+
+    assert report.problems == (
+        'the test split has 2 rule_coverage cases for MISSING_PO, the plan says at most 1',
     )
 
 

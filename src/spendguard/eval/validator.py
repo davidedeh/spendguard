@@ -10,8 +10,8 @@ from typing import get_args
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 
-from spendguard.eval.cases import EvalCase, Slice, SlicePlan, Split
-from spendguard.policy.loader import FindingCode, Policy
+from spendguard.eval.cases import SINGLE_FINDING_SLICES, EvalCase, Slice, SlicePlan, Split
+from spendguard.policy.loader import CheckKind, FindingCode, Policy
 from spendguard.seed.schema import SeedData
 from spendguard.submission import ExpenseClaim, SupplierInvoice
 
@@ -39,6 +39,7 @@ def validate_dataset(
     problems.extend(_slice_count_problems(cases, plan))
     if len(parsed_cases) == len(cases):
         problems.extend(_judgement_and_memory_problems(list(parsed_cases.values()), policy, plan))
+        problems.extend(_rule_coverage_problems(list(parsed_cases.values()), policy, plan))
     if problems:
         return DatasetReport(problems=tuple(problems), dataset_hash=None)
     return DatasetReport(problems=(), dataset_hash=_dataset_hash(list(parsed_cases.values())))
@@ -57,13 +58,11 @@ def _case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Itera
         for gold_clause in finding.gold_clauses:
             if gold_clause not in clause_references:
                 yield f'gold clause {gold_clause} is not in the policy'
-    if case.slice == 'judgement_positive':
-        judgement_finding_count = len(_judgement_codes(case, policy))
-        if judgement_finding_count != 1:
-            yield (
-                'a judgement_positive case needs exactly one judgement finding,'
-                f' it has {judgement_finding_count}'
-            )
+    if case.slice in SINGLE_FINDING_SLICES:
+        check = SINGLE_FINDING_SLICES[case.slice]
+        finding_count = len(_codes_with_check(case, policy, check))
+        if finding_count != 1:
+            yield (f'a {case.slice} case needs exactly one {check} finding, it has {finding_count}')
     submission = case.submission
     references: list[tuple[str, str | None]]
     if isinstance(submission, ExpenseClaim):
@@ -164,11 +163,11 @@ def _judgement_and_memory_problems(
             code
             for case in split_cases
             if case.slice == 'judgement_positive'
-            for code in _judgement_codes(case, policy)
+            for code in _codes_with_check(case, policy, 'judgement')
         )
-        for code, definition in policy.finding_codes.items():
+        for code in policy.codes_with_check('judgement'):
             count = code_counts[code]
-            if definition.check == 'judgement' and count != split_plan.judgement_positives_per_code:
+            if count != split_plan.judgement_positives_per_code:
                 yield (
                     f'the {split} split has {count} judgement_positive cases for {code},'
                     f' the plan says {split_plan.judgement_positives_per_code}'
@@ -181,11 +180,38 @@ def _judgement_and_memory_problems(
             )
 
 
-def _judgement_codes(case: EvalCase, policy: Policy) -> list[FindingCode]:
+def _rule_coverage_problems(
+    cases: list[EvalCase], policy: Policy, plan: SlicePlan
+) -> Iterator[str]:
+    rule_codes = policy.codes_with_check('rule')
+    for split in get_args(Split):
+        planned_count = plan.for_split(split).slices.rule_coverage
+        fewest, remainder = divmod(planned_count, len(rule_codes))
+        most = fewest + (remainder > 0)
+        code_counts = Counter(
+            code
+            for case in cases
+            if case.split == split and case.slice == 'rule_coverage'
+            for code in _codes_with_check(case, policy, 'rule')
+        )
+        for code in rule_codes:
+            count = code_counts[code]
+            if fewest <= count <= most:
+                continue
+            if fewest == most:
+                expectation = f'the plan says {fewest}'
+            elif count < fewest:
+                expectation = f'the plan says at least {fewest}'
+            else:
+                expectation = f'the plan says at most {most}'
+            yield f'the {split} split has {count} rule_coverage cases for {code}, {expectation}'
+
+
+def _codes_with_check(case: EvalCase, policy: Policy, check: CheckKind) -> list[FindingCode]:
     return [
         finding.code
         for finding in case.expected_findings
-        if policy.finding_codes[finding.code].check == 'judgement'
+        if policy.finding_codes[finding.code].check == check
     ]
 
 

@@ -10,10 +10,10 @@ from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
 from settings_factory import make_test_settings
-from spendguard.eval.cases import DraftedBy, EvalCase, read_case_directory
-from spendguard.eval.drafting import DraftedCase, run
+from spendguard.eval.cases import DraftedBy, EvalCase, load_slice_plan, read_case_directory
+from spendguard.eval.drafting import DraftedCase, plan_requests, run
 from spendguard.models.fake import FakeChatModel, structured_response
-from spendguard.policy.loader import load_policy
+from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.settings import ModelSettings, Settings
 
 FIXTURES = Path(__file__).parent / 'fixtures'
@@ -66,18 +66,14 @@ class DraftingFake(FakeChatModel):
         return ChatResult(generations=[ChatGeneration(message=structured_response(drafted_case))])
 
     def draft(self, request: str) -> DraftedCase:
-        judgement_codes = [
-            code
-            for code, definition in FIXTURE_POLICY.finding_codes.items()
-            if definition.check == 'judgement' and code in request
-        ]
+        requested_codes = [code for code in FIXTURE_POLICY.finding_codes if code in request]
         findings: list[dict[str, Any]] = [
             {
                 'id': 'finding-1',
                 'code': code,
                 'gold_clauses': [FIXTURE_POLICY.finding_codes[code].clause.reference],
             }
-            for code in judgement_codes
+            for code in requested_codes
         ]
         scripted_review = None
         if 'scripted review' in request:
@@ -300,3 +296,54 @@ def test_prompts_name_each_expense_category_key_with_the_unit_its_quantity_count
         '- accommodation (Hotels): limit applies per night\n'
         '- taxi (Taxis): limit applies per journey\n'
     ) in prompt_text
+
+
+def test_rule_coverage_requests_spread_over_the_rule_codes_of_the_policy() -> None:
+    plan = load_slice_plan(Path(__file__).parents[1] / 'evals' / 'slice_plan.yaml')
+    policy = load_policy(POLICY_PATH)
+
+    requests = plan_requests(plan, policy, tuple(DRAFTER_MODEL_IDS))
+
+    rule_codes = Counter(
+        request.finding_code
+        for request in requests
+        if request.split == 'test' and request.slice == 'rule_coverage'
+    )
+    assert rule_codes == Counter(
+        [
+            'OVER_CATEGORY_LIMIT',
+            'MISSING_RECEIPT',
+            'DUPLICATE_SUBMISSION',
+            'SPLIT_PURCHASE',
+            'NON_APPROVED_SUPPLIER',
+            'MISSING_PO',
+            'BUDGET_EXCEEDED',
+            'CURRENCY_ANOMALY',
+        ]
+    )
+    dev_rule_codes = [
+        request.finding_code
+        for request in requests
+        if request.split == 'dev' and request.slice == 'rule_coverage'
+    ]
+    assert dev_rule_codes == ['OVER_CATEGORY_LIMIT', 'MISSING_RECEIPT']
+
+
+def test_each_rule_coverage_prompt_names_its_one_rule_finding(tmp_path: Path) -> None:
+    drafters = DrafterPool()
+
+    run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    cases = read_drafted_cases(tmp_path)
+    rule_coverage_codes = sorted(
+        finding.code
+        for case in cases
+        if case.split == 'test' and case.slice == 'rule_coverage'
+        for finding in case.expected_findings
+    )
+    assert rule_coverage_codes == [
+        'DUPLICATE_SUBMISSION',
+        'MISSING_RECEIPT',
+        'OVER_CATEGORY_LIMIT',
+        'SPLIT_PURCHASE',
+    ]

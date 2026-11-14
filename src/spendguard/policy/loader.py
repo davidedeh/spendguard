@@ -122,6 +122,11 @@ class Policy:
     expense_categories: Mapping[str, ExpenseCategory]
     rendered_text: str
 
+    def codes_with_check(self, check: CheckKind) -> tuple[FindingCode, ...]:
+        return tuple(
+            code for code, definition in self.finding_codes.items() if definition.check == check
+        )
+
     @property
     def base_currency(self) -> str:
         value = self.parameters['base_currency']

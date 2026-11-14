@@ -4,7 +4,7 @@ from typing import Annotated, Literal, Self
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from spendguard.policy.loader import FindingCode
+from spendguard.policy.loader import CheckKind, FindingCode
 from spendguard.seed.schema import EmployeeReference
 from spendguard.settings import Provider
 from spendguard.submission import Submission
@@ -16,6 +16,10 @@ Recommendation = Literal['approve', 'reject', 'none']
 Disposition = Literal['upheld', 'dismissed']
 NonEmptyText = Annotated[str, StringConstraints(min_length=1)]
 Count = Annotated[int, Field(ge=0)]
+SINGLE_FINDING_SLICES: dict[Slice, CheckKind] = {
+    'judgement_positive': 'judgement',
+    'rule_coverage': 'rule',
+}
 
 
 class _CaseModel(BaseModel):
