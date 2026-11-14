@@ -108,12 +108,11 @@ def _category_problems(claim: ExpenseClaim, policy: Policy) -> Iterator[str]:
 def _currency_problems(
     submission: ExpenseClaim | SupplierInvoice, policy: Policy, seed_data: SeedData
 ) -> Iterator[str]:
-    dated_on = submission.spent_on if isinstance(submission, ExpenseClaim) else submission.issued_on
-    if (
-        submission.currency != policy.base_currency
-        and seed_data.company_rate(submission.currency, dated_on) is None
-    ):
-        yield f'no company rate for {submission.currency} on {dated_on.isoformat()}'
+    problem = seed_data.company_rate_problem(
+        submission.currency, submission.dated_on, policy.base_currency
+    )
+    if problem is not None:
+        yield problem
 
 
 def _split_problems(cases: Mapping[str, EvalCase]) -> Iterator[str]:

@@ -51,8 +51,7 @@ class PurchaseOrder(StrictModel):
     currency: CurrencyCode
 
 
-class HistoricalClaim(StrictModel):
-    reference: ClaimReference
+class ExpenseClaimFields(StrictModel):
     claimant: EmployeeReference
     spent_on: datetime.date
     category: str
@@ -61,9 +60,12 @@ class HistoricalClaim(StrictModel):
     amount: Amount
     currency: CurrencyCode
 
+    @property
+    def dated_on(self) -> datetime.date:
+        return self.spent_on
 
-class HistoricalInvoice(StrictModel):
-    reference: InvoiceReference
+
+class SupplierInvoiceFields(StrictModel):
     supplier: SupplierReference
     supplier_invoice_number: str
     purchase_order: PurchaseOrderReference | None
@@ -72,11 +74,23 @@ class HistoricalInvoice(StrictModel):
     amount: Amount
     currency: CurrencyCode
 
+    @property
+    def dated_on(self) -> datetime.date:
+        return self.issued_on
+
     @model_validator(mode='after')
     def _cost_centre_comes_from_the_purchase_order(self) -> Self:
         if self.purchase_order is not None and self.cost_centre is not None:
             raise ValueError('an invoice against a purchase order takes its cost centre from it')
         return self
+
+
+class HistoricalClaim(ExpenseClaimFields):
+    reference: ClaimReference
+
+
+class HistoricalInvoice(SupplierInvoiceFields):
+    reference: InvoiceReference
 
 
 class FxRate(StrictModel):
@@ -111,19 +125,28 @@ class SeedData(StrictModel):
             None,
         )
 
-    def invoice_requester(
-        self, purchase_order: str | None, cost_centre: str | None
-    ) -> EmployeeReference | None:
-        if purchase_order is not None:
+    def company_rate_problem(
+        self, currency: str, on: datetime.date, base_currency: str
+    ) -> str | None:
+        if currency == base_currency or self.company_rate(currency, on) is not None:
+            return None
+        return f'no company rate for {currency} on {on.isoformat()}'
+
+    def invoice_requester(self, invoice: SupplierInvoiceFields) -> EmployeeReference | None:
+        if invoice.purchase_order is not None:
             return next(
                 (
                     order.raised_by
                     for order in self.purchase_orders
-                    if order.reference == purchase_order
+                    if order.reference == invoice.purchase_order
                 ),
                 None,
             )
         return next(
-            (centre.owner for centre in self.cost_centres if centre.reference == cost_centre),
+            (
+                centre.owner
+                for centre in self.cost_centres
+                if centre.reference == invoice.cost_centre
+            ),
             None,
         )

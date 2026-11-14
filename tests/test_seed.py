@@ -12,7 +12,7 @@ from psycopg import sql
 
 from spendguard.seed.integrity import check_seed_integrity
 from spendguard.seed.loader import SeedIntegrityError, load_seed_data, read_seed_directory
-from spendguard.seed.schema import SeedData
+from spendguard.seed.schema import HistoricalInvoice, SeedData
 
 FIXTURE_SEED_DIRECTORY = Path(__file__).parent / 'fixtures' / 'seed'
 
@@ -140,8 +140,18 @@ def test_an_invoice_requester_is_the_po_raiser_else_the_cost_centre_owner(
     purchase_order: str | None, cost_centre: str | None, requester: str | None
 ) -> None:
     seed_data = read_seed_directory(FIXTURE_SEED_DIRECTORY)
+    invoice = HistoricalInvoice(
+        reference='INV-0099',
+        supplier='SUP-001',
+        supplier_invoice_number='A-99',
+        purchase_order=purchase_order,
+        cost_centre=cost_centre,
+        issued_on=datetime.date(2026, 10, 1),
+        amount=Decimal('10.00'),
+        currency='GBP',
+    )
 
-    assert seed_data.invoice_requester(purchase_order, cost_centre) == requester
+    assert seed_data.invoice_requester(invoice) == requester
 
 
 def test_the_fixture_seed_data_has_no_integrity_problems() -> None:

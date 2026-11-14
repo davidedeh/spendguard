@@ -108,7 +108,7 @@ def _missing_invoice_requesters(seed_data: SeedData) -> Iterator[str]:
             continue
         if invoice.cost_centre is not None and invoice.cost_centre not in known_cost_centres:
             continue
-        if seed_data.invoice_requester(None, invoice.cost_centre) is None:
+        if seed_data.invoice_requester(invoice) is None:
             yield (
                 f'historical invoice {invoice.reference}: no requester, since it has no'
                 ' purchase order and no cost centre owner'

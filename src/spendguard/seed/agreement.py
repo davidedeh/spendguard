@@ -108,7 +108,7 @@ def _priced_records(seed_data: SeedData) -> Iterator[_PricedRecord]:
             label=f'historical claim {claim.reference}',
             amount=claim.amount,
             currency=claim.currency,
-            dated_on=claim.spent_on,
+            dated_on=claim.dated_on,
             charged_to=employee_cost_centres.get(claim.claimant),
         )
     for invoice in seed_data.historical_invoices:
@@ -116,7 +116,7 @@ def _priced_records(seed_data: SeedData) -> Iterator[_PricedRecord]:
             label=f'historical invoice {invoice.reference}',
             amount=invoice.amount,
             currency=invoice.currency,
-            dated_on=invoice.issued_on,
+            dated_on=invoice.dated_on,
             charged_to=(
                 invoice.cost_centre
                 if invoice.purchase_order is None
@@ -174,15 +174,12 @@ def _currency_problems(seed_data: SeedData, policy: Policy) -> Iterator[str]:
     for record in _priced_records(seed_data):
         if record.currency not in accepted_currencies:
             yield f'{record.label}: currency {record.currency} is not an accepted currency'
-        elif (
-            record.currency != base_currency
-            and record.dated_on is not None
-            and seed_data.company_rate(record.currency, record.dated_on) is None
-        ):
-            yield (
-                f'{record.label}: no company rate for {record.currency}'
-                f' on {record.dated_on.isoformat()}'
+        elif record.dated_on is not None and (
+            problem := seed_data.company_rate_problem(
+                record.currency, record.dated_on, base_currency
             )
+        ):
+            yield f'{record.label}: {problem}'
 
 
 def _claim_problems(seed_data: SeedData, policy: Policy) -> Iterator[str]:

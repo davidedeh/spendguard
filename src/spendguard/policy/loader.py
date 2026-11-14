@@ -12,6 +12,7 @@ import yaml
 from pydantic import TypeAdapter, ValidationError
 
 from spendguard.strict_model import StrictModel
+from spendguard.submission import SubmissionType
 
 FindingCode = Literal[
     'OVER_CATEGORY_LIMIT',
@@ -32,7 +33,6 @@ POLICY_PATH = Path(__file__).parent / 'policy.yaml'
 Severity = Literal['low', 'medium', 'high']
 CheckKind = Literal['rule', 'judgement']
 PrecedentScope = Literal['employee', 'supplier']
-SubmissionType = Literal['expense_claim', 'supplier_invoice']
 
 type ParameterValue = int | Decimal | str | list[ParameterValue] | dict[str, ParameterValue]
 
