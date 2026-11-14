@@ -9,6 +9,7 @@ A portfolio project: an agent that reviews expense claims and supplier invoices 
 - `docs/adr/`: decisions that constrain the design. Respect them; propose a new ADR rather than working around one.
 - `docs/references.md`: public policies used for structure and tone only. Never copy their text.
 - `docs/draft-spec.md` is superseded by the specs and ADRs. Do not build from it.
+- `AGENTS.md`: the stack, the code layout, the test fixtures and the commands.
 
 ## AWS
 
