@@ -77,8 +77,9 @@ def test_an_invoice_against_a_po_takes_its_cost_centre_from_the_po(tmp_path: Pat
     invoices[0]['cost_centre'] = 'CC-200'
     directory = fixture_copy(tmp_path / 'seed', historical_invoices=invoices)
 
-    with pytest.raises(pydantic.ValidationError, match=r'historical_invoices\.0\n'):
+    with pytest.raises(pydantic.ValidationError, match=r'historical_invoices\.0\n') as raised:
         read_seed_directory(directory)
+    assert 'give purchase_order or cost_centre, not both' in str(raised.value)
 
 
 @pytest.mark.parametrize(

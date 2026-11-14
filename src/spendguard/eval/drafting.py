@@ -1,13 +1,15 @@
 import itertools
+import json
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import get_args
+from pathlib import Path
+from typing import Any, get_args
 
 import yaml
-from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.utils.json_schema import dereference_refs
 from pydantic import ValidationError
 
 from spendguard import settings
@@ -30,11 +32,13 @@ from spendguard.models.factory import build_chat_model
 from spendguard.policy.loader import FindingCode, Policy, load_policy
 from spendguard.seed.loader import read_seed_directory
 from spendguard.seed.schema import SeedData
+from spendguard.settings import StructuredOutputMethod
 from spendguard.strict_model import StrictModel
 from spendguard.submission import Submission
 
 ModelBuilder = Callable[[settings.Settings, str], BaseChatModel]
 DRAFT_RETRIES = 2
+DRAFT_DIRECTORY = Path('evals/drafts')
 
 INSTRUCTIONS = """\
 You draft one evaluation case for an agent that reviews expense claims and supplier \
@@ -69,6 +73,57 @@ class DraftedCase(StrictModel):
     expected_route: Route
     expected_recommendation: Recommendation
     scripted_review: ScriptedReview | None = None
+
+
+def _with_enum_tags(schema: Any) -> Any:
+    if isinstance(schema, list):
+        return [_with_enum_tags(value) for value in schema]
+    if not isinstance(schema, dict):
+        return schema
+    converted: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key == 'const':
+            converted['enum'] = [value]
+        elif key == 'oneOf':
+            converted['anyOf'] = _with_enum_tags(value)
+        elif key != 'discriminator':
+            converted[key] = _with_enum_tags(value)
+    return converted
+
+
+def _inline_references(schema: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in dereference_refs(schema).items() if key != '$defs'}
+
+
+DRAFTED_CASE_SCHEMA: dict[str, Any] = _inline_references(
+    _with_enum_tags(DraftedCase.model_json_schema())
+)
+
+UNLOCKABLE_KEYWORDS = frozenset(
+    {'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'}
+    | {'minLength', 'maxLength'}
+)
+
+
+def _lockable(schema: Any) -> Any:
+    if isinstance(schema, list):
+        return [_lockable(value) for value in schema]
+    if not isinstance(schema, dict):
+        return schema
+    lockable = {
+        key: _lockable(value)
+        for key, value in schema.items()
+        if key not in UNLOCKABLE_KEYWORDS and not (key == 'minItems' and value > 1)
+    }
+    if 'properties' in lockable:
+        lockable['additionalProperties'] = False
+    return lockable
+
+
+DRAFTED_CASE_SCHEMAS: dict[StructuredOutputMethod, dict[str, Any]] = {
+    'function_calling': DRAFTED_CASE_SCHEMA,
+    'json_schema': _lockable(DRAFTED_CASE_SCHEMA),
+}
 
 
 @dataclass(frozen=True)
@@ -123,52 +178,80 @@ def _spread(codes: tuple[FindingCode, ...], count: int) -> list[FindingCode]:
 
 
 def draft_case(
-    request: CaseRequest, model: BaseChatModel, model_settings: settings.ModelSettings, context: str
+    request: CaseRequest,
+    model: BaseChatModel,
+    model_settings: settings.ChatModelSettings,
+    context: str,
+    rejection: str | None = None,
 ) -> EvalCase:
-    prompt = [
-        SystemMessage(content=INSTRUCTIONS),
-        HumanMessage(content=f'{context}\n\n## Request\n\n{_describe_request(request)}'),
-    ]
+    request_text = f'{context}\n\n## Request\n\n{_describe_request(request)}'
+    if rejection is not None:
+        request_text += (
+            '\n\n## Rejected draft\n\n'
+            f'Your previous draft for this request was rejected: {rejection}. '
+            'Draft the case again without these problems.'
+        )
+    prompt = [SystemMessage(content=INSTRUCTIONS), HumanMessage(content=request_text)]
+    method = model_settings.structured_output_method
+    result = model.with_structured_output(
+        DRAFTED_CASE_SCHEMAS[method], method=method, include_raw=True
+    ).invoke(prompt)
+    if not isinstance(result, dict):
+        raise DraftFailedError(f'expected a reply, the model returned {type(result).__name__}')
+    output = result['parsed']
+    if output is None:
+        output = _json_object_in(result['raw'])
+    if not isinstance(output, dict):
+        raise DraftFailedError(str(result['parsing_error'] or 'the reply holds no draft'))
     try:
-        drafted = model.with_structured_output(DraftedCase).invoke(prompt)
+        drafted = DraftedCase.model_validate(output)
     except ValidationError as error:
         raise DraftFailedError(
             '; '.join(describe_validation_error(detail) for detail in error.errors())
         ) from error
-    except OutputParserException as error:
-        raise DraftFailedError(str(error)) from error
-    if not isinstance(drafted, DraftedCase):
-        raise DraftFailedError(
-            f'expected a DraftedCase, the model returned {type(drafted).__name__}'
-        )
     return EvalCase(
         id=request.case_id,
         split=request.split,
         slice=request.slice,
         drafted_by=DraftedBy(provider=model_settings.provider, model_id=model_settings.model_id),
-        **dict(drafted),
+        **dict(drafted, scripted_review=drafted.scripted_review if request.memory_pair else None),
     )
 
 
 @dataclass(frozen=True)
 class _Drafter:
     model: BaseChatModel
-    model_settings: settings.ModelSettings
+    model_settings: settings.ChatModelSettings
 
 
 def _draft_until_valid(
     request: CaseRequest, drafter: _Drafter, context: str, policy: Policy, seed_data: SeedData
 ) -> EvalCase | DraftFailedError:
     outcome: EvalCase | DraftFailedError = DraftFailedError('no draft was attempted')
+    rejection: str | None = None
     for _ in range(1 + DRAFT_RETRIES):
         try:
-            outcome = draft_case(request, drafter.model, drafter.model_settings, context)
+            outcome = draft_case(request, drafter.model, drafter.model_settings, context, rejection)
         except DraftFailedError as error:
             outcome = error
+            rejection = str(error)
             continue
-        if not any(case_problems(outcome, policy, seed_data)):
+        problems = [
+            *case_problems(outcome, policy, seed_data),
+            *_request_problems(request, outcome),
+        ]
+        if not problems:
             return outcome
+        rejection = '; '.join(problems)
     return outcome
+
+
+def _request_problems(request: CaseRequest, case: EvalCase) -> Iterator[str]:
+    codes = {finding.code for finding in case.expected_findings}
+    if request.finding_code is not None and request.finding_code not in codes:
+        yield f'the request asks for a {request.finding_code} finding and the draft has none'
+    if request.memory_pair and case.scripted_review is None:
+        yield 'the request asks for a scripted review and the draft has none'
 
 
 def _describe_request(request: CaseRequest) -> str:
@@ -208,6 +291,7 @@ def _context(policy: Policy, seed_data: SeedData) -> str:
 
 def run(arguments: list[str], run_settings: settings.Settings, build_model: ModelBuilder) -> int:
     parser = dataset_argument_parser('Draft eval cases with drafter rotation')
+    parser.add_argument('--drafts', type=Path, default=DRAFT_DIRECTORY)
     options = parser.parse_args(arguments)
     if options.lock.exists():
         print(
@@ -231,12 +315,19 @@ def run(arguments: list[str], run_settings: settings.Settings, build_model: Mode
         )
         for key in run_settings.drafting_model_keys
     }
-    outcomes = {
-        f'{request.case_id}.yaml': _draft_until_valid(
-            request, drafters[request.drafter_key], context, policy, seed_data
-        )
-        for request in plan_requests(plan, policy, run_settings.drafting_model_keys)
-    }
+    options.drafts.mkdir(parents=True, exist_ok=True)
+    outcomes: dict[str, EvalCase | DraftFailedError] = {}
+    for request in plan_requests(plan, policy, run_settings.drafting_model_keys):
+        drafter = drafters[request.drafter_key]
+        staged_path = options.drafts / f'{request.case_id}.yaml'
+        staged_case = _staged_case(staged_path, request, drafter, policy, seed_data)
+        if staged_case is not None:
+            outcomes[staged_path.name] = staged_case
+            continue
+        outcome = _draft_until_valid(request, drafter, context, policy, seed_data)
+        if isinstance(outcome, EvalCase):
+            _write_case(staged_path, outcome)
+        outcomes[staged_path.name] = outcome
     documents = {
         source: outcome.model_dump(mode='json')
         for source, outcome in outcomes.items()
@@ -254,9 +345,44 @@ def run(arguments: list[str], run_settings: settings.Settings, build_model: Mode
         print('Nothing written: the drafted cases have the problems above', file=sys.stderr)
         return 1
     options.cases.mkdir(parents=True, exist_ok=True)
-    for file_name, document in documents.items():
-        (options.cases / file_name).write_text(yaml.safe_dump(document, sort_keys=False))
+    for file_name in documents:
+        (options.drafts / file_name).replace(options.cases / file_name)
     return 0
+
+
+def _json_object_in(message: object) -> object:
+    if not isinstance(message, BaseMessage):
+        return None
+    start, end = message.text.find('{'), message.text.rfind('}')
+    if start == -1 or end < start:
+        return None
+    try:
+        return json.loads(message.text[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+
+
+def _write_case(path: Path, case: EvalCase) -> None:
+    path.write_text(yaml.safe_dump(case.model_dump(mode='json'), sort_keys=False))
+
+
+def _staged_case(
+    path: Path, request: CaseRequest, drafter: _Drafter, policy: Policy, seed_data: SeedData
+) -> EvalCase | None:
+    if not path.exists():
+        return None
+    try:
+        case = EvalCase.model_validate(yaml.safe_load(path.read_text()))
+    except ValidationError:
+        return None
+    drafted_by = DraftedBy(
+        provider=drafter.model_settings.provider, model_id=drafter.model_settings.model_id
+    )
+    if (case.split, case.slice, case.drafted_by) != (request.split, request.slice, drafted_by):
+        return None
+    if any(case_problems(case, policy, seed_data)) or any(_request_problems(request, case)):
+        return None
+    return case
 
 
 def main(arguments: list[str]) -> int:

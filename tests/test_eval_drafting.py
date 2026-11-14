@@ -1,3 +1,4 @@
+import json
 from collections import Counter
 from pathlib import Path
 from typing import Any, Literal
@@ -6,8 +7,9 @@ import pytest
 import yaml
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from pydantic import Field
 
 from settings_factory import make_test_settings
 from spendguard.eval.cases import DraftedBy, EvalCase, load_slice_plan, read_case_directory
@@ -22,7 +24,7 @@ FIXTURE_POLICY = load_policy(FIXTURE_POLICY_PATH)
 DRAFTER_MODEL_IDS = {
     'fake_claude': 'fake-claude-drafter',
     'fake_gpt': 'fake-gpt-drafter',
-    'fake_gemini': 'fake-gemini-drafter',
+    'fake_nova': 'fake-nova-drafter',
 }
 DRAFTING_PLAN: dict[str, dict[str, Any]] = {
     'test': {
@@ -50,13 +52,15 @@ DRAFTING_PLAN: dict[str, dict[str, Any]] = {
 }
 
 
-FailureKind = Literal['malformed', 'unknown_employee']
+FailureKind = Literal['malformed', 'unknown_employee', 'wrong_code', 'no_review', 'decorated_json']
 
 
 class DraftingFake(FakeChatModel):
     claimant: str = 'EMP-003'
     failing_calls: int = 0
     failure: FailureKind = 'malformed'
+    tool_schemas: list[Any] = Field(default_factory=list)
+    reviews_every_case: bool = False
 
     def _generate(
         self,
@@ -66,12 +70,19 @@ class DraftingFake(FakeChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         self.received.append(list(messages))
-        request = str(messages[-1].content).split('## Request')[-1]
+        self.tool_schemas.append(kwargs.get('tools'))
+        request = str(messages[1].content).split('## Request')[-1].split('## Rejected draft')[0]
         drafted_case = self.draft(request)
         message = structured_response(drafted_case)
-        if len(self.received) <= self.failing_calls:
+        if len(self.received) <= self.failing_calls and self.failure != 'decorated_json':
             if self.failure == 'malformed':
                 del message.tool_calls[0]['args']['submission']
+            elif self.failure == 'wrong_code':
+                message = structured_response(self.draft(request, wrong_code=True))
+            elif self.failure == 'no_review':
+                message = structured_response(
+                    drafted_case.model_copy(update={'scripted_review': None})
+                )
             else:
                 failing_draft = drafted_case.model_copy(
                     update={
@@ -81,10 +92,27 @@ class DraftingFake(FakeChatModel):
                     }
                 )
                 message = structured_response(failing_draft)
+        if self.structured_output_calls[-1][0] == 'json_schema':
+            decoration = (
+                '**'
+                if self.failure == 'decorated_json' and len(self.received) <= self.failing_calls
+                else ''
+            )
+            message = AIMessage(content=decoration + json.dumps(message.tool_calls[0]['args']))
         return ChatResult(generations=[ChatGeneration(message=message)])
 
-    def draft(self, request: str) -> DraftedCase:
+    def draft(self, request: str, wrong_code: bool = False) -> DraftedCase:
         requested_codes = [code for code in FIXTURE_POLICY.finding_codes if code in request]
+        if wrong_code:
+            requested_codes = [
+                next(
+                    other
+                    for other, definition in FIXTURE_POLICY.finding_codes.items()
+                    if other != code
+                    and definition.check == FIXTURE_POLICY.finding_codes[code].check
+                )
+                for code in requested_codes
+            ]
         findings: list[dict[str, Any]] = [
             {
                 'id': 'finding-1',
@@ -94,7 +122,7 @@ class DraftingFake(FakeChatModel):
             for code in requested_codes
         ]
         scripted_review = None
-        if 'scripted review' in request:
+        if findings and (self.reviews_every_case or 'scripted review' in request):
             scripted_review = {
                 'approver': 'EMP-001',
                 'dispositions': [
@@ -133,7 +161,9 @@ class DrafterPool:
         self,
         claimants: dict[str, str] | None = None,
         failures: dict[str, tuple[FailureKind, int]] | None = None,
+        reviews_every_case: bool = False,
     ) -> None:
+        self.reviews_every_case = reviews_every_case
         self.claimants = claimants or {}
         self.failures = failures or {}
         self.models: dict[str, DraftingFake] = {}
@@ -145,16 +175,21 @@ class DrafterPool:
             claimant=self.claimants.get(model_key, 'EMP-003'),
             failing_calls=failing_calls,
             failure=failure,
+            reviews_every_case=self.reviews_every_case,
         )
         self.models[model_key] = model
         return model
 
 
-def drafting_settings() -> Settings:
+def drafting_settings(json_schema_keys: tuple[str, ...] = ()) -> Settings:
     return make_test_settings(
         chat_models={
             key: ChatModelSettings(
-                provider='fake', model_id=model_id, structured_output_method='function_calling'
+                provider='fake',
+                model_id=model_id,
+                structured_output_method=(
+                    'json_schema' if key in json_schema_keys else 'function_calling'
+                ),
             )
             for key, model_id in DRAFTER_MODEL_IDS.items()
         },
@@ -177,6 +212,8 @@ def drafting_arguments(tmp_path: Path) -> list[str]:
         str(FIXTURES / 'seed'),
         '--lock',
         str(tmp_path / 'dataset.lock.json'),
+        '--drafts',
+        str(tmp_path / 'drafts'),
     ]
 
 
@@ -303,7 +340,7 @@ def test_prompts_name_each_finding_code_with_the_clause_it_rests_on(tmp_path: Pa
 
     run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
 
-    prompt_text = str(drafters.models['fake_gemini'].received[0][1].content)
+    prompt_text = str(drafters.models['fake_nova'].received[0][1].content)
     assert '- ALCOHOL_NOT_PERMITTED, a judgement check, rests on §2.2' in prompt_text
     assert '- MISSING_PO, a rule check, rests on §3.2' in prompt_text
 
@@ -414,3 +451,183 @@ def test_a_draft_that_fails_three_times_blocks_the_write_and_is_reported(
     error_lines = capsys.readouterr().err.splitlines()
     assert problem in error_lines
     assert not any(line.startswith('test-hard-negative-02.yaml') for line in error_lines)
+
+
+def _schema_keys(schema: object) -> set[str]:
+    if isinstance(schema, dict):
+        return set(schema) | {key for value in schema.values() for key in _schema_keys(value)}
+    if isinstance(schema, list):
+        return {key for value in schema for key in _schema_keys(value)}
+    return set()
+
+
+def test_drafters_receive_a_schema_with_enum_tags_and_no_references(
+    tmp_path: Path,
+) -> None:
+    drafters = DrafterPool()
+
+    run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    [tool] = drafters.models['fake_claude'].tool_schemas[0]
+    parameters = tool['function']['parameters']
+    assert {'const', 'oneOf', 'discriminator', '$ref', '$defs'}.isdisjoint(_schema_keys(parameters))
+    submission_types = [
+        option['properties']['type']['enum']
+        for option in parameters['properties']['submission']['anyOf']
+    ]
+    assert submission_types == [['expense_claim'], ['supplier_invoice']]
+
+
+@pytest.mark.parametrize(
+    ('failure', 'problem'),
+    [('malformed', 'submission: Field required'), ('unknown_employee', 'unknown employee EMP-999')],
+)
+def test_a_retry_tells_the_drafter_why_its_previous_draft_was_rejected(
+    tmp_path: Path, failure: FailureKind, problem: str
+) -> None:
+    drafters = DrafterPool(failures={'fake_gpt': (failure, 1)})
+
+    run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    first_prompt, retry_prompt, next_case_prompt = drafters.models['fake_gpt'].received[:3]
+    first_text = str(first_prompt[1].content)
+    retry_text = str(retry_prompt[1].content)
+    assert retry_prompt[0] == first_prompt[0]
+    assert retry_text.startswith(first_text)
+    assert problem in retry_text.removeprefix(first_text)
+    assert problem not in str(next_case_prompt[-1].content)
+
+
+def test_a_scripted_review_the_request_did_not_ask_for_is_dropped(tmp_path: Path) -> None:
+    drafters = DrafterPool(reviews_every_case=True)
+
+    exit_code = run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    assert exit_code == 0
+    reviewed = Counter(case.split for case in read_drafted_cases(tmp_path) if case.scripted_review)
+    assert reviewed == {'test': 2, 'dev': 1}
+
+
+@pytest.mark.parametrize(
+    ('failure', 'drafter_key', 'problem'),
+    [
+        ('wrong_code', 'fake_gpt', 'the request asks for a {code} finding and the draft has none'),
+        (
+            'no_review',
+            'fake_claude',
+            'the request asks for a scripted review and the draft has none',
+        ),
+    ],
+)
+def test_a_draft_that_ignores_its_request_is_retried_with_the_reason(
+    tmp_path: Path, failure: FailureKind, drafter_key: str, problem: str
+) -> None:
+    drafters = DrafterPool(failures={drafter_key: (failure, 1)})
+
+    exit_code = run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    assert exit_code == 0
+    first_prompt, retry_prompt = drafters.models[drafter_key].received[:2]
+    first_text = str(first_prompt[1].content)
+    requested_code = next(
+        code
+        for code in FIXTURE_POLICY.finding_codes
+        if code in first_text.rsplit('## Request', maxsplit=1)[-1]
+    )
+    assert problem.format(code=requested_code) in str(retry_prompt[1].content)
+
+
+def test_a_failed_run_keeps_its_valid_drafts_and_a_rerun_drafts_only_what_failed(
+    tmp_path: Path,
+) -> None:
+    failing_run = run(
+        drafting_arguments(tmp_path),
+        drafting_settings(),
+        DrafterPool(failures={'fake_gpt': ('unknown_employee', 3)}).build,
+    )
+    rerun_drafters = DrafterPool()
+
+    rerun = run(drafting_arguments(tmp_path), drafting_settings(), rerun_drafters.build)
+
+    assert (failing_run, rerun) == (1, 0)
+    rerun_prompts = [model.received for model in rerun_drafters.models.values()]
+    assert sum(len(prompts) for prompts in rerun_prompts) == 1
+    assert 'judgement_positive' in str(rerun_drafters.models['fake_gpt'].received[0][1].content)
+    assert len(read_drafted_cases(tmp_path)) == 28
+    assert not any((tmp_path / 'drafts').glob('*.yaml'))
+
+
+def test_a_staged_draft_from_a_drafter_no_longer_configured_is_drafted_again(
+    tmp_path: Path,
+) -> None:
+    run(
+        drafting_arguments(tmp_path),
+        drafting_settings(),
+        DrafterPool(failures={'fake_claude': ('unknown_employee', 3)}).build,
+    )
+    replaced_settings = drafting_settings().model_copy(
+        update={
+            'chat_models': {
+                **drafting_settings().chat_models,
+                'fake_gpt': ChatModelSettings(
+                    provider='fake',
+                    model_id='fake-replacement-drafter',
+                    structured_output_method='function_calling',
+                ),
+            }
+        }
+    )
+    rerun_drafters = DrafterPool()
+
+    exit_code = run(drafting_arguments(tmp_path), replaced_settings, rerun_drafters.build)
+
+    assert exit_code == 0
+    assert len(rerun_drafters.models['fake_gpt'].received) == 9
+    assert len(rerun_drafters.models['fake_claude'].received) == 1
+    assert len(rerun_drafters.models['fake_nova'].received) == 0
+
+
+def test_a_drafter_set_to_json_schema_gets_a_schema_bedrock_can_lock_its_output_to(
+    tmp_path: Path,
+) -> None:
+    drafters = DrafterPool()
+
+    exit_code = run(
+        drafting_arguments(tmp_path),
+        drafting_settings(json_schema_keys=('fake_gpt',)),
+        drafters.build,
+    )
+
+    assert exit_code == 0
+    gpt_calls = drafters.models['fake_gpt'].structured_output_calls
+    assert {method for method, _ in gpt_calls} == {'json_schema'}
+    locked_schema = gpt_calls[0][1]
+    assert {'minimum', 'exclusiveMinimum', 'minLength'}.isdisjoint(_schema_keys(locked_schema))
+    assert all(
+        schema.get('additionalProperties') is False for schema in _object_schemas(locked_schema)
+    )
+    claude_calls = drafters.models['fake_claude'].structured_output_calls
+    assert {method for method, _ in claude_calls} == {'function_calling'}
+    assert 'minimum' in _schema_keys(claude_calls[0][1])
+
+
+def _object_schemas(schema: object) -> list[dict[str, Any]]:
+    if isinstance(schema, list):
+        return [found for value in schema for found in _object_schemas(value)]
+    if not isinstance(schema, dict):
+        return []
+    nested = [found for value in schema.values() for found in _object_schemas(value)]
+    return [schema, *nested] if 'properties' in schema else nested
+
+
+def test_a_json_reply_with_text_around_the_object_is_still_read(tmp_path: Path) -> None:
+    drafters = DrafterPool(failures={'fake_gpt': ('decorated_json', 9)})
+
+    exit_code = run(
+        drafting_arguments(tmp_path),
+        drafting_settings(json_schema_keys=('fake_gpt',)),
+        drafters.build,
+    )
+
+    assert exit_code == 0
+    assert len(drafters.models['fake_gpt'].received) == 9

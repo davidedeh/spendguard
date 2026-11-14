@@ -81,7 +81,10 @@ class SupplierInvoiceFields(StrictModel):
     @model_validator(mode='after')
     def _cost_centre_comes_from_the_purchase_order(self) -> Self:
         if self.purchase_order is not None and self.cost_centre is not None:
-            raise ValueError('an invoice against a purchase order takes its cost centre from it')
+            raise ValueError(
+                'give purchase_order or cost_centre, not both:'
+                ' an invoice against a purchase order takes its cost centre from it'
+            )
         return self
 
 
