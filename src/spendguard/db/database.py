@@ -15,10 +15,6 @@ class DatabaseUnreachableError(RuntimeError):
     pass
 
 
-def branch_database_name(settings: Settings) -> str:
-    return database_name_for_branch(settings.branch_name)
-
-
 def _connection_info(settings: Settings, database_name: str) -> str:
     return psycopg.conninfo.make_conninfo(
         host=settings.postgres_host,
@@ -33,11 +29,11 @@ def _connection_info(settings: Settings, database_name: str) -> str:
 def branch_connection_info(settings: Settings) -> str:
     if settings.database_url is not None:
         return settings.database_url.get_secret_value()
-    return _connection_info(settings, branch_database_name(settings))
+    return _connection_info(settings, database_name_for_branch(settings.branch_name))
 
 
 def _create_branch_database_if_missing(settings: Settings) -> None:
-    database_name = branch_database_name(settings)
+    database_name = database_name_for_branch(settings.branch_name)
     try:
         maintenance_connection = psycopg.connect(
             _connection_info(settings, MAINTENANCE_DATABASE), autocommit=True
