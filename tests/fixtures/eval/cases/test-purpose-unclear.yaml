@@ -10,7 +10,7 @@ submission:
   merchant: Harbour Kitchen
   amount: 31.20
   currency: GBP
-  claimed_gbp_per_unit: null
+  claimed_exchange_rate: null
   business_purpose: Catch-up.
   receipt_text: Harbour Kitchen, 2 mains, 31.20 GBP
 expected_findings:

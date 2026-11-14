@@ -10,7 +10,7 @@ submission:
   merchant: City Taxis
   amount: 12.80
   currency: EUR
-  claimed_gbp_per_unit: 0.86
+  claimed_exchange_rate: 0.86
   business_purpose: Taxi from the airport to the client office for the contract signing.
   receipt_text: City Taxis, 12.80 EUR
 expected_findings: []

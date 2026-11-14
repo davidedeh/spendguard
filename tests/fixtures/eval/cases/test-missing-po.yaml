@@ -10,7 +10,7 @@ submission:
   issued_on: 2026-10-09
   amount: 780.00
   currency: GBP
-  claimed_gbp_per_unit: null
+  claimed_exchange_rate: null
   description: Replacement office chairs, 6 units.
 expected_findings:
   - id: po

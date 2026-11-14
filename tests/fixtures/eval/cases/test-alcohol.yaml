@@ -10,7 +10,7 @@ submission:
   merchant: Harbour Kitchen
   amount: 36.50
   currency: GBP
-  claimed_gbp_per_unit: null
+  claimed_exchange_rate: null
   business_purpose: Working dinner while preparing the supplier review.
   receipt_text: Harbour Kitchen, 1 main 22.00, 1 bottle of wine 14.50
 expected_findings:

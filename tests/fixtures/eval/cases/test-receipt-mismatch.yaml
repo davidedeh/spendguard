@@ -10,7 +10,7 @@ submission:
   merchant: Harbour Kitchen
   amount: 38.00
   currency: GBP
-  claimed_gbp_per_unit: null
+  claimed_exchange_rate: null
   business_purpose: Dinner with the audit team during the year-end visit.
   receipt_text: Harbour Kitchen, 1 main, 18.00 GBP
 expected_findings:

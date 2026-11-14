@@ -144,7 +144,7 @@ class DraftingFake(FakeChatModel):
                     'merchant': f'{self.model_id} call {len(self.received)}',
                     'amount': '18.40',
                     'currency': 'GBP',
-                    'claimed_gbp_per_unit': None,
+                    'claimed_exchange_rate': None,
                     'business_purpose': 'Working lunch with the audit team.',
                     'receipt_text': None,
                 },
@@ -476,6 +476,11 @@ def test_drafters_receive_a_schema_with_enum_tags_and_no_references(
         for option in parameters['properties']['submission']['anyOf']
     ]
     assert submission_types == [['expense_claim'], ['supplier_invoice']]
+    for option in parameters['properties']['submission']['anyOf']:
+        assert (
+            'null when the submission is in the base currency'
+            in (option['properties']['claimed_exchange_rate']['description'])
+        )
 
 
 @pytest.mark.parametrize(

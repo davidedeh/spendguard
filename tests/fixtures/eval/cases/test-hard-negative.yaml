@@ -10,7 +10,7 @@ submission:
   merchant: City Taxis
   amount: 22.00
   currency: GBP
-  claimed_gbp_per_unit: null
+  claimed_exchange_rate: null
   business_purpose: Taxi to the data centre to restore service after the Sunday outage call-out.
   receipt_text: City Taxis, 22.00 GBP
 expected_findings: []
