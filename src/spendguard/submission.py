@@ -2,7 +2,7 @@ import datetime
 from decimal import Decimal
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 
 from spendguard.seed.schema import (
     Amount,
@@ -13,15 +13,12 @@ from spendguard.seed.schema import (
     Quantity,
     SupplierReference,
 )
+from spendguard.strict_model import StrictModel
 
 ExchangeRate = Annotated[Decimal, Field(gt=0)]
 
 
-class _SubmissionModel(BaseModel):
-    model_config = ConfigDict(extra='forbid', frozen=True)
-
-
-class ExpenseClaim(_SubmissionModel):
+class ExpenseClaim(StrictModel):
     type: Literal['expense_claim']
     claimant: EmployeeReference
     spent_on: datetime.date
@@ -35,7 +32,7 @@ class ExpenseClaim(_SubmissionModel):
     receipt_text: str | None
 
 
-class SupplierInvoice(_SubmissionModel):
+class SupplierInvoice(StrictModel):
     type: Literal['supplier_invoice']
     supplier: SupplierReference
     supplier_invoice_number: str

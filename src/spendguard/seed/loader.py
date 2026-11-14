@@ -5,7 +5,8 @@ import yaml
 from psycopg import sql
 
 from spendguard.seed.integrity import check_seed_integrity
-from spendguard.seed.schema import SeedData, SeedRecord
+from spendguard.seed.schema import SeedData
+from spendguard.strict_model import StrictModel
 
 SEED_DIRECTORY = Path(__file__).parent / 'data'
 
@@ -58,7 +59,7 @@ def load_seed_data(connection: psycopg.Connection, seed_data: SeedData) -> None:
         raise SeedIntegrityError(problems)
     with connection.transaction(), connection.cursor() as cursor:
         for table, key_columns in TABLE_KEYS.items():
-            records: tuple[SeedRecord, ...] = getattr(seed_data, table)
+            records: tuple[StrictModel, ...] = getattr(seed_data, table)
             if not records:
                 continue
             columns = list(type(records[0]).model_fields)

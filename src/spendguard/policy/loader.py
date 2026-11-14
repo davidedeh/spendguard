@@ -9,7 +9,9 @@ from typing import Literal, get_args
 
 import jinja2
 import yaml
-from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
+from pydantic import TypeAdapter, ValidationError
+
+from spendguard.strict_model import StrictModel
 
 FindingCode = Literal[
     'OVER_CATEGORY_LIMIT',
@@ -39,22 +41,18 @@ class PolicyError(ValueError):
     pass
 
 
-class _StrictModel(BaseModel):
-    model_config = ConfigDict(extra='forbid', frozen=True)
-
-
-class _ClauseSource(_StrictModel):
+class _ClauseSource(StrictModel):
     id: str
     heading: str | None = None
     text: str
 
 
-class _SectionSource(_StrictModel):
+class _SectionSource(StrictModel):
     heading: str
     clauses: tuple[_ClauseSource, ...]
 
 
-class _FindingCodeSource(_StrictModel):
+class _FindingCodeSource(StrictModel):
     severity: Severity
     clause: str
     check: CheckKind
@@ -62,7 +60,7 @@ class _FindingCodeSource(_StrictModel):
     precedent_scope: PrecedentScope | None = None
 
 
-class _ExpenseCategorySource(_StrictModel):
+class _ExpenseCategorySource(StrictModel):
     label: str
     unit: str
     limits: dict[str, Decimal]
@@ -71,12 +69,12 @@ class _ExpenseCategorySource(_StrictModel):
 _CATEGORY_LIMITS_ADAPTER = TypeAdapter(dict[str, _ExpenseCategorySource])
 
 
-class _ApplicabilitySource(_StrictModel):
+class _ApplicabilitySource(StrictModel):
     expense_claim: tuple[FindingCode, ...]
     supplier_invoice: tuple[FindingCode, ...]
 
 
-class _PolicySource(_StrictModel):
+class _PolicySource(StrictModel):
     title: str
     version: str
     parameters: dict[str, ParameterValue]

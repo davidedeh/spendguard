@@ -10,7 +10,7 @@ import yaml
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import ValidationError
 
 from spendguard import settings
 from spendguard.eval.cases import (
@@ -32,6 +32,7 @@ from spendguard.models.factory import build_chat_model
 from spendguard.policy.loader import POLICY_PATH, FindingCode, Policy, load_policy
 from spendguard.seed.loader import SEED_DIRECTORY, read_seed_directory
 from spendguard.seed.schema import SeedData
+from spendguard.strict_model import StrictModel
 from spendguard.submission import Submission
 
 ModelBuilder = Callable[[settings.Settings, str], BaseChatModel]
@@ -64,9 +65,7 @@ class DraftFailedError(ValueError):
     pass
 
 
-class DraftedCase(BaseModel):
-    model_config = ConfigDict(extra='forbid', frozen=True)
-
+class DraftedCase(StrictModel):
     submission: Submission
     expected_findings: tuple[ExpectedFinding, ...]
     expected_route: Route

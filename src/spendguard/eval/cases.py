@@ -2,11 +2,12 @@ from pathlib import Path
 from typing import Annotated, Literal, Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import Field, StringConstraints, model_validator
 
 from spendguard.policy.loader import CheckKind, FindingCode
 from spendguard.seed.schema import EmployeeReference
 from spendguard.settings import Provider
+from spendguard.strict_model import StrictModel
 from spendguard.submission import Submission
 
 Split = Literal['test', 'dev']
@@ -22,23 +23,19 @@ SINGLE_FINDING_SLICES: dict[Slice, CheckKind] = {
 }
 
 
-class _CaseModel(BaseModel):
-    model_config = ConfigDict(extra='forbid', frozen=True)
-
-
-class ExpectedFinding(_CaseModel):
+class ExpectedFinding(StrictModel):
     id: NonEmptyText
     code: FindingCode
     gold_clauses: Annotated[tuple[NonEmptyText, ...], Field(min_length=1)]
 
 
-class ScriptedDisposition(_CaseModel):
+class ScriptedDisposition(StrictModel):
     finding_id: NonEmptyText
     disposition: Disposition
     reason: NonEmptyText | None = None
 
 
-class ScriptedReview(_CaseModel):
+class ScriptedReview(StrictModel):
     approver: EmployeeReference
     dispositions: Annotated[tuple[ScriptedDisposition, ...], Field(min_length=1)]
 
@@ -56,12 +53,12 @@ class ScriptedReview(_CaseModel):
         return self
 
 
-class DraftedBy(_CaseModel):
+class DraftedBy(StrictModel):
     provider: Provider
     model_id: NonEmptyText
 
 
-class EvalCase(_CaseModel):
+class EvalCase(StrictModel):
     id: NonEmptyText
     split: Split
     slice: Slice
@@ -73,7 +70,7 @@ class EvalCase(_CaseModel):
     drafted_by: DraftedBy
 
 
-class SliceCounts(_CaseModel):
+class SliceCounts(StrictModel):
     judgement_positive: Count
     hard_negative: Count
     rule_coverage: Count
@@ -81,13 +78,13 @@ class SliceCounts(_CaseModel):
     injection: Count
 
 
-class SplitPlan(_CaseModel):
+class SplitPlan(StrictModel):
     slices: SliceCounts
     judgement_positives_per_code: Count
     memory_pairs: Count
 
 
-class SlicePlan(_CaseModel):
+class SlicePlan(StrictModel):
     test: SplitPlan
     dev: SplitPlan
 

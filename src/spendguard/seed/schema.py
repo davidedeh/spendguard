@@ -2,7 +2,9 @@ import datetime
 from decimal import Decimal
 from typing import Annotated, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import Field, StringConstraints, model_validator
+
+from spendguard.strict_model import StrictModel
 
 EmployeeReference = Annotated[str, StringConstraints(pattern=r'^EMP-\d{3,}$')]
 CostCentreReference = Annotated[str, StringConstraints(pattern=r'^CC-\d{3,}$')]
@@ -16,35 +18,31 @@ NonNegativeAmount = Annotated[Decimal, Field(ge=0, decimal_places=2)]
 Quantity = Annotated[int, Field(ge=1)]
 
 
-class SeedRecord(BaseModel):
-    model_config = ConfigDict(extra='forbid', frozen=True)
-
-
-class Employee(SeedRecord):
+class Employee(StrictModel):
     reference: EmployeeReference
     grade: str
     cost_centre: CostCentreReference
     manager: EmployeeReference | None
 
 
-class Approver(SeedRecord):
+class Approver(StrictModel):
     employee: EmployeeReference
     approval_limit_gbp: Amount
 
 
-class CostCentre(SeedRecord):
+class CostCentre(StrictModel):
     reference: CostCentreReference
     owner: EmployeeReference | None
     budget_gbp: Amount
     spend_to_date_gbp: NonNegativeAmount
 
 
-class Supplier(SeedRecord):
+class Supplier(StrictModel):
     reference: SupplierReference
     approved: bool
 
 
-class PurchaseOrder(SeedRecord):
+class PurchaseOrder(StrictModel):
     reference: PurchaseOrderReference
     raised_by: EmployeeReference
     supplier: SupplierReference
@@ -53,7 +51,7 @@ class PurchaseOrder(SeedRecord):
     currency: CurrencyCode
 
 
-class HistoricalClaim(SeedRecord):
+class HistoricalClaim(StrictModel):
     reference: ClaimReference
     claimant: EmployeeReference
     spent_on: datetime.date
@@ -64,7 +62,7 @@ class HistoricalClaim(SeedRecord):
     currency: CurrencyCode
 
 
-class HistoricalInvoice(SeedRecord):
+class HistoricalInvoice(StrictModel):
     reference: InvoiceReference
     supplier: SupplierReference
     supplier_invoice_number: str
@@ -81,18 +79,18 @@ class HistoricalInvoice(SeedRecord):
         return self
 
 
-class FxRate(SeedRecord):
+class FxRate(StrictModel):
     currency: CurrencyCode
     rate_date: datetime.date
     gbp_per_unit: Annotated[Decimal, Field(gt=0)]
 
 
-class PublicHoliday(SeedRecord):
+class PublicHoliday(StrictModel):
     holiday_on: datetime.date
     description: str
 
 
-class SeedData(SeedRecord):
+class SeedData(StrictModel):
     employees: tuple[Employee, ...]
     approvers: tuple[Approver, ...]
     cost_centres: tuple[CostCentre, ...]
