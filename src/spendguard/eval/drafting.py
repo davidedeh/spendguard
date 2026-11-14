@@ -18,8 +18,6 @@ from spendguard.eval.cases import (
     DraftedBy,
     EvalCase,
     ExpectedFinding,
-    Recommendation,
-    Route,
     ScriptedReview,
     Slice,
     SlicePlan,
@@ -30,6 +28,7 @@ from spendguard.eval.freeze import dataset_argument_parser
 from spendguard.eval.validator import case_problems, describe_validation_error, validate_dataset
 from spendguard.models.factory import build_chat_model
 from spendguard.policy.loader import FindingCode, Policy, load_policy
+from spendguard.rules.decisions import Recommendation, Route
 from spendguard.seed.loader import read_seed_directory
 from spendguard.seed.schema import SeedData
 from spendguard.settings import StructuredOutputMethod

@@ -13,13 +13,13 @@ from pydantic_core import ErrorDetails
 from spendguard.eval.cases import (
     SINGLE_FINDING_SLICES,
     EvalCase,
-    ExpectedFinding,
-    Recommendation,
     Slice,
     SlicePlan,
     Split,
 )
 from spendguard.policy.loader import CheckKind, FindingCode, Policy
+from spendguard.rules.checks import base_currency_amount, finding_for
+from spendguard.rules.decisions import ReviewedFinding, recommend, route
 from spendguard.seed.schema import SeedData
 from spendguard.submission import ExpenseClaim, SupplierInvoice
 
@@ -86,8 +86,6 @@ def case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iterat
             ('cost centre', submission.cost_centre),
         ]
     yield from _currency_problems(submission, policy, seed_data)
-    yield from _route_problems(case, policy, seed_data)
-    yield from _recommendation_problems(case, policy)
     if case.scripted_review is not None:
         references.append(('approver', case.scripted_review.approver))
         finding_ids = {finding.id for finding in case.expected_findings}
@@ -104,9 +102,14 @@ def case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iterat
         'cost centre': {centre.reference for centre in seed_data.cost_centres},
         'approver': {approver.employee for approver in seed_data.approvers},
     }
-    for kind, reference in references:
-        if reference is not None and reference not in known_references[kind]:
-            yield f'unknown {kind} {reference}'
+    unknown_references = [
+        f'unknown {kind} {reference}'
+        for kind, reference in references
+        if reference is not None and reference not in known_references[kind]
+    ]
+    yield from unknown_references
+    if not unknown_references:
+        yield from _label_problems(case, policy, seed_data)
 
 
 def _category_problems(claim: ExpenseClaim, policy: Policy) -> Iterator[str]:
@@ -127,39 +130,30 @@ def _currency_problems(
         yield (f'a {policy.base_currency} submission states a claimed exchange rate; leave it null')
 
 
-def _route_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iterator[str]:
-    if case.expected_route != 'auto_approve':
-        return
-    if case.expected_findings:
-        yield 'a case with findings routes to human_review, not auto_approve'
+def _label_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iterator[str]:
     submission = case.submission
-    rate = (
-        Decimal(1)
-        if submission.currency == policy.base_currency
-        else seed_data.company_rate(submission.currency, submission.dated_on)
+    if seed_data.company_rate_problem(
+        submission.currency, submission.dated_on, policy.base_currency
+    ):
+        return
+    findings = [finding_for(finding.code, policy) for finding in case.expected_findings]
+    expected_route = route(
+        findings=findings,
+        cleared_by_precedent=False,
+        base_amount=base_currency_amount(submission, seed_data, policy),
+        policy=policy,
+        force_human_review=False,
     )
-    if rate is not None and submission.amount * rate > policy.auto_approve_threshold:
+    if case.expected_route != expected_route:
+        yield f'the route rule gives {expected_route}, not {case.expected_route}'
+    expected_recommendation = recommend(
+        [ReviewedFinding(finding, has_precedent=False) for finding in findings]
+    )
+    if case.expected_recommendation != expected_recommendation:
         yield (
-            f'a case over the {policy.base_currency} {policy.auto_approve_threshold}'
-            ' auto-approve threshold routes to human_review, not auto_approve'
-        )
-
-
-def _recommendation_problems(case: EvalCase, policy: Policy) -> Iterator[str]:
-    expected = _rule_recommendation(case.expected_findings, policy)
-    if case.expected_recommendation != expected:
-        yield (
-            f'the recommendation rule gives {expected} with no precedents,'
+            f'the recommendation rule gives {expected_recommendation} with no precedents,'
             f' not {case.expected_recommendation}'
         )
-
-
-def _rule_recommendation(findings: tuple[ExpectedFinding, ...], policy: Policy) -> Recommendation:
-    if any(policy.finding_codes[finding.code].severity == 'high' for finding in findings):
-        return 'reject'
-    if not findings:
-        return 'approve'
-    return 'none'
 
 
 def _split_problems(cases: Mapping[str, EvalCase]) -> Iterator[str]:

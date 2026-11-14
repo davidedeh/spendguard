@@ -187,7 +187,7 @@ def test_a_case_with_findings_routed_to_auto_approve_is_reported() -> None:
     report = validate(cases)
 
     assert report.problems == (
-        'test-alcohol.yaml: a case with findings routes to human_review, not auto_approve',
+        'test-alcohol.yaml: the route rule gives human_review, not auto_approve',
     )
 
 
@@ -197,10 +197,7 @@ def test_a_case_with_findings_routed_to_auto_approve_is_reported() -> None:
         ('250.00', ()),
         (
             '250.01',
-            (
-                'test-clean.yaml: a case over the GBP 250 auto-approve threshold routes to'
-                ' human_review, not auto_approve',
-            ),
+            ('test-clean.yaml: the route rule gives human_review, not auto_approve',),
         ),
     ],
 )
@@ -221,10 +218,7 @@ def test_a_case_over_the_auto_approve_threshold_routed_to_auto_approve_is_report
         ('280.00', ()),
         (
             '300.00',
-            (
-                'dev-clean.yaml: a case over the GBP 250 auto-approve threshold routes to'
-                ' human_review, not auto_approve',
-            ),
+            ('dev-clean.yaml: the route rule gives human_review, not auto_approve',),
         ),
     ],
 )
@@ -373,8 +367,19 @@ def test_a_rule_coverage_case_without_one_rule_finding_is_reported() -> None:
 
     report = validate(cases)
 
-    assert report.problems == (
+    assert without_label_problems(report.problems) == (
         'test-missing-po.yaml: a rule_coverage case needs exactly one rule finding, it has 2',
+    )
+
+
+LABEL_PROBLEM_MARKERS = (': the rule checks give', ': the route rule', ': the recommendation rule')
+
+
+def without_label_problems(problems: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        problem
+        for problem in problems
+        if not any(marker in problem for marker in LABEL_PROBLEM_MARKERS)
     )
 
 
@@ -419,7 +424,7 @@ def test_rule_coverage_spread_evenly_over_the_rule_codes_has_no_problems() -> No
         cases, FIXTURE_POLICY, FIXTURE_SEED_DATA, plan_with_test_rule_coverage(len(RULE_CODES))
     )
 
-    assert report.problems == ()
+    assert without_label_problems(report.problems) == ()
 
 
 def test_rule_coverage_off_an_even_spread_over_the_rule_codes_is_reported() -> None:
@@ -429,7 +434,7 @@ def test_rule_coverage_off_an_even_spread_over_the_rule_codes_is_reported() -> N
         cases, FIXTURE_POLICY, FIXTURE_SEED_DATA, plan_with_test_rule_coverage(len(RULE_CODES))
     )
 
-    assert report.problems == (
+    assert without_label_problems(report.problems) == (
         'the test split has 2 rule_coverage cases for MISSING_PO, the plan says 1',
         f'the test split has 0 rule_coverage cases for {RULE_CODES[-1]}, the plan says 1',
     )
@@ -442,7 +447,7 @@ def test_fewer_rule_coverage_cases_than_rule_codes_must_each_cover_a_different_c
         cases, FIXTURE_POLICY, FIXTURE_SEED_DATA, plan_with_test_rule_coverage(3)
     )
 
-    assert report.problems == (
+    assert without_label_problems(report.problems) == (
         'the test split has 2 rule_coverage cases for MISSING_PO, the plan says at most 1',
     )
 
@@ -455,7 +460,7 @@ def test_a_judgement_positive_without_one_judgement_finding_is_reported() -> Non
 
     report = validate(cases)
 
-    assert report.problems == (
+    assert without_label_problems(report.problems) == (
         'test-weekend.yaml: a judgement_positive case needs exactly one judgement finding,'
         ' it has 0',
         'the test split has 0 judgement_positive cases for WEEKEND_SPEND_UNJUSTIFIED,'
@@ -564,7 +569,6 @@ def _set(content: dict[str, Any], path: tuple[str | int, ...], value: object) ->
 @pytest.mark.parametrize(
     ('source', 'path', 'value'),
     [
-        ('test-clean.yaml', ('expected_route',), 'human_review'),
         ('test-injection.yaml', ('expected_findings', 0, 'code'), 'PURPOSE_UNCLEAR'),
         ('test-alcohol.yaml', ('expected_findings', 0, 'gold_clauses'), ['§2.2', '§2.1']),
         (

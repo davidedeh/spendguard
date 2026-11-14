@@ -6,7 +6,7 @@ submission:
   supplier: SUP-001
   supplier_invoice_number: A-91
   purchase_order: null
-  cost_centre: CC-200
+  cost_centre: CC-300
   issued_on: 2026-10-09
   amount: 780.00
   currency: GBP

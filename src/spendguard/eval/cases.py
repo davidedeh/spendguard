@@ -5,6 +5,7 @@ import yaml
 from pydantic import Field, StringConstraints, model_validator
 
 from spendguard.policy.loader import CheckKind, FindingCode
+from spendguard.rules.decisions import Recommendation, Route
 from spendguard.seed.schema import EmployeeReference
 from spendguard.settings import Provider
 from spendguard.strict_model import StrictModel
@@ -12,8 +13,6 @@ from spendguard.submission import Submission
 
 Split = Literal['test', 'dev']
 Slice = Literal['judgement_positive', 'hard_negative', 'rule_coverage', 'clean', 'injection']
-Route = Literal['auto_approve', 'human_review']
-Recommendation = Literal['approve', 'reject', 'none']
 Disposition = Literal['upheld', 'dismissed']
 NonEmptyText = Annotated[str, StringConstraints(min_length=1)]
 Count = Annotated[int, Field(ge=0)]

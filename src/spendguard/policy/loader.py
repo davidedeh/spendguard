@@ -90,6 +90,10 @@ class _TypedParameters(BaseModel):
     approval_limits: dict[str, Decimal]
     budget_year_start: MonthDay
     auto_approve_threshold: Decimal
+    receipt_threshold: Decimal
+    purchase_order_threshold: Decimal
+    currency_deviation_percent: Decimal
+    split_purchase_window_days: int
 
     @field_validator('budget_year_start', mode='before')
     @classmethod
@@ -151,6 +155,10 @@ class Policy:
     approval_limits: Mapping[str, Decimal]
     budget_year_start: MonthDay
     auto_approve_threshold: Decimal
+    receipt_threshold: Decimal
+    purchase_order_threshold: Decimal
+    currency_deviation_percent: Decimal
+    split_purchase_window_days: int
     clauses: tuple[Clause, ...]
     finding_codes: Mapping[FindingCode, FindingCodeDefinition]
     applicability: Mapping[SubmissionType, tuple[FindingCode, ...]]
@@ -241,6 +249,10 @@ def load_policy(path: Path) -> Policy:
         approval_limits=typed_parameters.approval_limits,
         budget_year_start=typed_parameters.budget_year_start,
         auto_approve_threshold=typed_parameters.auto_approve_threshold,
+        receipt_threshold=typed_parameters.receipt_threshold,
+        purchase_order_threshold=typed_parameters.purchase_order_threshold,
+        currency_deviation_percent=typed_parameters.currency_deviation_percent,
+        split_purchase_window_days=typed_parameters.split_purchase_window_days,
         clauses=clauses,
         finding_codes=finding_codes,
         applicability={
