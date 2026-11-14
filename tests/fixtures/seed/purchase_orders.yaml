@@ -1,0 +1,6 @@
+- reference: PO-0001
+  raised_by: EMP-003
+  supplier: SUP-001
+  cost_centre: CC-100
+  amount: 1200.00
+  currency: GBP
