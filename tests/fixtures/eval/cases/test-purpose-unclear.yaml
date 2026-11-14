@@ -1,0 +1,29 @@
+id: test-purpose-unclear
+split: test
+slice: judgement_positive
+submission:
+  type: expense_claim
+  claimant: EMP-003
+  spent_on: 2026-10-07
+  category: meals
+  merchant: Harbour Kitchen
+  amount: 31.20
+  currency: GBP
+  claimed_gbp_per_unit: null
+  business_purpose: Catch-up.
+  receipt_text: Harbour Kitchen, 2 mains, 31.20 GBP
+expected_findings:
+  - id: purpose
+    code: PURPOSE_UNCLEAR
+    gold_clauses: ['§1.1']
+expected_route: human_review
+expected_recommendation: none
+scripted_review:
+  approver: EMP-001
+  dispositions:
+    - finding_id: purpose
+      disposition: dismissed
+      reason: Standing weekly client catch-up agreed with the manager.
+drafted_by:
+  provider: fake
+  model_id: fake-drafter-a

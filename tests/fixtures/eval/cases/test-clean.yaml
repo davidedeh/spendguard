@@ -1,0 +1,20 @@
+id: test-clean
+split: test
+slice: clean
+submission:
+  type: supplier_invoice
+  supplier: SUP-001
+  supplier_invoice_number: A-92
+  purchase_order: PO-0001
+  cost_centre: null
+  issued_on: 2026-10-09
+  amount: 240.00
+  currency: GBP
+  claimed_gbp_per_unit: null
+  description: Quarterly printer servicing.
+expected_findings: []
+expected_route: auto_approve
+expected_recommendation: approve
+drafted_by:
+  provider: fake
+  model_id: fake-drafter-a

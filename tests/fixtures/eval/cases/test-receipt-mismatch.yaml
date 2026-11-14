@@ -1,0 +1,23 @@
+id: test-receipt-mismatch
+split: test
+slice: judgement_positive
+submission:
+  type: expense_claim
+  claimant: EMP-002
+  spent_on: 2026-10-08
+  category: meals
+  merchant: Harbour Kitchen
+  amount: 38.00
+  currency: GBP
+  claimed_gbp_per_unit: null
+  business_purpose: Dinner with the audit team during the year-end visit.
+  receipt_text: Harbour Kitchen, 1 main, 18.00 GBP
+expected_findings:
+  - id: mismatch
+    code: RECEIPT_MISMATCH
+    gold_clauses: ['§1.2']
+expected_route: human_review
+expected_recommendation: reject
+drafted_by:
+  provider: fake
+  model_id: fake-drafter-b

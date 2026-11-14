@@ -1,0 +1,23 @@
+id: test-weekend
+split: test
+slice: judgement_positive
+submission:
+  type: expense_claim
+  claimant: EMP-002
+  spent_on: 2026-10-10
+  category: travel
+  merchant: City Taxis
+  amount: 18.40
+  currency: GBP
+  claimed_gbp_per_unit: null
+  business_purpose: Taxi.
+  receipt_text: City Taxis, 18.40 GBP
+expected_findings:
+  - id: weekend
+    code: WEEKEND_SPEND_UNJUSTIFIED
+    gold_clauses: ['§1.3']
+expected_route: human_review
+expected_recommendation: none
+drafted_by:
+  provider: fake
+  model_id: fake-drafter-a
