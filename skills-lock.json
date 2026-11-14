@@ -1,0 +1,54 @@
+{
+  "version": 2,
+  "skills": {
+    "langchain-dependencies": {
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github",
+      "skillPath": "config/skills/langchain-dependencies/SKILL.md",
+      "computedHash": "eebd0d6d0917516763aef8d4f926b4945dff473a3a70dd53f5c4089651243da4",
+      "installMode": "copy"
+    },
+    "langchain-fundamentals": {
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github",
+      "skillPath": "config/skills/langchain-fundamentals/SKILL.md",
+      "computedHash": "5413ea75355f6a2dc92a27c4a27287085a341f4310b76067341ea88ea0e53106",
+      "installMode": "copy"
+    },
+    "langchain-rag": {
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github",
+      "skillPath": "config/skills/langchain-rag/SKILL.md",
+      "computedHash": "3395c565ed0fa7b2253fdd198ba7f4afcedd310119772ce4dfe9196a2e120240",
+      "installMode": "copy"
+    },
+    "langfuse": {
+      "source": "langfuse/skills",
+      "sourceType": "github",
+      "skillPath": "skills/langfuse/SKILL.md",
+      "computedHash": "a35653229c8f110a1c950bce100edaf84870b8037dd59c940031e8434b9e15f0",
+      "installMode": "copy"
+    },
+    "langgraph-fundamentals": {
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github",
+      "skillPath": "config/skills/langgraph-fundamentals/SKILL.md",
+      "computedHash": "cefd329526f0611a50db7a1b440fdedbd25d0384928c5b0b6b4621735a39a184",
+      "installMode": "copy"
+    },
+    "langgraph-human-in-the-loop": {
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github",
+      "skillPath": "config/skills/langgraph-human-in-the-loop/SKILL.md",
+      "computedHash": "4239d527036304633560559335e4aef22edf9080f8cbd662855dea5e2f324365",
+      "installMode": "copy"
+    },
+    "langgraph-persistence": {
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github",
+      "skillPath": "config/skills/langgraph-persistence/SKILL.md",
+      "computedHash": "4b53651a29a0ba20f1cd752d8daf59be2993af1cae330936da1ad4f949081a3a",
+      "installMode": "copy"
+    }
+  }
+}
