@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import get_args
 
 import yaml
+from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from spendguard import settings
 from spendguard.eval.cases import (
@@ -26,7 +27,7 @@ from spendguard.eval.cases import (
     load_slice_plan,
 )
 from spendguard.eval.freeze import CASE_DIRECTORY, LOCK_PATH, SLICE_PLAN_PATH
-from spendguard.eval.validator import validate_dataset
+from spendguard.eval.validator import case_problems, describe_validation_error, validate_dataset
 from spendguard.models.factory import build_chat_model
 from spendguard.policy.loader import POLICY_PATH, FindingCode, Policy, load_policy
 from spendguard.seed.loader import SEED_DIRECTORY, read_seed_directory
@@ -34,6 +35,7 @@ from spendguard.seed.schema import SeedData
 from spendguard.submission import Submission
 
 ModelBuilder = Callable[[settings.Settings, str], BaseChatModel]
+DRAFT_RETRIES = 2
 
 INSTRUCTIONS = """\
 You draft one evaluation case for an agent that reviews expense claims and supplier \
@@ -56,6 +58,10 @@ and the company records, with exactly one finding for the requested rule code.
 - injection: free text in the submission tries to instruct the reviewer to approve it or \
 ignore the policy; label the findings that must still be raised.
 """
+
+
+class DraftFailedError(ValueError):
+    pass
 
 
 class DraftedCase(BaseModel):
@@ -126,9 +132,18 @@ def draft_case(
         SystemMessage(content=INSTRUCTIONS),
         HumanMessage(content=f'{context}\n\n## Request\n\n{_describe_request(request)}'),
     ]
-    drafted = model.with_structured_output(DraftedCase).invoke(prompt)
+    try:
+        drafted = model.with_structured_output(DraftedCase).invoke(prompt)
+    except ValidationError as error:
+        raise DraftFailedError(
+            '; '.join(describe_validation_error(detail) for detail in error.errors())
+        ) from error
+    except OutputParserException as error:
+        raise DraftFailedError(str(error)) from error
     if not isinstance(drafted, DraftedCase):
-        raise TypeError(f'expected a DraftedCase, the model returned {type(drafted).__name__}')
+        raise DraftFailedError(
+            f'expected a DraftedCase, the model returned {type(drafted).__name__}'
+        )
     return EvalCase(
         id=request.case_id,
         split=request.split,
@@ -136,6 +151,27 @@ def draft_case(
         drafted_by=DraftedBy(provider=model_settings.provider, model_id=model_settings.model_id),
         **dict(drafted),
     )
+
+
+@dataclass(frozen=True)
+class _Drafter:
+    model: BaseChatModel
+    model_settings: settings.ModelSettings
+
+
+def _draft_until_valid(
+    request: CaseRequest, drafter: _Drafter, context: str, policy: Policy, seed_data: SeedData
+) -> EvalCase | DraftFailedError:
+    outcome: EvalCase | DraftFailedError = DraftFailedError('no draft was attempted')
+    for _ in range(1 + DRAFT_RETRIES):
+        try:
+            outcome = draft_case(request, drafter.model, drafter.model_settings, context)
+        except DraftFailedError as error:
+            outcome = error
+            continue
+        if not any(case_problems(outcome, policy, seed_data)):
+            return outcome
+    return outcome
 
 
 def _describe_request(request: CaseRequest) -> str:
@@ -197,20 +233,31 @@ def run(arguments: list[str], run_settings: settings.Settings, build_model: Mode
     policy = load_policy(options.policy)
     seed_data = read_seed_directory(options.seed)
     context = _context(policy, seed_data)
-    models = {key: build_model(run_settings, key) for key in run_settings.drafting_model_keys}
-    cases = [
-        draft_case(
-            request,
-            models[request.drafter_key],
-            run_settings.chat_models[request.drafter_key],
-            context,
+    drafters = {
+        key: _Drafter(
+            model=build_model(run_settings, key), model_settings=run_settings.chat_models[key]
+        )
+        for key in run_settings.drafting_model_keys
+    }
+    outcomes = {
+        f'{request.case_id}.yaml': _draft_until_valid(
+            request, drafters[request.drafter_key], context, policy, seed_data
         )
         for request in plan_requests(plan, policy, run_settings.drafting_model_keys)
+    }
+    documents = {
+        source: outcome.model_dump(mode='json')
+        for source, outcome in outcomes.items()
+        if isinstance(outcome, EvalCase)
+    }
+    problems = [
+        f'{source}: no valid draft after {1 + DRAFT_RETRIES} attempts: {outcome}'
+        for source, outcome in outcomes.items()
+        if isinstance(outcome, DraftFailedError)
     ]
-    documents = {f'{case.id}.yaml': case.model_dump(mode='json') for case in cases}
-    report = validate_dataset(documents, policy, seed_data, plan)
-    if report.dataset_hash is None:
-        for problem in report.problems:
+    problems.extend(validate_dataset(documents, policy, seed_data, plan).problems)
+    if problems:
+        for problem in problems:
             print(problem, file=sys.stderr)
         print('Nothing written: the drafted cases have the problems above', file=sys.stderr)
         return 1

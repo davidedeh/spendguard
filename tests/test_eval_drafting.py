@@ -1,6 +1,6 @@
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 import yaml
@@ -50,8 +50,13 @@ DRAFTING_PLAN: dict[str, dict[str, Any]] = {
 }
 
 
+FailureKind = Literal['malformed', 'unknown_employee']
+
+
 class DraftingFake(FakeChatModel):
     claimant: str = 'EMP-003'
+    failing_calls: int = 0
+    failure: FailureKind = 'malformed'
 
     def _generate(
         self,
@@ -63,7 +68,20 @@ class DraftingFake(FakeChatModel):
         self.received.append(list(messages))
         request = str(messages[-1].content).split('## Request')[-1]
         drafted_case = self.draft(request)
-        return ChatResult(generations=[ChatGeneration(message=structured_response(drafted_case))])
+        message = structured_response(drafted_case)
+        if len(self.received) <= self.failing_calls:
+            if self.failure == 'malformed':
+                del message.tool_calls[0]['args']['submission']
+            else:
+                failing_draft = drafted_case.model_copy(
+                    update={
+                        'submission': drafted_case.submission.model_copy(
+                            update={'claimant': 'EMP-999'}
+                        )
+                    }
+                )
+                message = structured_response(failing_draft)
+        return ChatResult(generations=[ChatGeneration(message=message)])
 
     def draft(self, request: str) -> DraftedCase:
         requested_codes = [code for code in FIXTURE_POLICY.finding_codes if code in request]
@@ -111,14 +129,22 @@ class DraftingFake(FakeChatModel):
 
 
 class DrafterPool:
-    def __init__(self, claimants: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        claimants: dict[str, str] | None = None,
+        failures: dict[str, tuple[FailureKind, int]] | None = None,
+    ) -> None:
         self.claimants = claimants or {}
+        self.failures = failures or {}
         self.models: dict[str, DraftingFake] = {}
 
     def build(self, settings: Settings, model_key: str) -> BaseChatModel:
+        failure, failing_calls = self.failures.get(model_key, ('malformed', 0))
         model = DraftingFake(
             model_id=settings.chat_models[model_key].model_id,
             claimant=self.claimants.get(model_key, 'EMP-003'),
+            failing_calls=failing_calls,
+            failure=failure,
         )
         self.models[model_key] = model
         return model
@@ -347,3 +373,42 @@ def test_each_rule_coverage_prompt_names_its_one_rule_finding(tmp_path: Path) ->
         'OVER_CATEGORY_LIMIT',
         'SPLIT_PURCHASE',
     ]
+
+
+@pytest.mark.parametrize('failure', ['malformed', 'unknown_employee'])
+def test_a_draft_that_fails_once_is_retried_and_written(
+    tmp_path: Path, failure: FailureKind
+) -> None:
+    drafters = DrafterPool(failures={'fake_gpt': (failure, 1)})
+
+    exit_code = run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    assert exit_code == 0
+    assert len(read_drafted_cases(tmp_path)) == 28
+    assert len(drafters.models['fake_gpt'].received) == 10
+
+
+@pytest.mark.parametrize(
+    ('failure', 'problem'),
+    [
+        (
+            'malformed',
+            'test-judgement-positive-02.yaml: no valid draft after 3 attempts:'
+            ' submission: Field required',
+        ),
+        ('unknown_employee', 'test-judgement-positive-02.yaml: unknown employee EMP-999'),
+    ],
+)
+def test_a_draft_that_fails_three_times_blocks_the_write_and_is_reported(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], failure: FailureKind, problem: str
+) -> None:
+    drafters = DrafterPool(failures={'fake_gpt': (failure, 3)})
+
+    exit_code = run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    assert exit_code == 1
+    assert not (tmp_path / 'cases').exists()
+    assert len(drafters.models['fake_gpt'].received) == 11
+    error_lines = capsys.readouterr().err.splitlines()
+    assert problem in error_lines
+    assert not any(line.startswith('test-hard-negative-02.yaml') for line in error_lines)

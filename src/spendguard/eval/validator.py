@@ -31,10 +31,13 @@ def validate_dataset(
         try:
             parsed_cases[source] = EvalCase.model_validate(content)
         except ValidationError as error:
-            problems.extend(f'{source}: {_describe(detail)}' for detail in error.errors())
+            problems.extend(
+                f'{source}: {describe_validation_error(detail)}' for detail in error.errors()
+            )
     for source, case in parsed_cases.items():
-        case_problems = _case_problems(case, policy, seed_data)
-        problems.extend(f'{source}: {problem}' for problem in case_problems)
+        problems.extend(
+            f'{source}: {problem}' for problem in case_problems(case, policy, seed_data)
+        )
     problems.extend(_split_problems(parsed_cases))
     problems.extend(_slice_count_problems(cases, plan))
     if len(parsed_cases) == len(cases):
@@ -45,14 +48,14 @@ def validate_dataset(
     return DatasetReport(problems=(), dataset_hash=_dataset_hash(list(parsed_cases.values())))
 
 
-def _describe(detail: ErrorDetails) -> str:
+def describe_validation_error(detail: ErrorDetails) -> str:
     location = '.'.join(str(part) for part in detail['loc'])
     if detail['type'] == 'literal_error' and detail['loc'][-1] == 'code':
         return f'{location}: unknown finding code {detail["input"]!r}'
     return f'{location}: {detail["msg"]}'
 
 
-def _case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iterator[str]:
+def case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iterator[str]:
     clause_references = {clause.reference for clause in policy.clauses}
     for finding in case.expected_findings:
         for gold_clause in finding.gold_clauses:
