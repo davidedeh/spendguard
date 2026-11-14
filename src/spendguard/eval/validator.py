@@ -113,6 +113,8 @@ def _currency_problems(
     )
     if problem is not None:
         yield problem
+    if submission.currency == policy.base_currency and submission.claimed_exchange_rate is not None:
+        yield (f'a {policy.base_currency} submission states a claimed exchange rate; leave it null')
 
 
 def _split_problems(cases: Mapping[str, EvalCase]) -> Iterator[str]:

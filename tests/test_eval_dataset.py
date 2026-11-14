@@ -168,6 +168,18 @@ def test_a_base_currency_claim_needs_no_company_rate() -> None:
     assert report.problems == ()
 
 
+@pytest.mark.parametrize('source', ['test-alcohol.yaml', 'test-clean.yaml'])
+def test_a_claimed_exchange_rate_on_a_base_currency_submission_is_reported(source: str) -> None:
+    cases = fixture_cases()
+    cases[source]['submission']['claimed_exchange_rate'] = '18.40'
+
+    report = validate(cases)
+
+    assert report.problems == (
+        f'{source}: a GBP submission states a claimed exchange rate; leave it null',
+    )
+
+
 def test_a_foreign_currency_claim_dated_before_the_first_rate_is_reported() -> None:
     cases = fixture_cases()
     cases['dev-clean.yaml']['submission']['spent_on'] = '2026-09-30'
