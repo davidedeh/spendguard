@@ -20,13 +20,17 @@ def make_test_settings(**overrides: Any) -> Settings:
         'allowed_providers': ('fake',),
         'chat_models': {
             'fake_primary': ChatModelSettings(
-                provider='fake', model_id='fake-chat', structured_output_method='function_calling'
+                provider='fake',
+                model_id='fake-chat',
+                structured_output_method='function_calling',
+                temperature=0.0,
             ),
         },
         'primary_model_key': 'fake_primary',
         'drafting_model_keys': ('fake_primary',),
         'embedding_model': ModelSettings(provider='fake', model_id='fake-embedder'),
         'model_prices': {},
+        'eval_rows': [{'model_key': 'fake_primary', 'label': 'Fake primary'}],
         'google_api_key': None,
         'langfuse_public_key': None,
         'langfuse_secret_key': None,

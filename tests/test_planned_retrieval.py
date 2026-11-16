@@ -145,7 +145,10 @@ async def test_a_planner_set_to_json_schema_has_a_decorated_reply_read_as_its_pl
     settings = make_test_settings(
         chat_models={
             'fake_primary': ChatModelSettings(
-                provider='fake', model_id='fake-planner', structured_output_method='json_schema'
+                provider='fake',
+                model_id='fake-planner',
+                structured_output_method='json_schema',
+                temperature=0.0,
             )
         }
     )

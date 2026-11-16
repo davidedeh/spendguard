@@ -21,11 +21,14 @@ def build_chat_model(settings: Settings, model_key: str) -> BaseChatModel:
             return ChatBedrockConverse(
                 model=model.model_id,
                 region_name=settings.aws_region,
+                temperature=model.temperature,
                 config=Config(read_timeout=BEDROCK_READ_TIMEOUT_SECONDS),
             )
         case 'google_genai':
             return ChatGoogleGenerativeAI(
-                model=model.model_id, google_api_key=settings.google_api_key
+                model=model.model_id,
+                google_api_key=settings.google_api_key,
+                temperature=model.temperature,
             )
         case 'fake':
             return FakeChatModel(model_id=model.model_id)
