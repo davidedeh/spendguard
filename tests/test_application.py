@@ -12,7 +12,7 @@ import httpx
 import psycopg
 import pytest
 from langchain_core.callbacks import CallbackManagerForLLMRun
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from pydantic import Field
@@ -198,6 +198,10 @@ def clause_reference(clause_id: str) -> str:
 
 class PlanningChatModel(FakeChatModel):
     verdicts: list[CheckVerdict] = Field(default_factory=list)
+    retrieval_queries: list[str] = Field(
+        default_factory=lambda: ['is alcohol reimbursed with a meal', 'receipts for a lunch']
+    )
+    precedent_lookups: list[FindingCode] = Field(default_factory=list)
 
     def _generate(
         self,
@@ -210,13 +214,20 @@ class PlanningChatModel(FakeChatModel):
         bound_tool_names = [tool['function']['name'] for tool in kwargs.get('tools', [])]
         if bound_tool_names == [RetrievalPlan.__name__]:
             reply = structured_response(
-                RetrievalPlan(
-                    retrieval_queries=['is alcohol reimbursed with a meal', 'receipts for a lunch'],
-                    check_guidance=[],
-                )
+                RetrievalPlan(retrieval_queries=self.retrieval_queries, check_guidance=[])
             )
         elif bound_tool_names == [JudgementReport.__name__]:
             reply = structured_response(JudgementReport(verdicts=self.verdicts))
+        elif self.precedent_lookups and not any(
+            isinstance(message, ToolMessage) for message in messages
+        ):
+            reply = AIMessage(
+                content='',
+                tool_calls=[
+                    {'name': 'get_precedents', 'args': {'code': code}, 'id': f'lookup-{code}'}
+                    for code in self.precedent_lookups
+                ],
+            )
         else:
             reply = AIMessage(content='Nothing to look up.')
         return ChatResult(generations=[ChatGeneration(message=reply)])
@@ -1294,3 +1305,107 @@ async def test_a_dismissed_supplier_finding_annotates_the_next_invoice_from_that
             'Onboarding with procurement is under way',
         )
     ]
+
+
+async def test_dismissing_a_finding_whose_code_is_instance_only_writes_no_precedent(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+
+    await decide_dismissing(
+        application,
+        submission_id,
+        approver='EMP-002',
+        outcome='approve',
+        dismissed={'MISSING_RECEIPT': 'Receipt lost in the post'},
+    )
+
+    assert (
+        await precedents.recent_precedents(
+            application.connection_pool, 'EMP-003', 'MISSING_RECEIPT', POLICY
+        )
+        == []
+    )
+
+
+async def purpose_unclear_claim_waiting_for_review(
+    application: Application, claimant: str
+) -> str:
+    application.chat_model.retrieval_queries = ['business purpose of the spend', 'Halden business']
+    application.chat_model.verdicts = [
+        flagged('PURPOSE_UNCLEAR', 'business_purpose', [PURPOSE_QUOTE])
+    ]
+    return await claim_waiting_for_review(
+        application, claimant=claimant, amount='14.50', receipt_text=None
+    )
+
+
+async def test_a_dismissed_purpose_finding_annotates_that_employee_s_next_claim_only(
+    application: Application,
+) -> None:
+    first = await purpose_unclear_claim_waiting_for_review(application, 'EMP-003')
+    await decide_dismissing(
+        application,
+        first,
+        approver='EMP-002',
+        outcome='approve',
+        dismissed={'PURPOSE_UNCLEAR': 'Visits the Leeds office every week'},
+    )
+
+    same_employee = await purpose_unclear_claim_waiting_for_review(application, 'EMP-003')
+    other_employee = await purpose_unclear_claim_waiting_for_review(application, 'EMP-002')
+
+    annotations = {
+        submission_id: [
+            (finding['code'], [precedent['reason'] for precedent in finding['precedents']])
+            for finding in (await review_of(application, submission_id))['findings']
+        ]
+        for submission_id in (same_employee, other_employee)
+    }
+    assert annotations == {
+        same_employee: [('PURPOSE_UNCLEAR', ['Visits the Leeds office every week'])],
+        other_employee: [('PURPOSE_UNCLEAR', [])],
+    }
+
+
+async def test_a_judgement_check_cleared_by_precedent_is_audited_shown_and_sent_to_review(
+    application: Application,
+) -> None:
+    first = await purpose_unclear_claim_waiting_for_review(application, 'EMP-003')
+    await decide_dismissing(
+        application,
+        first,
+        approver='EMP-002',
+        outcome='approve',
+        dismissed={'PURPOSE_UNCLEAR': 'Visits the Leeds office every week'},
+    )
+    [precedent] = await precedents.recent_precedents(
+        application.connection_pool, 'EMP-003', 'PURPOSE_UNCLEAR', POLICY
+    )
+    application.chat_model.precedent_lookups = ['PURPOSE_UNCLEAR']
+    application.chat_model.verdicts = [
+        CheckVerdict(
+            code='PURPOSE_UNCLEAR',
+            outcome='cleared_by_precedent',
+            clause_reference=None,
+            quotes=[],
+            cited_precedent_ids=[],
+            precedent_id=precedent['precedent_id'],
+        )
+    ]
+    response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    assert await application.status_of(submission_id) == 'pending_review'
+    review = await review_of(application, submission_id)
+    assert (review['findings'], review['clearances_by_precedent']) == (
+        [],
+        [{'code': 'PURPOSE_UNCLEAR', 'precedent': precedent}],
+    )
+    assert {
+        'node': 'verify',
+        'event': 'cleared_by_precedent',
+        'detail': {'code': 'PURPOSE_UNCLEAR', 'precedent_id': precedent['precedent_id']},
+    } in (await application.review_state(submission_id))['audit']

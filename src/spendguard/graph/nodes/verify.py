@@ -177,5 +177,14 @@ def verify(state: ReviewState, graph_config: GraphConfig) -> ReviewState:
                 },
             }
             for drop in verification.drops + clearance_drops
+        ]
+        + [
+            {
+                'node': 'verify',
+                'event': 'cleared_by_precedent',
+                'detail': {'code': outcome['code'], 'precedent_id': outcome['precedent_id']},
+            }
+            for outcome in kept_outcomes
+            if outcome['outcome'] == 'cleared_by_precedent'
         ],
     }
