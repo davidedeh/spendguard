@@ -5,11 +5,14 @@ import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import psycopg
 import pytest
+from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.messages import BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from settings_factory import make_test_settings
@@ -23,16 +26,23 @@ from spendguard.graph.nodes.execute import (
     DecisionEventSender,
     SignedDecisionEventSender,
 )
+from spendguard.graph.nodes.plan import RetrievalPlan
 from spendguard.models.factory import build_embedder
-from spendguard.models.fake import FakeChatModel
+from spendguard.models.fake import FakeChatModel, structured_response
 from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.queue.memory import InMemoryQueue
+from spendguard.queue.sqs import SqsQueue, sqs_client
+from spendguard.retrieval.policy_index import index_policy
 from spendguard.security.approver_tokens import issue_token
 from spendguard.security.signatures import sign
 from spendguard.seed.loader import load_seed_data, read_seed_directory
 from spendguard.settings import Settings
 from spendguard.store import decision_events, submissions
-from spendguard.worker import WorkerRuntime, process_message
+from spendguard.submission import SupplierInvoiceDelivery
+from spendguard.worker import WorkerRuntime, handle_sqs_event, process_message
+
+if TYPE_CHECKING:
+    from mypy_boto3_sqs.type_defs import ReceiveMessageResultTypeDef
 
 SETTINGS = make_test_settings()
 WEBHOOK_KEY = b'test-webhook-signing-key'
@@ -62,6 +72,28 @@ def expense_claim_delivery(claim_id: str, **claim_overrides: Any) -> dict[str, A
             'receipt_text': 'Harbour Kitchen\n1 x Soup 6.50\n1 x Sandwich 8.00\nTOTAL 14.50',
         }
         | claim_overrides,
+    }
+
+
+def unique_invoice_number() -> str:
+    return f'INV-{uuid.uuid4().hex}'
+
+
+def supplier_invoice_delivery(invoice_number: str, **invoice_overrides: Any) -> dict[str, Any]:
+    return {
+        'invoice': {
+            'type': 'supplier_invoice',
+            'supplier': 'SUP-001',
+            'supplier_invoice_number': invoice_number,
+            'purchase_order': 'PO-0001',
+            'cost_centre': None,
+            'issued_on': '2026-10-21',
+            'amount': '85.00',
+            'currency': 'GBP',
+            'claimed_exchange_rate': None,
+            'description': 'Printer toner cartridges for the Leeds office',
+        }
+        | invoice_overrides,
     }
 
 
@@ -103,11 +135,17 @@ class Application:
     async def post_claim(
         self, delivery: dict[str, Any], key: bytes = WEBHOOK_KEY, signed_at: int | None = None
     ) -> httpx.Response:
+        return await self.post_signed('/webhooks/expense-claims', delivery, key, signed_at)
+
+    async def post_invoice(self, delivery: dict[str, Any]) -> httpx.Response:
+        return await self.post_signed('/webhooks/supplier-invoices', delivery, WEBHOOK_KEY, None)
+
+    async def post_signed(
+        self, path: str, delivery: dict[str, Any], key: bytes, signed_at: int | None
+    ) -> httpx.Response:
         raw_body = json.dumps(delivery).encode()
         return await self.client.post(
-            '/webhooks/expense-claims',
-            content=raw_body,
-            headers=signed_headers(key, raw_body, signed_at),
+            path, content=raw_body, headers=signed_headers(key, raw_body, signed_at)
         )
 
     async def decide(
@@ -120,16 +158,54 @@ class Application:
         )
 
     async def run_worker(self) -> None:
-        for message in self.queue.receive():
-            await process_message(message, self.worker)
+        for delivery in self.queue.receive():
+            await process_message(delivery.message, self.worker)
+            self.queue.acknowledge(delivery.receipt_handle)
 
     async def status_of(self, submission_id: str) -> str:
         record = await submissions.find_submission(self.connection_pool, uuid.UUID(submission_id))
         assert record is not None
         return record.status
 
+    async def requester_of(self, delivery: SupplierInvoiceDelivery) -> str:
+        snapshot = await self.worker.graph.aget_state(
+            {'configurable': {'thread_id': delivery.idempotency_key}}
+        )
+        return str(snapshot.values['requester'])
+
     async def recorded_events(self, submission_id: str) -> list[dict[str, Any]]:
         return await decision_events.events_for(self.connection_pool, submission_id)
+
+    async def review_state(self, submission_id: str) -> dict[str, Any]:
+        record = await submissions.find_submission(self.connection_pool, uuid.UUID(submission_id))
+        assert record is not None
+        snapshot = await self.worker.graph.aget_state(
+            {'configurable': {'thread_id': record.idempotency_key}}
+        )
+        state: dict[str, Any] = snapshot.values
+        return state
+
+
+def clause_reference(clause_id: str) -> str:
+    return next(clause.reference for clause in POLICY.clauses if clause.id == clause_id)
+
+
+class PlanningChatModel(FakeChatModel):
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        self.received.append(list(messages))
+        reply = structured_response(
+            RetrievalPlan(
+                retrieval_queries=['is alcohol reimbursed with a meal', 'receipts for a lunch'],
+                check_guidance=[],
+            )
+        )
+        return ChatResult(generations=[ChatGeneration(message=reply)])
 
 
 @pytest.fixture
@@ -143,11 +219,14 @@ async def application(
 ) -> AsyncIterator[Application]:
     with psycopg.connect(branch_database) as connection:
         load_seed_data(connection, SEED_DATA)
-    queue = InMemoryQueue()
+    queue = InMemoryQueue(
+        visibility_timeout_seconds=application_settings.queue_visibility_timeout_seconds
+    )
     app = create_app(
         ApiDependencies(
             settings=application_settings,
             policy=POLICY,
+            seed_data=SEED_DATA,
             connection_pool=connection_pool,
             queue=queue,
         )
@@ -162,13 +241,16 @@ async def application(
                 key=b'test-decision-event-signing-key',
             )
         )
+        embedder = build_embedder(application_settings)
+        async with connection_pool.connection() as connection:
+            await index_policy(connection, POLICY, embedder)
         graph = build_graph(
             GraphConfig(
                 settings=application_settings,
                 policy=POLICY,
                 seed_data=SEED_DATA,
-                chat_model=FakeChatModel(model_id='fake-chat'),
-                embedder=build_embedder(application_settings),
+                chat_model=PlanningChatModel(model_id='fake-chat'),
+                embedder=embedder,
                 connection_pool=connection_pool,
                 checkpointer=AsyncPostgresSaver(connection_pool),
                 decision_event_sender=sender,
@@ -240,6 +322,25 @@ async def test_a_claim_missing_a_required_receipt_waits_for_review_and_sends_no_
     assert await application.recorded_events(submission_id) == []
 
 
+async def test_the_clauses_retrieved_for_a_submission_are_recorded_in_its_state_and_audit(
+    application: Application,
+) -> None:
+    response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    state = await application.review_state(submission_id)
+    retrieved_references = [clause['clause_reference'] for clause in state['retrieved_clauses']]
+    assert clause_reference('no_alcohol') in retrieved_references
+    assert len(retrieved_references) == len(set(retrieved_references)) > 1
+    assert {
+        'node': 'retrieve_policy',
+        'event': 'policy_retrieved',
+        'detail': {'clause_references': retrieved_references},
+    } in state['audit']
+
+
 async def test_a_receipted_claim_repeating_an_earlier_claim_waits_for_review_and_sends_no_event(
     application: Application,
 ) -> None:
@@ -282,7 +383,7 @@ async def test_an_identical_retry_returns_202_with_the_same_id_and_enqueues_noth
 
     assert retry.status_code == 202
     assert retry.json()['submission_id'] == first.json()['submission_id']
-    assert [message.type for message in application.queue.receive()] == ['start']
+    assert [delivery.message.type for delivery in application.queue.receive()] == ['start']
 
 
 async def test_the_same_claim_id_with_a_changed_body_returns_409(
@@ -296,12 +397,136 @@ async def test_the_same_claim_id_with_a_changed_body_returns_409(
     assert changed.status_code == 409
 
 
+async def test_a_clean_invoice_under_the_threshold_against_a_po_ends_complete_with_one_erp_event(
+    application: Application,
+) -> None:
+    response = await application.post_invoice(supplier_invoice_delivery(unique_invoice_number()))
+    assert response.status_code == 202
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    assert await application.status_of(submission_id) == 'complete'
+    events = await application.recorded_events(submission_id)
+    assert [(event['idempotency_key'], event['outcome']) for event in events] == [
+        (submission_id, 'approved')
+    ]
+
+
+async def test_an_invoice_from_a_supplier_not_approved_waits_for_review_and_sends_no_event(
+    application: Application,
+) -> None:
+    response = await application.post_invoice(
+        supplier_invoice_delivery(
+            unique_invoice_number(), supplier='SUP-002', purchase_order=None, cost_centre='CC-200'
+        )
+    )
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    assert await application.status_of(submission_id) == 'pending_review'
+    assert await application.recorded_events(submission_id) == []
+
+
+async def test_an_invoice_against_a_po_has_the_po_raiser_as_its_requester(
+    application: Application,
+) -> None:
+    delivery = supplier_invoice_delivery(unique_invoice_number())
+    await application.post_invoice(delivery)
+
+    await application.run_worker()
+
+    assert (
+        await application.requester_of(SupplierInvoiceDelivery.model_validate(delivery))
+        == 'EMP-003'
+    )
+
+
+async def test_an_invoice_without_a_po_has_the_cost_centre_owner_as_its_requester(
+    application: Application,
+) -> None:
+    delivery = supplier_invoice_delivery(
+        unique_invoice_number(), purchase_order=None, cost_centre='CC-200'
+    )
+    await application.post_invoice(delivery)
+
+    await application.run_worker()
+
+    assert (
+        await application.requester_of(SupplierInvoiceDelivery.model_validate(delivery))
+        == 'EMP-002'
+    )
+
+
+@pytest.mark.parametrize(
+    'invoice_overrides',
+    [
+        {'purchase_order': 'PO-9999'},
+        {'purchase_order': None, 'cost_centre': 'CC-300'},
+        {'purchase_order': None, 'cost_centre': None},
+    ],
+    ids=['unknown purchase order', 'cost centre without an owner', 'neither'],
+)
+async def test_an_invoice_with_no_derivable_requester_is_rejected_with_422(
+    application: Application, invoice_overrides: dict[str, Any]
+) -> None:
+    response = await application.post_invoice(
+        supplier_invoice_delivery(unique_invoice_number(), **invoice_overrides)
+    )
+
+    assert response.status_code == 422
+    [error] = response.json()['detail']
+    assert error['type'] == 'no_requester'
+    assert application.queue.receive() == []
+
+
+async def test_an_identical_invoice_retry_returns_202_with_the_same_id_and_enqueues_nothing_more(
+    application: Application,
+) -> None:
+    delivery = supplier_invoice_delivery(unique_invoice_number())
+    first = await application.post_invoice(delivery)
+
+    retry = await application.post_invoice(delivery)
+
+    assert retry.status_code == 202
+    assert retry.json()['submission_id'] == first.json()['submission_id']
+    assert [delivery.message.type for delivery in application.queue.receive()] == ['start']
+
+
+async def test_the_same_supplier_invoice_number_with_a_changed_body_returns_409(
+    application: Application,
+) -> None:
+    invoice_number = unique_invoice_number()
+    await application.post_invoice(supplier_invoice_delivery(invoice_number, amount='85.00'))
+
+    changed = await application.post_invoice(
+        supplier_invoice_delivery(invoice_number, amount='58.00')
+    )
+
+    assert changed.status_code == 409
+
+
+async def test_the_same_invoice_number_from_another_supplier_is_a_separate_submission(
+    application: Application,
+) -> None:
+    invoice_number = unique_invoice_number()
+    first = await application.post_invoice(supplier_invoice_delivery(invoice_number))
+
+    other = await application.post_invoice(
+        supplier_invoice_delivery(invoice_number, supplier='SUP-002')
+    )
+
+    assert other.status_code == 202
+    assert other.json()['submission_id'] != first.json()['submission_id']
+
+
 async def test_a_duplicate_start_message_is_a_no_op(application: Application) -> None:
     response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
     [start] = application.queue.receive()
-    await process_message(start, application.worker)
+    await process_message(start.message, application.worker)
 
-    await process_message(start, application.worker)
+    await process_message(start.message, application.worker)
 
     assert [event.submission_id for event in application.sender.sent] == [
         response.json()['submission_id']
@@ -348,20 +573,6 @@ async def test_the_mock_erp_rejects_an_event_signed_with_the_webhook_key(
 
     assert response.status_code == 401
     assert await application.recorded_events(submission_id) == []
-
-
-@pytest.mark.parametrize(
-    ('method', 'path'),
-    [
-        ('POST', '/webhooks/supplier-invoices'),
-    ],
-)
-async def test_every_endpoint_not_built_yet_returns_501(
-    application: Application, method: str, path: str
-) -> None:
-    response = await application.client.request(method, path)
-
-    assert response.status_code == 501
 
 
 @pytest.mark.parametrize(
@@ -438,7 +649,17 @@ async def test_reading_an_auto_approved_claim_shows_its_recommendation_status_an
     assert body['status'] == 'complete'
     assert body['review']['recommendation'] == 'approve'
     assert body['review']['findings'] == []
+    state = await application.review_state(submission_id)
     assert body['audit'] == [
+        {
+            'node': 'retrieve_policy',
+            'event': 'policy_retrieved',
+            'detail': {
+                'clause_references': [
+                    clause['clause_reference'] for clause in state['retrieved_clauses']
+                ]
+            },
+        },
         {'node': 'execute', 'event': 'decision_event_sent', 'detail': {'outcome': 'approved'}},
         {'node': 'finalize', 'event': 'outcome_recorded', 'detail': {'outcome': 'approve'}},
     ]
@@ -633,4 +854,78 @@ async def test_of_two_concurrent_decisions_exactly_one_wins_and_the_other_gets_4
         'decided',
         winner,
     )
-    assert [message.type for message in application.queue.receive()] == ['resume']
+    assert [delivery.message.type for delivery in application.queue.receive()] == ['resume']
+
+
+def lambda_event_from(received: 'ReceiveMessageResultTypeDef') -> dict[str, Any]:
+    return {
+        'Records': [
+            {
+                'messageId': message['MessageId'],
+                'receiptHandle': message['ReceiptHandle'],
+                'body': message['Body'],
+                'attributes': message.get('Attributes', {}),
+                'eventSource': 'aws:sqs',
+            }
+            for message in received.get('Messages', [])
+        ]
+    }
+
+
+async def test_the_worker_handler_runs_a_start_message_from_elasticmq_to_complete(
+    application: Application, branch_queue: str
+) -> None:
+    client = sqs_client(SETTINGS)
+    queue_backed_app = create_app(
+        ApiDependencies(
+            settings=SETTINGS,
+            policy=POLICY,
+            seed_data=SEED_DATA,
+            connection_pool=application.connection_pool,
+            queue=SqsQueue(client=client, queue_url=branch_queue),
+        )
+    )
+    raw_body = json.dumps(expense_claim_delivery(unique_claim_id())).encode()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=queue_backed_app), base_url='http://testserver'
+    ) as webhook_client:
+        response = await webhook_client.post(
+            '/webhooks/expense-claims',
+            content=raw_body,
+            headers=signed_headers(WEBHOOK_KEY, raw_body),
+        )
+    submission_id = response.json()['submission_id']
+    received = client.receive_message(QueueUrl=branch_queue, MaxNumberOfMessages=10)
+
+    outcome = await handle_sqs_event(lambda_event_from(received), application.worker)
+
+    assert outcome == {'batchItemFailures': []}
+    assert await application.status_of(submission_id) == 'complete'
+    assert [event.submission_id for event in application.sender.sent] == [submission_id]
+
+
+def lambda_record(message_id: str, body: str) -> dict[str, Any]:
+    return {'messageId': message_id, 'body': body, 'eventSource': 'aws:sqs'}
+
+
+async def test_a_failing_record_and_every_record_after_it_are_reported_as_batch_failures(
+    application: Application,
+) -> None:
+    first = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    last = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    first_start, last_start = application.queue.receive()
+    event = {
+        'Records': [
+            lambda_record('message-1', first_start.message.model_dump_json()),
+            lambda_record('message-2', '{"type": "unknown"}'),
+            lambda_record('message-3', last_start.message.model_dump_json()),
+        ]
+    }
+
+    outcome = await handle_sqs_event(event, application.worker)
+
+    assert outcome == {
+        'batchItemFailures': [{'itemIdentifier': 'message-2'}, {'itemIdentifier': 'message-3'}]
+    }
+    assert await application.status_of(first.json()['submission_id']) == 'complete'
+    assert await application.status_of(last.json()['submission_id']) == 'received'
