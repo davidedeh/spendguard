@@ -210,6 +210,39 @@ async def test_every_asked_check_the_model_gives_no_verdict_for_is_audited_as_mi
     ]
 
 
+async def test_a_clearance_that_names_no_precedent_counts_as_no_verdict(
+    connection_pool: ConnectionPool,
+) -> None:
+    model = FakeChatModel(
+        model_id='fake-judge',
+        responses=[
+            AIMessage(content='I have what I need.'),
+            report(
+                verdict('WEEKEND_SPEND_UNJUSTIFIED', 'cleared_by_precedent'),
+                verdict('PURPOSE_UNCLEAR', 'not_flagged'),
+                verdict('RECEIPT_MISMATCH', 'not_flagged'),
+                verdict('ALCOHOL_NOT_PERMITTED', 'not_flagged'),
+            ),
+        ],
+    )
+
+    update = await run_judgement_checks(claim_state(), graph_config(model, connection_pool))
+
+    assert [outcome['code'] for outcome in update['judgement_outcomes']] == [
+        'PURPOSE_UNCLEAR',
+        'RECEIPT_MISMATCH',
+        'ALCOHOL_NOT_PERMITTED',
+    ]
+    assert update['unanswered_checks'] == ['WEEKEND_SPEND_UNJUSTIFIED']
+    assert update['audit'] == [
+        {
+            'node': 'run_judgement_checks',
+            'event': 'judgement_verdict_missing',
+            'detail': {'code': 'WEEKEND_SPEND_UNJUSTIFIED'},
+        }
+    ]
+
+
 def tool_calls(*calls: tuple[str, dict[str, Any]]) -> AIMessage:
     return AIMessage(
         content='',

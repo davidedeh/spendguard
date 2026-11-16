@@ -28,7 +28,13 @@ from spendguard.eval.report import EvalResults, MemoryComparison, RowResult
 from spendguard.graph.build import ReviewGraph, build_graph
 from spendguard.graph.config import GraphConfig, thread_config
 from spendguard.graph.nodes.execute import DecisionEvent
-from spendguard.graph.state import Decision, Disposition, RecordedFinding, ReviewState
+from spendguard.graph.state import (
+    Decision,
+    Disposition,
+    RecordedFinding,
+    ReviewState,
+    precedent_clearances,
+)
 from spendguard.observability.tracing import Tracing, traced_advance
 from spendguard.policy.loader import Policy
 from spendguard.queue.messages import QueueMessage
@@ -121,9 +127,7 @@ async def run_case(
     state = (await graph.aget_state(thread)).values
     findings = state.get('findings', [])
     dropped = sum(entry['event'] == 'finding_dropped' for entry in state['audit'])
-    kept_clearances = sum(
-        outcome['outcome'] == 'cleared_by_precedent' for outcome in state['judgement_outcomes']
-    )
+    kept_clearances = precedent_clearances(state['judgement_outcomes'])
     judgement_findings = [finding for finding in findings if finding['source'] == 'judgement']
     return CaseOutcome(
         case_id=case.id,
@@ -133,15 +137,13 @@ async def run_case(
         judgement_codes=frozenset(finding['code'] for finding in judgement_findings),
         route=state['route'],
         recommendation=state['recommendation'],
-        proposed_judgement_results=len(judgement_findings) + kept_clearances + dropped,
+        proposed_judgement_results=len(judgement_findings) + len(kept_clearances) + dropped,
         dropped_judgement_results=dropped,
         retrieved_clause_references=frozenset(
             clause['clause_reference'] for clause in state['retrieved_clauses']
         ),
         clearances=frozenset(
-            (outcome['code'], outcome['precedent_id'])
-            for outcome in state['judgement_outcomes']
-            if outcome['outcome'] == 'cleared_by_precedent' and outcome['precedent_id'] is not None
+            (clearance['code'], clearance['precedent_id']) for clearance in kept_clearances
         ),
         latency_seconds=latency_seconds,
         input_tokens=token_counter.input_tokens,

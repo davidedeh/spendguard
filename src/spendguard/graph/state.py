@@ -1,4 +1,5 @@
 import operator
+from collections.abc import Iterable
 from typing import Annotated, Any, Literal, TypedDict
 
 from spendguard.policy.loader import FindingCode, Severity
@@ -34,11 +35,28 @@ class CandidateFinding(TypedDict):
     cited_precedent_ids: list[str]
 
 
-class JudgementOutcome(TypedDict):
+class FlaggedOutcome(TypedDict):
     code: FindingCode
-    outcome: JudgementOutcomeKind
-    precedent_id: str | None
-    candidate: CandidateFinding | None
+    outcome: Literal['flagged']
+    precedent_id: None
+    candidate: CandidateFinding
+
+
+class NotFlaggedOutcome(TypedDict):
+    code: FindingCode
+    outcome: Literal['not_flagged']
+    precedent_id: None
+    candidate: None
+
+
+class PrecedentClearance(TypedDict):
+    code: FindingCode
+    outcome: Literal['cleared_by_precedent']
+    precedent_id: str
+    candidate: None
+
+
+JudgementOutcome = FlaggedOutcome | NotFlaggedOutcome | PrecedentClearance
 
 
 class RetrievalQuery(TypedDict):
@@ -104,3 +122,7 @@ class ReviewState(TypedDict, total=False):
     recommendation: Recommendation
     decision: Decision
     audit: Annotated[list[AuditEntry], operator.add]
+
+
+def precedent_clearances(outcomes: Iterable[JudgementOutcome]) -> list[PrecedentClearance]:
+    return [outcome for outcome in outcomes if outcome['outcome'] == 'cleared_by_precedent']

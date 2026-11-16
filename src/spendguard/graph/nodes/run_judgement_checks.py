@@ -56,20 +56,40 @@ class JudgementReport(StrictModel):
 JUDGEMENT_REPORT_SCHEMA: dict[str, Any] = output_schema(JudgementReport)
 
 
-def _outcome(verdict: CheckVerdict) -> JudgementOutcome:
-    return {
-        'code': verdict.code,
-        'outcome': verdict.outcome,
-        'precedent_id': verdict.precedent_id,
-        'candidate': {
-            'code': verdict.code,
-            'clause_reference': verdict.clause_reference or '',
-            'quotes': [{'field': quote.field, 'text': quote.text} for quote in verdict.quotes],
-            'cited_precedent_ids': verdict.cited_precedent_ids,
-        }
-        if verdict.outcome == 'flagged'
-        else None,
-    }
+def _outcome(verdict: CheckVerdict) -> JudgementOutcome | None:
+    match verdict.outcome:
+        case 'flagged':
+            return {
+                'code': verdict.code,
+                'outcome': 'flagged',
+                'precedent_id': None,
+                'candidate': {
+                    'code': verdict.code,
+                    'clause_reference': verdict.clause_reference or '',
+                    'quotes': [
+                        {'field': quote.field, 'text': quote.text} for quote in verdict.quotes
+                    ],
+                    'cited_precedent_ids': verdict.cited_precedent_ids,
+                },
+            }
+        case 'not_flagged':
+            return {
+                'code': verdict.code,
+                'outcome': 'not_flagged',
+                'precedent_id': None,
+                'candidate': None,
+            }
+        case 'cleared_by_precedent':
+            if verdict.precedent_id is None:
+                return None
+            return {
+                'code': verdict.code,
+                'outcome': 'cleared_by_precedent',
+                'precedent_id': verdict.precedent_id,
+                'candidate': None,
+            }
+        case _:
+            assert_never(verdict.outcome)
 
 
 def judgement_instructions(
@@ -193,7 +213,12 @@ def _judged(
         messages,
     )
     judgement_report = JudgementReport.model_validate(output)
-    answered_codes = {verdict.code for verdict in judgement_report.verdicts}
+    outcomes = [
+        outcome
+        for outcome in (_outcome(verdict) for verdict in judgement_report.verdicts)
+        if outcome is not None
+    ]
+    answered_codes = {outcome['code'] for outcome in outcomes}
     unanswered_checks = [code for code in checks if code not in answered_codes]
     audit.extend(
         {
@@ -207,6 +232,6 @@ def _judged(
         'judgement_checks': checks,
         'unanswered_checks': unanswered_checks,
         'supplied_precedents': bound.supplied_precedents,
-        'judgement_outcomes': [_outcome(verdict) for verdict in judgement_report.verdicts],
+        'judgement_outcomes': outcomes,
         'audit': audit,
     }

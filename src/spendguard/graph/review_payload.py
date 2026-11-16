@@ -1,6 +1,12 @@
 from typing import TypedDict
 
-from spendguard.graph.state import FindingSource, Quote, ReviewState, SuppliedPrecedent
+from spendguard.graph.state import (
+    FindingSource,
+    Quote,
+    ReviewState,
+    SuppliedPrecedent,
+    precedent_clearances,
+)
 from spendguard.policy.loader import FindingCode, Policy, Severity
 from spendguard.rules.decisions import Recommendation
 from spendguard.submission import SubmissionType
@@ -68,7 +74,6 @@ def review_payload(state: ReviewState, policy: Policy) -> ReviewPayload:
         ],
         'clearances_by_precedent': [
             {'code': outcome['code'], 'precedent': precedents[outcome['precedent_id']]}
-            for outcome in state.get('judgement_outcomes', [])
-            if outcome['outcome'] == 'cleared_by_precedent' and outcome['precedent_id'] is not None
+            for outcome in precedent_clearances(state.get('judgement_outcomes', []))
         ],
     }

@@ -12,6 +12,7 @@ from spendguard.graph.state import (
     Quote,
     RecordedFinding,
     ReviewState,
+    precedent_clearances,
 )
 from spendguard.policy.loader import FindingCode, Policy
 
@@ -178,10 +179,9 @@ def verify(state: ReviewState, graph_config: GraphConfig) -> ReviewState:
         {
             'node': 'verify',
             'event': 'cleared_by_precedent',
-            'detail': {'code': outcome['code'], 'precedent_id': outcome['precedent_id']},
+            'detail': {'code': clearance['code'], 'precedent_id': clearance['precedent_id']},
         }
-        for outcome in kept_outcomes
-        if outcome['outcome'] == 'cleared_by_precedent'
+        for clearance in precedent_clearances(kept_outcomes)
     )
     return {
         'findings': annotated_findings(
