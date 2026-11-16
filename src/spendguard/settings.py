@@ -78,7 +78,7 @@ class Settings(BaseSettings):
 
     webhook_signing_key: SecretStr | None
     decision_event_signing_key: SecretStr | None
-    decision_event_url: str
+    decision_event_url: str | None
     signature_tolerance_seconds: int
 
     force_human_review: bool

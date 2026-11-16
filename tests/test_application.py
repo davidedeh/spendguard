@@ -238,6 +238,7 @@ async def application(
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url='http://testserver'
     ) as client:
+        assert application_settings.decision_event_url is not None
         sender = RecordingSender(
             SignedDecisionEventSender(
                 client=client,

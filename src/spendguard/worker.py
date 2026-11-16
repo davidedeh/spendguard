@@ -100,8 +100,14 @@ async def handle_sqs_event(event: Mapping[str, object], runtime: WorkerRuntime) 
 
 
 def build_worker_runtime(loaded_settings: Settings) -> WorkerRuntime:
-    if loaded_settings.decision_event_signing_key is None:
-        raise ValueError('DECISION_EVENT_SIGNING_KEY must be set for the worker to send events')
+    if (
+        loaded_settings.decision_event_signing_key is None
+        or loaded_settings.decision_event_url is None
+    ):
+        raise ValueError(
+            'DECISION_EVENT_SIGNING_KEY and DECISION_EVENT_URL must be set'
+            ' for the worker to send events'
+        )
     connection_pool = async_connection_pool(branch_connection_info(loaded_settings))
     graph = build_graph(
         GraphConfig(

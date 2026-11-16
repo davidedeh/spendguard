@@ -52,6 +52,10 @@ python_version = "3.12"
 mypy_path = ["src", "tests"]
 files = ["src", "tests"]
 
+[[tool.mypy.overrides]]
+module = ["cfnlint.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]
