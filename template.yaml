@@ -213,6 +213,7 @@ Resources:
       Environment:
         Variables:
           AWS_LWA_READINESS_CHECK_PROTOCOL: tcp
+          AWS_LWA_ERROR_STATUS_CODES: 500-599
           DECISION_EVENT_URL: !Sub '${ApiFunctionUrl.FunctionUrl}mock-erp/decision-events'
       Events:
         Submissions:

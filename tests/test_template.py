@@ -66,6 +66,12 @@ def test_the_queue_visibility_timeout_is_at_least_six_worker_timeouts() -> None:
     assert int(environment['QUEUE_VISIBILITY_TIMEOUT_SECONDS']) == queue['VisibilityTimeout']
 
 
+def test_a_worker_server_error_fails_the_invocation_so_the_message_is_redelivered() -> None:
+    environment = RESOURCES['WorkerFunction']['Properties']['Environment']['Variables']
+
+    assert environment['AWS_LWA_ERROR_STATUS_CODES'] == '500-599'
+
+
 def test_a_message_moves_to_the_dead_letter_queue_after_three_receives() -> None:
     redrive = RESOURCES['SubmissionQueue']['Properties']['RedrivePolicy']
 
