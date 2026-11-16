@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal, Self, TypedDict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from pydantic import model_validator
+from pydantic import Field, model_validator
 
 from spendguard.api.dependencies import ApiDependencies, api_dependencies, authenticated_approver
 from spendguard.graph.state import AuditEntry, Decision, DecisionOutcome, DispositionVerdict
@@ -60,13 +60,7 @@ async def read_submission(
 class DispositionRequest(StrictModel):
     finding_id: str
     verdict: DispositionVerdict
-    reason: str | None
-
-    @model_validator(mode='after')
-    def _dismissal_has_a_reason(self) -> Self:
-        if self.verdict == 'dismissed' and not self.reason:
-            raise ValueError('a dismissal needs a reason')
-        return self
+    reason: str = Field(min_length=1)
 
 
 class DecisionRequest(StrictModel):

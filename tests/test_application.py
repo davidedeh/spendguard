@@ -821,7 +821,7 @@ def missing_receipt_decision(outcome: str, reason: str | None) -> dict[str, Any]
         'outcome': outcome,
         'reason': reason,
         'dispositions': [
-            {'finding_id': 'MISSING_RECEIPT', 'verdict': 'upheld', 'reason': None},
+            {'finding_id': 'MISSING_RECEIPT', 'verdict': 'upheld', 'reason': 'No receipt attached'},
         ],
     }
 
@@ -890,18 +890,22 @@ async def test_a_decision_the_approver_may_not_make_returns_403_and_changes_noth
     'dispositions',
     [
         [],
-        [{'finding_id': 'MISSING_PO', 'verdict': 'upheld', 'reason': None}],
+        [{'finding_id': 'MISSING_PO', 'verdict': 'upheld', 'reason': 'No purchase order'}],
         [
-            {'finding_id': 'MISSING_RECEIPT', 'verdict': 'upheld', 'reason': None},
+            {'finding_id': 'MISSING_RECEIPT', 'verdict': 'upheld', 'reason': 'No receipt'},
             {'finding_id': 'MISSING_RECEIPT', 'verdict': 'dismissed', 'reason': 'Lost in transit'},
         ],
         [{'finding_id': 'MISSING_RECEIPT', 'verdict': 'dismissed', 'reason': None}],
+        [{'finding_id': 'MISSING_RECEIPT', 'verdict': 'upheld', 'reason': None}],
+        [{'finding_id': 'MISSING_RECEIPT', 'verdict': 'upheld', 'reason': ''}],
     ],
     ids=[
         'no dispositions',
         'a disposition for another finding',
         'two dispositions for one finding',
         'a dismissal without a reason',
+        'an upheld finding without a reason',
+        'an upheld finding with an empty reason',
     ],
 )
 async def test_a_decision_without_one_disposition_per_finding_returns_422_and_changes_nothing(
@@ -1534,7 +1538,7 @@ async def decide_dismissing(
                 {
                     'finding_id': finding['finding_id'],
                     'verdict': 'dismissed' if finding['code'] in dismissed else 'upheld',
-                    'reason': dismissed.get(finding['code']),
+                    'reason': dismissed.get(finding['code'], 'Upheld as raised'),
                 }
                 for finding in review['findings']
             ],

@@ -155,6 +155,9 @@ async def run_case(
     )
 
 
+UPHELD_WITHOUT_A_SCRIPTED_REASON = 'Upheld by the scripted review.'
+
+
 def _scripted_dispositions(
     review: ScriptedReview, findings: list[RecordedFinding]
 ) -> list[Disposition]:
@@ -166,7 +169,9 @@ def _scripted_dispositions(
             {
                 'finding_id': finding['finding_id'],
                 'verdict': 'upheld' if scripted is None else scripted.disposition,
-                'reason': None if scripted is None else scripted.reason,
+                'reason': UPHELD_WITHOUT_A_SCRIPTED_REASON
+                if scripted is None or scripted.reason is None
+                else scripted.reason,
             }
         )
     return dispositions

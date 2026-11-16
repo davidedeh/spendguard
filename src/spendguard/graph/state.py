@@ -66,7 +66,7 @@ class SuppliedPrecedent(TypedDict):
 class Disposition(TypedDict):
     finding_id: str
     verdict: DispositionVerdict
-    reason: str | None
+    reason: str
 
 
 class Decision(TypedDict):
