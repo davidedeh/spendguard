@@ -7,7 +7,14 @@ import pytest
 import yaml
 
 from spendguard.eval.cases import EvalCase
-from spendguard.eval.metrics import CaseOutcome, row_metrics, rule_metrics, wilson_interval
+from spendguard.eval.metrics import (
+    CaseOutcome,
+    Proportion,
+    memory_metrics,
+    row_metrics,
+    rule_metrics,
+    wilson_interval,
+)
 from spendguard.policy.loader import FindingCode, load_policy
 from spendguard.rules.decisions import Recommendation, Route
 from spendguard.settings import ModelPrice
@@ -32,6 +39,11 @@ class OutcomeFields(TypedDict, total=False):
     retrieved: tuple[str, ...]
     latency_seconds: float
     output_tokens: int
+    clearances: tuple[tuple[FindingCode, str], ...]
+
+
+def counts(proportion: Proportion) -> tuple[int, int]:
+    return proportion.successes, proportion.trials
 
 
 def outcome(case_id: str, **fields: Unpack[OutcomeFields]) -> CaseOutcome:
@@ -44,6 +56,7 @@ def outcome(case_id: str, **fields: Unpack[OutcomeFields]) -> CaseOutcome:
         proposed_judgement_results=fields['proposed'],
         dropped_judgement_results=fields['dropped'],
         retrieved_clause_references=frozenset(fields['retrieved']),
+        clearances=frozenset(fields.get('clearances', ())),
         latency_seconds=fields['latency_seconds'],
         input_tokens=1000,
         output_tokens=fields['output_tokens'],
@@ -220,3 +233,48 @@ def test_rule_metrics_score_rule_findings_against_rule_labels() -> None:
 
 def test_cost_is_unknown_without_a_configured_price() -> None:
     assert row_metrics(CASES, OUTCOMES, FIXTURE_POLICY, price=None).cost_per_submission_usd is None
+
+
+def follow_up_outcome(
+    case_id: str,
+    recommendation: Recommendation,
+    judgement_codes: tuple[FindingCode, ...] = (),
+    clearances: tuple[tuple[FindingCode, str], ...] = (),
+) -> CaseOutcome:
+    return outcome(
+        case_id,
+        judgement_codes=judgement_codes,
+        clearances=clearances,
+        route='human_review',
+        recommendation=recommendation,
+        proposed=1,
+        dropped=0,
+        retrieved=(),
+        latency_seconds=1.0,
+        output_tokens=0,
+    )
+
+
+def test_a_follow_up_cleared_by_its_pair_is_correct_flagged_is_false_positive_else_silent() -> None:
+    follow_up = fixture_case('test-memory-follow-up')
+    follow_up_ids = ('cleared', 'flagged', 'not-flagged', 'cleared-by-another')
+    cases = (
+        fixture_case('test-alcohol'),
+        *(follow_up.model_copy(update={'id': case_id}) for case_id in follow_up_ids),
+    )
+    outcomes = (
+        OUTCOMES[0],
+        follow_up_outcome('cleared', 'approve', clearances=(('PURPOSE_UNCLEAR', 'pair-1'),)),
+        follow_up_outcome('flagged', 'none', judgement_codes=('PURPOSE_UNCLEAR',)),
+        follow_up_outcome('not-flagged', 'approve'),
+        follow_up_outcome(
+            'cleared-by-another', 'approve', clearances=(('PURPOSE_UNCLEAR', 'elsewhere'),)
+        ),
+    )
+
+    metrics = memory_metrics(cases, outcomes, {'test-purpose-unclear': frozenset({'pair-1'})})
+
+    assert counts(metrics.false_positive_rate) == (1, 4)
+    assert counts(metrics.recommendation_agreement) == (3, 4)
+    assert counts(metrics.cleared_with_pair_precedent) == (1, 4)
+    assert counts(metrics.silent_clearances) == (2, 4)

@@ -15,17 +15,19 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from spendguard.db.database import ConnectionPool
-from spendguard.eval.cases import EvalCase
+from spendguard.eval.cases import EvalCase, ScriptedReview
 from spendguard.eval.metrics import CaseOutcome, row_metrics, rule_metrics
 from spendguard.eval.report import EvalResults, RowResult
 from spendguard.graph.build import ReviewGraph, build_graph
 from spendguard.graph.config import GraphConfig
 from spendguard.graph.nodes.execute import DecisionEvent
-from spendguard.graph.state import ReviewState
+from spendguard.graph.state import Decision, Disposition, RecordedFinding, ReviewState
 from spendguard.policy.loader import Policy
+from spendguard.queue.messages import QueueMessage
 from spendguard.seed.schema import SeedData
 from spendguard.settings import EvalRow, Settings
 from spendguard.store import precedents, submissions
+from spendguard.worker import WorkerRuntime, process_message
 
 
 class _DiscardedDecisionEvents:
@@ -58,7 +60,9 @@ class EvalResources:
     embedder: Embeddings
 
 
-def eval_graph(row: EvalRow, chat_model: BaseChatModel, resources: EvalResources) -> ReviewGraph:
+def eval_graph(
+    row: EvalRow, chat_model: BaseChatModel, resources: EvalResources, *, precedent_memory: bool
+) -> ReviewGraph:
     return build_graph(
         GraphConfig(
             settings=resources.settings.model_copy(update={'primary_model_key': row.model_key}),
@@ -69,15 +73,24 @@ def eval_graph(row: EvalRow, chat_model: BaseChatModel, resources: EvalResources
             connection_pool=resources.connection_pool,
             checkpointer=AsyncPostgresSaver(resources.connection_pool),
             decision_event_sender=_DiscardedDecisionEvents(),
+            precedent_memory=precedent_memory,
         )
     )
+
+
+def _thread(idempotency_key: str) -> RunnableConfig:
+    return {'configurable': {'thread_id': idempotency_key}}
+
+
+def _idempotency_key(case: EvalCase, run_identifier: str) -> str:
+    return f'eval:{run_identifier}:{case.id}'
 
 
 async def run_case(
     case: EvalCase, graph: ReviewGraph, connection_pool: ConnectionPool, run_identifier: str
 ) -> CaseOutcome:
     payload = case.submission.model_dump(mode='json')
-    idempotency_key = f'eval:{run_identifier}:{case.id}'
+    idempotency_key = _idempotency_key(case, run_identifier)
     recording = await submissions.record_submission(
         connection_pool,
         idempotency_key=idempotency_key,
@@ -92,10 +105,7 @@ async def run_case(
         'submission': payload,
     }
     token_counter = _TokenCounter()
-    thread: RunnableConfig = {
-        'configurable': {'thread_id': idempotency_key},
-        'callbacks': [token_counter],
-    }
+    thread: RunnableConfig = _thread(idempotency_key) | {'callbacks': [token_counter]}
     started = time.perf_counter()
     await graph.ainvoke(initial_state, thread)
     latency_seconds = time.perf_counter() - started
@@ -119,10 +129,89 @@ async def run_case(
         retrieved_clause_references=frozenset(
             clause['clause_reference'] for clause in state['retrieved_clauses']
         ),
+        clearances=frozenset(
+            (outcome['code'], outcome['precedent_id'])
+            for outcome in state['judgement_outcomes']
+            if outcome['outcome'] == 'cleared_by_precedent' and outcome['precedent_id'] is not None
+        ),
         latency_seconds=latency_seconds,
         input_tokens=token_counter.input_tokens,
         output_tokens=token_counter.output_tokens,
     )
+
+
+def _scripted_dispositions(
+    review: ScriptedReview, findings: list[RecordedFinding]
+) -> list[Disposition]:
+    scripted_by_code = {disposition.code: disposition for disposition in review.dispositions}
+    dispositions: list[Disposition] = []
+    for finding in findings:
+        scripted = scripted_by_code.get(finding['code'])
+        dispositions.append(
+            {
+                'finding_id': finding['finding_id'],
+                'verdict': 'upheld' if scripted is None else scripted.disposition,
+                'reason': None if scripted is None else scripted.reason,
+            }
+        )
+    return dispositions
+
+
+async def _apply_scripted_review(
+    case: EvalCase,
+    review: ScriptedReview,
+    graph: ReviewGraph,
+    connection_pool: ConnectionPool,
+    run_identifier: str,
+) -> frozenset[str]:
+    idempotency_key = _idempotency_key(case, run_identifier)
+    snapshot = await graph.aget_state(_thread(idempotency_key))
+    if not snapshot.interrupts:
+        return frozenset()
+    submission_id = uuid.UUID(snapshot.values['submission_id'])
+    dispositions = _scripted_dispositions(review, snapshot.values['findings'])
+    upheld_finding_ids = [
+        disposition['finding_id']
+        for disposition in dispositions
+        if disposition['verdict'] == 'upheld'
+    ]
+    decision: Decision = {
+        'outcome': 'reject' if upheld_finding_ids else 'approve',
+        'decided_by': review.approver,
+        'reason': f'Upheld {", ".join(upheld_finding_ids)}' if upheld_finding_ids else None,
+        'dispositions': dispositions,
+    }
+    if not await submissions.record_decision(
+        connection_pool, submission_id, decision, review.approver
+    ):
+        raise RuntimeError(f'{case.id} was not awaiting a decision')
+    await process_message(
+        QueueMessage(type='resume', submission_id=submission_id, thread_id=idempotency_key),
+        WorkerRuntime(graph=graph, connection_pool=connection_pool, tracing=None),
+    )
+    return await precedents.precedent_ids_recorded_from(connection_pool, submission_id)
+
+
+@dataclass(frozen=True)
+class PairedRun:
+    outcomes: list[CaseOutcome]
+    precedent_ids_by_pair: dict[str, frozenset[str]]
+
+
+async def run_cases(
+    cases: Sequence[EvalCase], graph: ReviewGraph, resources: EvalResources, run_identifier: str
+) -> PairedRun:
+    follow_ups = [case for case in cases if case.expected_clearance is not None]
+    others = [case for case in cases if case.expected_clearance is None]
+    outcomes: list[CaseOutcome] = []
+    precedent_ids_by_pair: dict[str, frozenset[str]] = {}
+    for case in others + follow_ups:
+        outcomes.append(await run_case(case, graph, resources.connection_pool, run_identifier))
+        if case.scripted_review is not None:
+            precedent_ids_by_pair[case.id] = await _apply_scripted_review(
+                case, case.scripted_review, graph, resources.connection_pool, run_identifier
+            )
+    return PairedRun(outcomes=outcomes, precedent_ids_by_pair=precedent_ids_by_pair)
 
 
 async def run_eval(
@@ -138,7 +227,7 @@ async def run_eval(
     first_row_outcomes: list[CaseOutcome] = []
     for row in settings.eval_rows:
         await precedents.clear_precedents(resources.connection_pool)
-        graph = eval_graph(row, chat_model_for(row), resources)
+        graph = eval_graph(row, chat_model_for(row), resources, precedent_memory=True)
         outcomes = [
             await run_case(
                 case, graph, resources.connection_pool, f'{run_identifier}:{row.model_key}'

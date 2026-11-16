@@ -1,6 +1,6 @@
 import math
 import statistics
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -54,6 +54,7 @@ class CaseOutcome:
     proposed_judgement_results: int
     dropped_judgement_results: int
     retrieved_clause_references: frozenset[str]
+    clearances: frozenset[tuple[FindingCode, str]]
     latency_seconds: float
     input_tokens: int
     output_tokens: int
@@ -204,6 +205,45 @@ def row_metrics(
         retrieval_recall=_retrieval_recall(paired, policy),
         p50_latency_seconds=statistics.median(outcome.latency_seconds for outcome in outcomes),
         cost_per_submission_usd=None if price is None else _cost_per_submission(outcomes, price),
+    )
+
+
+@dataclass(frozen=True)
+class MemoryMetrics:
+    false_positive_rate: Proportion
+    recommendation_agreement: Proportion
+    cleared_with_pair_precedent: Proportion
+    silent_clearances: Proportion
+
+
+def memory_metrics(
+    cases: Sequence[EvalCase],
+    outcomes: Sequence[CaseOutcome],
+    precedent_ids_by_pair: Mapping[str, frozenset[str]],
+) -> MemoryMetrics:
+    flagged = 0
+    cleared = 0
+    agreeing = 0
+    follow_ups = 0
+    for case, outcome in _paired(cases, outcomes):
+        clearance = case.expected_clearance
+        if clearance is None:
+            continue
+        follow_ups += 1
+        agreeing += outcome.recommendation == case.expected_recommendation
+        pair_precedent_ids = precedent_ids_by_pair.get(clearance.precedent_from, frozenset())
+        if clearance.code in outcome.judgement_codes:
+            flagged += 1
+        elif any(
+            code == clearance.code and precedent_id in pair_precedent_ids
+            for code, precedent_id in outcome.clearances
+        ):
+            cleared += 1
+    return MemoryMetrics(
+        false_positive_rate=Proportion(flagged, follow_ups),
+        recommendation_agreement=Proportion(agreeing, follow_ups),
+        cleared_with_pair_precedent=Proportion(cleared, follow_ups),
+        silent_clearances=Proportion(follow_ups - flagged - cleared, follow_ups),
     )
 
 

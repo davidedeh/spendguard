@@ -1,17 +1,24 @@
 import datetime
+import json
 import uuid
 from pathlib import Path
 from typing import Any
 
 import yaml
 from langchain_core.callbacks import CallbackManagerForLLMRun
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import Field
 
 from settings_factory import make_test_settings
 from spendguard.db.database import ConnectionPool
-from spendguard.eval.case_runner import EvalResources, eval_graph, run_case, run_eval
+from spendguard.eval.case_runner import (
+    EvalResources,
+    eval_graph,
+    run_case,
+    run_cases,
+    run_eval,
+)
 from spendguard.eval.cases import EvalCase
 from spendguard.eval.metrics import Proportion
 from spendguard.graph.nodes.plan import RetrievalPlan
@@ -103,6 +110,7 @@ async def test_a_case_run_through_the_graph_records_what_the_row_found_and_spent
         EvalRow(model_key='fake_primary', label='Fake primary'),
         chat_model,
         EvalResources(settings, POLICY, SEED_DATA, connection_pool, embedder),
+        precedent_memory=True,
     )
 
     outcome = await run_case(case, graph, connection_pool, run_identifier=uuid.uuid4().hex)
@@ -224,3 +232,126 @@ async def test_an_eval_run_reports_each_configured_row_in_order_with_memory_clea
         )
         == []
     )
+
+
+class PrecedentAwareEvalModel(FakeChatModel):
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        self.received.append(list(messages))
+        bound_tool_names = [tool['function']['name'] for tool in kwargs.get('tools', [])]
+        tool_results = [message for message in messages if isinstance(message, ToolMessage)]
+        reply: AIMessage
+        if bound_tool_names == [RetrievalPlan.__name__]:
+            reply = structured_response(
+                RetrievalPlan(
+                    retrieval_queries=[clause_text('§2.4'), 'receipts for stationery'],
+                    check_guidance=[],
+                )
+            )
+        elif bound_tool_names == [JudgementReport.__name__]:
+            supplied_ids = [
+                precedent['precedent_id']
+                for result in tool_results
+                for precedent in json.loads(str(result.content))
+            ]
+            reply = structured_response(
+                JudgementReport(verdicts=[weekend_clearance(supplied_ids[0])])
+                if supplied_ids
+                else JudgementReport(verdicts=[weekend_flag_quoting('Monday')])
+            )
+        elif not tool_results:
+            reply = AIMessage(
+                content='',
+                tool_calls=[
+                    {
+                        'name': 'get_precedents',
+                        'args': {'code': 'WEEKEND_SPEND_UNJUSTIFIED'},
+                        'id': 'weekend-lookup',
+                    }
+                ],
+            )
+        else:
+            reply = AIMessage(content='Nothing more to look up.')
+        return ChatResult(generations=[ChatGeneration(message=reply)])
+
+
+def weekend_flag_quoting(text: str) -> CheckVerdict:
+    return CheckVerdict(
+        code='WEEKEND_SPEND_UNJUSTIFIED',
+        outcome='flagged',
+        clause_reference='§2.4',
+        quotes=[QuotedText(field='business_purpose', text=text)],
+        cited_precedent_ids=[],
+        precedent_id=None,
+    )
+
+
+def weekend_clearance(precedent_id: str) -> CheckVerdict:
+    return CheckVerdict(
+        code='WEEKEND_SPEND_UNJUSTIFIED',
+        outcome='cleared_by_precedent',
+        clause_reference=None,
+        quotes=[],
+        cited_precedent_ids=[precedent_id],
+        precedent_id=precedent_id,
+    )
+
+
+async def indexed_resources(connection_pool: ConnectionPool) -> EvalResources:
+    await precedents.clear_precedents(connection_pool)
+    settings = make_test_settings()
+    embedder = build_embedder(settings)
+    async with connection_pool.connection() as connection:
+        await index_policy(connection, POLICY, embedder)
+    return EvalResources(settings, POLICY, SEED_DATA, connection_pool, embedder)
+
+
+PAIR_ID = 'dev-judgement-positive-01'
+FOLLOW_UP_ID = 'dev-memory-follow-up-01'
+PRIMARY_ROW = EvalRow(model_key='fake_primary', label='Fake primary')
+
+
+async def test_a_follow_up_runs_after_its_pair_and_is_cleared_by_the_precedent_its_dismissal_wrote(
+    connection_pool: ConnectionPool,
+) -> None:
+    resources = await indexed_resources(connection_pool)
+    graph = eval_graph(
+        PRIMARY_ROW, PrecedentAwareEvalModel(model_id='fake-chat'), resources, precedent_memory=True
+    )
+
+    run = await run_cases(
+        (dataset_case(FOLLOW_UP_ID), dataset_case(PAIR_ID)), graph, resources, uuid.uuid4().hex
+    )
+
+    assert [outcome.case_id for outcome in run.outcomes] == [PAIR_ID, FOLLOW_UP_ID]
+    pair, follow_up = run.outcomes
+    assert pair.judgement_codes == {'WEEKEND_SPEND_UNJUSTIFIED'}
+    assert follow_up.judgement_codes == frozenset()
+    [pair_precedent_id] = run.precedent_ids_by_pair[PAIR_ID]
+    assert follow_up.clearances == {('WEEKEND_SPEND_UNJUSTIFIED', pair_precedent_id)}
+
+
+async def test_with_memory_off_a_follow_up_sees_no_precedent_although_its_pair_wrote_one(
+    connection_pool: ConnectionPool,
+) -> None:
+    resources = await indexed_resources(connection_pool)
+    graph = eval_graph(
+        PRIMARY_ROW,
+        PrecedentAwareEvalModel(model_id='fake-chat'),
+        resources,
+        precedent_memory=False,
+    )
+
+    run = await run_cases(
+        (dataset_case(PAIR_ID), dataset_case(FOLLOW_UP_ID)), graph, resources, uuid.uuid4().hex
+    )
+
+    assert len(run.precedent_ids_by_pair[PAIR_ID]) == 1
+    _, follow_up = run.outcomes
+    assert follow_up.judgement_codes == {'WEEKEND_SPEND_UNJUSTIFIED'}
+    assert follow_up.clearances == frozenset()
