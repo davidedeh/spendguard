@@ -56,7 +56,13 @@ async def process_message(message: QueueMessage, runtime: WorkerRuntime) -> None
     thread: RunnableConfig = {'configurable': {'thread_id': submission.idempotency_key}}
     snapshot = await runtime.graph.aget_state(thread)
     if snapshot.interrupts:
-        await runtime.graph.ainvoke(Command(resume=submission.decision), thread)
+        await traced_advance(
+            runtime.tracing,
+            runtime.graph,
+            Command(resume=submission.decision),
+            thread,
+            str(submission.id),
+        )
         return
     if snapshot.next:
         await traced_advance(runtime.tracing, runtime.graph, None, thread, str(submission.id))
