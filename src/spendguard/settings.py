@@ -1,12 +1,17 @@
 import datetime
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
+import boto3
 from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from spendguard.branch_names import current_branch_name
+
+if TYPE_CHECKING:
+    from mypy_boto3_ssm import SSMClient
 
 Provider = Literal['bedrock', 'google_genai', 'fake']
 AppEnvironment = Literal['local', 'test', 'deployed']
@@ -33,6 +38,14 @@ class ModelPrice(BaseModel):
     priced_on: datetime.date
 
 
+@dataclass(frozen=True)
+class LocalPostgres:
+    host: str
+    port: int
+    user: str
+    password: SecretStr
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(frozen=True, env_nested_delimiter='__')
 
@@ -40,10 +53,10 @@ class Settings(BaseSettings):
     log_level: str
     branch_name: str
 
-    postgres_host: str
-    postgres_port: int
-    postgres_user: str
-    postgres_password: SecretStr
+    postgres_host: str | None
+    postgres_port: int | None
+    postgres_user: str | None
+    postgres_password: SecretStr | None
     database_url: SecretStr | None
 
     aws_region: str
@@ -97,6 +110,27 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode='after')
+    def _a_database_is_configured(self) -> Self:
+        if self.database_url is None and self.local_postgres() is None:
+            raise ValueError('Set DATABASE_URL or every POSTGRES_ setting')
+        return self
+
+    def local_postgres(self) -> 'LocalPostgres | None':
+        if (
+            self.postgres_host is None
+            or self.postgres_port is None
+            or self.postgres_user is None
+            or self.postgres_password is None
+        ):
+            return None
+        return LocalPostgres(
+            host=self.postgres_host,
+            port=self.postgres_port,
+            user=self.postgres_user,
+            password=self.postgres_password,
+        )
+
+    @model_validator(mode='after')
     def _visibility_timeout_outlasts_the_worker(self) -> Self:
         minimum = VISIBILITY_TIMEOUTS_PER_WORKER_TIMEOUT * self.worker_timeout_seconds
         if self.queue_visibility_timeout_seconds < minimum:
@@ -120,6 +154,39 @@ class Settings(BaseSettings):
         return (init_settings,)
 
 
+def parameter_store_values(client: 'SSMClient', prefix: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for page in client.get_paginator('get_parameters_by_path').paginate(
+        Path=prefix, WithDecryption=True, Recursive=False
+    ):
+        for parameter in page['Parameters']:
+            values[parameter['Name'].rsplit('/', 1)[-1].lower()] = parameter['Value']
+    return values
+
+
+class _ParameterStoreSource(PydanticBaseSettingsSource):
+    def __init__(
+        self,
+        settings_cls: type[BaseSettings],
+        configuration_sources: tuple[PydanticBaseSettingsSource, ...],
+    ) -> None:
+        super().__init__(settings_cls)
+        self.configuration_sources = configuration_sources
+
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+        raise NotImplementedError
+
+    def __call__(self) -> dict[str, Any]:
+        configuration: dict[str, Any] = {}
+        for source in reversed(self.configuration_sources):
+            configuration |= {key: value for key, value in source().items() if value is not None}
+        prefix = configuration.get('ssm_parameter_prefix')
+        if not prefix:
+            return {}
+        client = boto3.client('ssm', region_name=configuration['aws_region'])
+        return dict(parameter_store_values(client, prefix))
+
+
 class _EnvironmentSettings(Settings):
     model_config = SettingsConfigDict(env_parse_none_str='')
 
@@ -132,7 +199,12 @@ class _EnvironmentSettings(Settings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        return (init_settings, env_settings, dotenv_settings)
+        return (
+            init_settings,
+            _ParameterStoreSource(settings_cls, (env_settings, dotenv_settings)),
+            env_settings,
+            dotenv_settings,
+        )
 
 
 class MissingEnvFileError(RuntimeError):

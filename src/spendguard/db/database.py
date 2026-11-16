@@ -8,7 +8,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from spendguard.branch_names import database_name_for_branch
 from spendguard.db.migrator import apply_migrations
-from spendguard.settings import Settings
+from spendguard.settings import LocalPostgres, Settings
 
 MAINTENANCE_DATABASE = 'postgres'
 CONNECT_TIMEOUT_SECONDS = 3
@@ -20,12 +20,20 @@ class DatabaseUnreachableError(RuntimeError):
     pass
 
 
+def _local_postgres(settings: Settings) -> LocalPostgres:
+    local_postgres = settings.local_postgres()
+    if local_postgres is None:
+        raise ValueError('Every POSTGRES_ setting is needed when DATABASE_URL is not set')
+    return local_postgres
+
+
 def _connection_info(settings: Settings, database_name: str) -> str:
+    local_postgres = _local_postgres(settings)
     return psycopg.conninfo.make_conninfo(
-        host=settings.postgres_host,
-        port=settings.postgres_port,
-        user=settings.postgres_user,
-        password=settings.postgres_password.get_secret_value(),
+        host=local_postgres.host,
+        port=local_postgres.port,
+        user=local_postgres.user,
+        password=local_postgres.password.get_secret_value(),
         dbname=database_name,
         connect_timeout=CONNECT_TIMEOUT_SECONDS,
     )
@@ -63,9 +71,11 @@ def ensure_branch_database(settings: Settings) -> str:
     if settings.database_url is None:
         _create_branch_database_if_missing(settings)
     connection_info = branch_connection_info(settings)
-    with psycopg.connect(connection_info) as connection:
+    with psycopg.connect(connection_info, prepare_threshold=None) as connection:
         apply_migrations(connection)
-    with psycopg.connect(connection_info, autocommit=True, row_factory=dict_row) as connection:
+    with psycopg.connect(
+        connection_info, autocommit=True, prepare_threshold=None, row_factory=dict_row
+    ) as connection:
         PostgresSaver(connection).setup()
     return connection_info
 
