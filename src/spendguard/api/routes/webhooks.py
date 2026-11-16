@@ -32,6 +32,22 @@ async def receive_expense_claim(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, json.loads(error.json(include_url=False))
         ) from error
+    category = delivery.claim.category
+    if category not in dependencies.policy.expense_categories:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            [
+                {
+                    'type': 'unknown_category',
+                    'loc': ['claim', 'category'],
+                    'msg': (
+                        'Category must be one of the policy categories: '
+                        + ', '.join(dependencies.policy.expense_categories)
+                    ),
+                    'input': category,
+                }
+            ],
+        )
     canonical_body = delivery.model_dump_json()
     recording = await submissions.record_submission(
         dependencies.connection_pool,
