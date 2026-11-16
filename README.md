@@ -157,6 +157,8 @@ A memory on versus off comparison on the primary model reports the judgement fal
 
 Each run writes a dated results file in `evals/results/` with the exact parameters, prices and per-code counts, and replaces the table below, which names the exact model IDs measured.
 
+With both Langfuse keys set, `make eval` also uploads the reported cases to a Langfuse dataset named `spendguard-eval-<dataset hash>` and records each row as one dataset run, named with the date, the row's label and the run's identifier, with every case traced. The memory comparison is not uploaded.
+
 ### Case provenance
 
 The cases were drafted by models, under constraints that keep labels honest:
