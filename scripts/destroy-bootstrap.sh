@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Delete the pipeline resources make bootstrap created. The GitHub OIDC provider is account-wide:
+# Delete the pipeline resources stack. The GitHub OIDC provider is account-wide:
 # when this stack created it, deleting the stack deletes it for every other role that uses it.
 
 set -euo pipefail

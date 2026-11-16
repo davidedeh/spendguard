@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 #
 # Build, push and deploy the SAM stack, then prepare the database and smoke-test the API.
-# Runs from a laptop with AWS credentials for the target account, or from deploy.yml as the
-# pipeline execution role. Needs Docker, SAM CLI and ALARM_EMAIL.
+# Needs AWS credentials for the target account, Docker, SAM CLI and ALARM_EMAIL.
 # CLOUDFORMATION_EXECUTION_ROLE_ARN: role CloudFormation deploys as (the pipeline role cannot create IAM resources).
 # PIPELINE_EXECUTION_ROLE_ARN: role the stack lets invoke the preparation function; kept from the last deploy when unset.
 

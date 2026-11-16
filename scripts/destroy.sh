@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Delete the SAM stack. The image repository is emptied and removed with it, and the
-# SecureString parameters written by make secrets are kept.
+# SecureString parameters are kept.
 
 set -euo pipefail
 
