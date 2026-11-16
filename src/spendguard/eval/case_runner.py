@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import hashlib
 import time
@@ -16,6 +17,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from spendguard.db.database import ConnectionPool
 from spendguard.eval.cases import EvalCase, ScriptedReview
+from spendguard.eval.dataset_runs import DatasetRun, dataset_name, run_as_dataset_run, upload_cases
 from spendguard.eval.metrics import (
     CaseOutcome,
     MemoryMetrics,
@@ -28,6 +30,7 @@ from spendguard.graph.build import ReviewGraph, build_graph
 from spendguard.graph.config import GraphConfig
 from spendguard.graph.nodes.execute import DecisionEvent
 from spendguard.graph.state import Decision, Disposition, RecordedFinding, ReviewState
+from spendguard.observability.tracing import Tracing, traced_advance
 from spendguard.policy.loader import Policy
 from spendguard.queue.messages import QueueMessage
 from spendguard.seed.schema import SeedData
@@ -64,6 +67,7 @@ class EvalResources:
     seed_data: SeedData
     connection_pool: ConnectionPool
     embedder: Embeddings
+    tracing: Tracing | None
 
 
 def eval_graph(
@@ -94,7 +98,11 @@ def _idempotency_key(case: EvalCase, run_identifier: str) -> str:
 
 
 async def run_case(
-    case: EvalCase, graph: ReviewGraph, connection_pool: ConnectionPool, run_identifier: str
+    case: EvalCase,
+    graph: ReviewGraph,
+    connection_pool: ConnectionPool,
+    run_identifier: str,
+    tracing: Tracing | None,
 ) -> CaseOutcome:
     payload = case.submission.model_dump(mode='json')
     idempotency_key = _idempotency_key(case, run_identifier)
@@ -114,7 +122,7 @@ async def run_case(
     token_counter = _TokenCounter()
     thread: RunnableConfig = _thread(idempotency_key) | {'callbacks': [token_counter]}
     started = time.perf_counter()
-    await graph.ainvoke(initial_state, thread)
+    await traced_advance(tracing, graph, initial_state, thread, str(recording.submission_id))
     latency_seconds = time.perf_counter() - started
     state = (await graph.aget_state(thread)).values
     findings = state.get('findings', [])
@@ -168,9 +176,10 @@ async def _apply_scripted_review(
     case: EvalCase,
     review: ScriptedReview,
     graph: ReviewGraph,
-    connection_pool: ConnectionPool,
+    resources: EvalResources,
     run_identifier: str,
 ) -> frozenset[str]:
+    connection_pool = resources.connection_pool
     idempotency_key = _idempotency_key(case, run_identifier)
     snapshot = await graph.aget_state(_thread(idempotency_key))
     if not snapshot.interrupts:
@@ -194,7 +203,7 @@ async def _apply_scripted_review(
         raise RuntimeError(f'{case.id} was not awaiting a decision')
     await process_message(
         QueueMessage(type='resume', submission_id=submission_id, thread_id=idempotency_key),
-        WorkerRuntime(graph=graph, connection_pool=connection_pool, tracing=None),
+        WorkerRuntime(graph=graph, connection_pool=connection_pool, tracing=resources.tracing),
     )
     return await precedents.precedent_ids_recorded_from(connection_pool, submission_id)
 
@@ -206,18 +215,30 @@ class PairedRun:
 
 
 async def run_cases(
-    cases: Sequence[EvalCase], graph: ReviewGraph, resources: EvalResources, run_identifier: str
+    cases: Sequence[EvalCase],
+    graph: ReviewGraph,
+    resources: EvalResources,
+    run_identifier: str,
+    dataset_run: DatasetRun | None,
 ) -> PairedRun:
     follow_ups = [case for case in cases if case.expected_clearance is not None]
     others = [case for case in cases if case.expected_clearance is None]
-    outcomes: list[CaseOutcome] = []
     precedent_ids_by_pair: dict[str, frozenset[str]] = {}
-    for case in others + follow_ups:
-        outcomes.append(await run_case(case, graph, resources.connection_pool, run_identifier))
+
+    async def run_paired_case(case: EvalCase) -> CaseOutcome:
+        outcome = await run_case(
+            case, graph, resources.connection_pool, run_identifier, resources.tracing
+        )
         if case.scripted_review is not None:
             precedent_ids_by_pair[case.id] = await _apply_scripted_review(
-                case, case.scripted_review, graph, resources.connection_pool, run_identifier
+                case, case.scripted_review, graph, resources, run_identifier
             )
+        return outcome
+
+    if dataset_run is None:
+        outcomes = [await run_paired_case(case) for case in others + follow_ups]
+    else:
+        outcomes = await run_as_dataset_run(dataset_run, others + follow_ups, run_paired_case)
     return PairedRun(outcomes=outcomes, precedent_ids_by_pair=precedent_ids_by_pair)
 
 
@@ -253,6 +274,7 @@ async def _compare_memory(
             eval_graph(row, chat_model, resources, precedent_memory=precedent_memory),
             resources,
             f'{run_identifier}:memory-{"on" if precedent_memory else "off"}',
+            dataset_run=None,
         )
         metrics_by_setting[precedent_memory] = memory_metrics(
             paired_cases, run.outcomes, run.precedent_ids_by_pair
@@ -276,11 +298,32 @@ async def run_eval(
     run_identifier = uuid.uuid4().hex
     row_results: list[RowResult] = []
     first_row_outcomes: list[CaseOutcome] = []
+    tracing = resources.tracing
+    uploaded_items = (
+        None
+        if tracing is None
+        else (
+            tracing.client,
+            await asyncio.to_thread(
+                upload_cases, tracing.client, dataset_name(dataset_hash), cases
+            ),
+        )
+    )
     for row_number, row in enumerate(settings.eval_rows, start=1):
         await precedents.clear_precedents(resources.connection_pool)
         graph = eval_graph(row, chat_model_for(row), resources, precedent_memory=True)
+        row_run_identifier = f'{run_identifier}:row-{row_number}'
+        dataset_run = (
+            None
+            if uploaded_items is None
+            else DatasetRun(
+                client=uploaded_items[0],
+                name=f'{measured_on} {row.label} {row_run_identifier}',
+                items_by_case_id=uploaded_items[1],
+            )
+        )
         outcomes = (
-            await run_cases(cases, graph, resources, f'{run_identifier}:row-{row_number}')
+            await run_cases(cases, graph, resources, row_run_identifier, dataset_run)
         ).outcomes
         first_row_outcomes = first_row_outcomes or outcomes
         price = settings.model_prices.get(row.model_key)
