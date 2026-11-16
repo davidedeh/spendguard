@@ -4,7 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import assert_never
 
-from spendguard.eval.metrics import Proportion, RowMetrics, RuleMetrics
+from spendguard.eval.metrics import MemoryMetrics, Proportion, RowMetrics, RuleMetrics
 from spendguard.settings import ChatModelSettings, EvalRow, ModelPrice
 
 RESULTS_START_MARKER = '<!-- eval-results:start -->'
@@ -26,6 +26,14 @@ class RowResult:
 
 
 @dataclass(frozen=True)
+class MemoryComparison:
+    row: EvalRow
+    model: ChatModelSettings
+    memory_on: MemoryMetrics
+    memory_off: MemoryMetrics
+
+
+@dataclass(frozen=True)
 class EvalResults:
     measured_on: datetime.date
     dataset_hash: str
@@ -34,6 +42,7 @@ class EvalResults:
     judgement_max_tool_calls: int
     rows: tuple[RowResult, ...]
     rule_metrics: RuleMetrics
+    memory_comparison: MemoryComparison | None
 
 
 def _rate(proportion: Proportion) -> str:
@@ -199,8 +208,38 @@ def results_file_text(results: EvalResults) -> str:
             '',
             *_rule_code_table(results.rule_metrics),
             '',
+            '## Memory on versus off',
+            '',
+            *_memory_section(results.memory_comparison),
+            '',
         ]
     )
+
+
+def _memory_row(setting: str, metrics: MemoryMetrics) -> str:
+    cells = (
+        setting,
+        _rate(metrics.false_positive_rate),
+        _rate(metrics.recommendation_agreement),
+        _rate(metrics.cleared_with_pair_precedent),
+        _rate(metrics.silent_clearances),
+    )
+    return '| ' + ' | '.join(cells) + ' |'
+
+
+def _memory_section(comparison: MemoryComparison | None) -> list[str]:
+    if comparison is None:
+        return ['Not compared: no eval row runs the primary model with retrieved clauses.']
+    return [
+        f'{comparison.row.label}, `{comparison.model.model_id}`, scored against labels written'
+        f' for memory on. Memory follow-ups: {comparison.memory_on.false_positive_rate.trials}.',
+        '',
+        '| Setting | Judgement false-positive rate | Recommendation matches approver'
+        " | Cleared with the pair's precedent | Silent clearances |",
+        '| ' + ' | '.join(['---'] * 5) + ' |',
+        _memory_row('Memory on', comparison.memory_on),
+        _memory_row('Memory off', comparison.memory_off),
+    ]
 
 
 def write_results(results: EvalResults, results_directory: Path, readme_path: Path) -> Path:

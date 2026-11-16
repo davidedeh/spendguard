@@ -274,12 +274,10 @@ async def test_an_eval_run_reports_each_configured_row_in_order_with_memory_clea
     assert primary.price is not None
     assert second.price is None
     assert (results.case_count, results.dataset_hash) == (2, 'a-dataset-hash')
-    assert (
-        await precedents.recent_precedents(
-            connection_pool, 'EMP-015', 'WEEKEND_SPEND_UNJUSTIFIED', POLICY
-        )
-        == []
+    remaining = await precedents.recent_precedents(
+        connection_pool, 'EMP-015', 'WEEKEND_SPEND_UNJUSTIFIED', POLICY
     )
+    assert 'Left by an earlier run.' not in [precedent['reason'] for precedent in remaining]
 
 
 class PrecedentAwareEvalModel(FakeChatModel):
@@ -462,3 +460,53 @@ async def test_a_whole_policy_row_sharing_the_primary_model_runs_every_case_afre
     assert counts(primary.metrics.verify_drop_rate) == (1, 1)
     assert counts(whole_policy.metrics.verify_drop_rate) == (0, 1)
     assert POLICY.rendered_text in judgement_prompt(models['Whole policy'])
+
+
+async def test_an_eval_run_compares_memory_on_and_off_on_the_primary_model_only(
+    connection_pool: ConnectionPool,
+) -> None:
+    resources = await indexed_resources(connection_pool)
+    settings = resources.settings.model_copy(
+        update={
+            'eval_rows': (
+                EvalRow(
+                    model_key='fake_second', label='Second', policy_context='retrieved_clauses'
+                ),
+                PRIMARY_ROW,
+            ),
+            'chat_models': resources.settings.chat_models
+            | {
+                'fake_second': ChatModelSettings(
+                    provider='fake',
+                    model_id='fake-second',
+                    structured_output_method='function_calling',
+                    temperature=None,
+                )
+            },
+        }
+    )
+    models: dict[str, FakeChatModel] = {
+        'fake_primary': PrecedentAwareEvalModel(model_id='fake-chat'),
+        'fake_second': ScriptedEvalModel(
+            model_id='fake-second',
+            retrieval_queries=[clause_text('§2.4'), 'receipts for stationery'],
+        ),
+    }
+
+    results = await run_eval(
+        (dataset_case(PAIR_ID), dataset_case(FOLLOW_UP_ID)),
+        EvalResources(settings, POLICY, SEED_DATA, connection_pool, resources.embedder),
+        lambda row: models[row.model_key],
+        measured_on=datetime.date(2026, 11, 20),
+        dataset_hash='a-dataset-hash',
+    )
+
+    comparison = results.memory_comparison
+    assert comparison is not None
+    assert comparison.row == PRIMARY_ROW
+    assert counts(comparison.memory_on.false_positive_rate) == (0, 1)
+    assert counts(comparison.memory_off.false_positive_rate) == (1, 1)
+    assert counts(comparison.memory_on.recommendation_agreement) == (1, 1)
+    assert counts(comparison.memory_off.recommendation_agreement) == (0, 1)
+    _, primary = results.rows
+    assert counts(primary.metrics.recommendation_accuracy) == (2, 2)

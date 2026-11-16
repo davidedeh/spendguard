@@ -16,8 +16,14 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from spendguard.db.database import ConnectionPool
 from spendguard.eval.cases import EvalCase, ScriptedReview
-from spendguard.eval.metrics import CaseOutcome, row_metrics, rule_metrics
-from spendguard.eval.report import EvalResults, RowResult
+from spendguard.eval.metrics import (
+    CaseOutcome,
+    MemoryMetrics,
+    memory_metrics,
+    row_metrics,
+    rule_metrics,
+)
+from spendguard.eval.report import EvalResults, MemoryComparison, RowResult
 from spendguard.graph.build import ReviewGraph, build_graph
 from spendguard.graph.config import GraphConfig
 from spendguard.graph.nodes.execute import DecisionEvent
@@ -215,6 +221,50 @@ async def run_cases(
     return PairedRun(outcomes=outcomes, precedent_ids_by_pair=precedent_ids_by_pair)
 
 
+async def _compare_memory(
+    cases: Sequence[EvalCase],
+    resources: EvalResources,
+    chat_model_for: Callable[[EvalRow], BaseChatModel],
+    run_identifier: str,
+) -> MemoryComparison | None:
+    settings = resources.settings
+    row = next(
+        (
+            row
+            for row in settings.eval_rows
+            if row.model_key == settings.primary_model_key
+            and row.policy_context == 'retrieved_clauses'
+        ),
+        None,
+    )
+    if row is None:
+        return None
+    paired_cases = [
+        case
+        for case in cases
+        if case.scripted_review is not None or case.expected_clearance is not None
+    ]
+    chat_model = chat_model_for(row)
+    metrics_by_setting: dict[bool, MemoryMetrics] = {}
+    for precedent_memory in (True, False):
+        await precedents.clear_precedents(resources.connection_pool)
+        run = await run_cases(
+            paired_cases,
+            eval_graph(row, chat_model, resources, precedent_memory=precedent_memory),
+            resources,
+            f'{run_identifier}:memory-{"on" if precedent_memory else "off"}',
+        )
+        metrics_by_setting[precedent_memory] = memory_metrics(
+            paired_cases, run.outcomes, run.precedent_ids_by_pair
+        )
+    return MemoryComparison(
+        row=row,
+        model=settings.chat_models[row.model_key],
+        memory_on=metrics_by_setting[True],
+        memory_off=metrics_by_setting[False],
+    )
+
+
 async def run_eval(
     cases: Sequence[EvalCase],
     resources: EvalResources,
@@ -229,12 +279,9 @@ async def run_eval(
     for row_number, row in enumerate(settings.eval_rows, start=1):
         await precedents.clear_precedents(resources.connection_pool)
         graph = eval_graph(row, chat_model_for(row), resources, precedent_memory=True)
-        outcomes = [
-            await run_case(
-                case, graph, resources.connection_pool, f'{run_identifier}:row-{row_number}'
-            )
-            for case in cases
-        ]
+        outcomes = (
+            await run_cases(cases, graph, resources, f'{run_identifier}:row-{row_number}')
+        ).outcomes
         first_row_outcomes = first_row_outcomes or outcomes
         price = settings.model_prices.get(row.model_key)
         row_results.append(
@@ -253,4 +300,5 @@ async def run_eval(
         judgement_max_tool_calls=settings.judgement_max_tool_calls,
         rows=tuple(row_results),
         rule_metrics=rule_metrics(cases, first_row_outcomes, resources.policy),
+        memory_comparison=await _compare_memory(cases, resources, chat_model_for, run_identifier),
     )
