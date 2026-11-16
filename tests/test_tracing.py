@@ -1,7 +1,11 @@
+import base64
+import gzip
 import io
 import json
+import threading
 from collections.abc import Iterator
-from typing import Any
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any, ClassVar
 
 import pytest
 from langchain_core.callbacks import BaseCallbackHandler
@@ -317,3 +321,58 @@ async def test_a_traced_advance_still_reports_to_the_callbacks_the_caller_suppli
 
     assert counter.calls == 1
     assert any(span.name == 'plan' for span in exported_spans(tracing, exporter))
+
+
+class RecordingLangfuseServer(BaseHTTPRequestHandler):
+    received: ClassVar[list[tuple[str, dict[str, str], bytes]]] = []
+
+    def do_POST(self) -> None:
+        body = self.rfile.read(int(self.headers['Content-Length']))
+        self.received.append(
+            (self.path, {name.lower(): value for name, value in self.headers.items()}, body)
+        )
+        self.send_response(200)
+        self.end_headers()
+
+    def log_message(self, format: str, *arguments: object) -> None:
+        pass
+
+
+@pytest.fixture
+def langfuse_server() -> Iterator[HTTPServer]:
+    RecordingLangfuseServer.received = []
+    server = HTTPServer(('127.0.0.1', 0), RecordingLangfuseServer)
+    serving = threading.Thread(target=server.serve_forever, daemon=True)
+    serving.start()
+    yield server
+    server.shutdown()
+    server.server_close()
+    LangfuseResourceManager.reset()
+
+
+def test_the_production_exporter_sends_gzipped_spans_to_the_langfuse_endpoint_with_its_keys(
+    langfuse_server: HTTPServer,
+) -> None:
+    host, port = langfuse_server.server_address[:2]
+    settings = make_test_settings(
+        langfuse_public_key='pk-lf-production',
+        langfuse_secret_key='sk-lf-production',
+        langfuse_host=f'http://{host!s}:{port}',
+    )
+    tracing = create_tracing(settings, tracer_provider=TracerProvider())
+    assert tracing is not None
+
+    tracing.client.start_observation(name='advance').end()
+    tracing.client.flush()
+
+    [(path, headers, body)] = [
+        request for request in RecordingLangfuseServer.received if 'otel' in request[0]
+    ]
+    assert path == '/api/public/otel/v1/traces'
+    assert headers['authorization'] == 'Basic ' + base64.b64encode(
+        b'pk-lf-production:sk-lf-production'
+    ).decode('ascii')
+    assert headers['x-langfuse-public-key'] == 'pk-lf-production'
+    assert headers['x-langfuse-ingestion-version'] == '4'
+    assert headers['content-encoding'] == 'gzip'
+    assert b'advance' in gzip.decompress(body)

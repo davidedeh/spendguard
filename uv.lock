@@ -1404,7 +1404,7 @@ requires-dist = [
     { name = "langchain-aws", specifier = ">=1.9.3" },
     { name = "langchain-core", specifier = ">=1.8.0" },
     { name = "langchain-google-genai", specifier = ">=4.5.0" },
-    { name = "langfuse", specifier = ">=5.2.0" },
+    { name = "langfuse", specifier = ">=5.2.0,<6" },
     { name = "langgraph", specifier = ">=1.2.22" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=3.2.1" },
     { name = "pgvector", specifier = ">=0.5.1" },

@@ -1,10 +1,19 @@
 import base64
 import functools
+import os
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from langchain_core.runnables import RunnableConfig
 from langfuse import Langfuse, get_client, propagate_attributes
+from langfuse._client.environment_variables import (
+    LANGFUSE_OTEL_TRACES_EXPORT_PATH,
+    LANGFUSE_TIMEOUT,
+)
+from langfuse._client.span_processor import (
+    _resolve_compression,
+    _resolve_max_batch_size_bytes,
+)
 from langfuse._version import __version__ as langfuse_version
 from langfuse.langchain import CallbackHandler
 from langfuse.types import (
@@ -89,9 +98,13 @@ def _with_redacted_status_and_events(span: ReadableSpan) -> ReadableSpan:
 
 
 def _langfuse_otlp_exporter(public_key: str, secret_key: str, base_url: str) -> SpanExporter:
+    # Langfuse skips building its own exporter once one is supplied, so this mirrors its defaults.
     credentials = base64.b64encode(f'{public_key}:{secret_key}'.encode()).decode('ascii')
+    traces_export_path = os.environ.get(LANGFUSE_OTEL_TRACES_EXPORT_PATH)
     return OTLPSpanExporter(
-        endpoint=f'{base_url}/api/public/otel/v1/traces',
+        endpoint=f'{base_url}/{traces_export_path}'
+        if traces_export_path
+        else f'{base_url}/api/public/otel/v1/traces',
         headers={
             'Authorization': f'Basic {credentials}',
             'x-langfuse-sdk-name': 'python',
@@ -99,6 +112,9 @@ def _langfuse_otlp_exporter(public_key: str, secret_key: str, base_url: str) -> 
             'x-langfuse-public-key': public_key,
             'x-langfuse-ingestion-version': '4',
         },
+        timeout=int(os.environ.get(LANGFUSE_TIMEOUT, '5')),
+        compression=_resolve_compression(None),
+        max_request_size=_resolve_max_batch_size_bytes(),
     )
 
 
