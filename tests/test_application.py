@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import datetime
 import json
 import re
@@ -17,7 +18,10 @@ import yaml
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from langfuse._client.resource_manager import LangfuseResourceManager
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from pydantic import Field
 
 from settings_factory import make_test_settings
@@ -36,6 +40,7 @@ from spendguard.graph.nodes.plan import RetrievalPlan
 from spendguard.graph.nodes.run_judgement_checks import CheckVerdict, JudgementReport, QuotedText
 from spendguard.models.factory import build_embedder
 from spendguard.models.fake import FakeChatModel, structured_response
+from spendguard.observability.tracing import create_tracing
 from spendguard.policy.loader import POLICY_PATH, FindingCode, Policy, load_policy
 from spendguard.queue.memory import InMemoryQueue
 from spendguard.queue.messages import QueueMessage
@@ -1073,6 +1078,36 @@ async def test_the_worker_handler_runs_a_start_message_from_elasticmq_to_complet
     assert outcome == {'batchItemFailures': []}
     assert await application.status_of(submission_id) == 'complete'
     assert [event.submission_id for event in application.sender.sent] == [submission_id]
+
+
+async def test_the_worker_traces_a_start_and_its_resume_as_two_traces_in_one_session(
+    application: Application,
+) -> None:
+    exporter = InMemorySpanExporter()
+    tracing = create_tracing(
+        make_test_settings(langfuse_public_key='pk-lf-test', langfuse_secret_key='sk-lf-test'),
+        span_exporter=exporter,
+        tracer_provider=TracerProvider(),
+    )
+    assert tracing is not None
+    application.worker = dataclasses.replace(application.worker, tracing=tracing)
+    try:
+        submission_id = await claim_waiting_for_review(application)
+        await application.decide(
+            submission_id,
+            application.issue_token('EMP-001'),
+            missing_receipt_decision('approve', None),
+        )
+        await application.run_worker()
+        tracing.client.flush()
+    finally:
+        LangfuseResourceManager.reset()
+
+    assert await application.status_of(submission_id) == 'complete'
+    spans = exporter.get_finished_spans()
+    root_spans = [span for span in spans if span.name == 'LangGraph']
+    assert len({span.context.trace_id for span in root_spans if span.context is not None}) == 2
+    assert {(span.attributes or {}).get('session.id') for span in root_spans} == {submission_id}
 
 
 async def test_the_worker_handler_runs_a_resume_message_from_elasticmq_to_complete(
