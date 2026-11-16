@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down migrate lint format typecheck test check build-wheel build-image validate-template run-api seed smoke-providers draft-cases freeze issue-token eval bootstrap secrets deploy destroy destroy-bootstrap
+.PHONY: help install up down migrate lint format typecheck test check build-wheel build-image validate-template smoke run-api seed smoke-providers draft-cases freeze issue-token eval bootstrap secrets deploy destroy destroy-bootstrap
 
 not_built_yet = @echo "make $@ is not built yet ($(1))" >&2; exit 1
 
@@ -43,8 +43,9 @@ build-image: ## Build the container image
 run-api: ## Serve the API locally
 	uv run uvicorn spendguard.api.app:create_production_app --factory --reload
 
-validate-template: ## Validate the SAM template with sam validate and cfn-lint
-	$(call not_built_yet,Spec 2 SAM stack)
+validate-template: ## Validate the SAM template with sam validate and cfn-lint (offline)
+	sam validate --lint --template template.yaml --region us-east-1
+	uv run cfn-lint template.yaml
 
 seed: ## Load the seed data into the branch database (SEED_DIRECTORY=path to override)
 	uv run python -m spendguard.seed $(SEED_DIRECTORY)
@@ -68,13 +69,16 @@ bootstrap: ## Set up GitHub OIDC trust and the image repository
 	$(call not_built_yet,Spec 2 OIDC pipeline deploy)
 
 secrets: ## Write SecureString parameters
-	$(call not_built_yet,Spec 2 SAM stack)
+	scripts/secrets.sh
 
-deploy: ## Build, push and deploy the SAM stack from a laptop
-	$(call not_built_yet,Spec 2 SAM stack)
+deploy: ## Build, push and deploy the SAM stack from a laptop (ALARM_EMAIL=address)
+	scripts/deploy.sh
 
 destroy: ## Delete the stack and empty the image repository
-	$(call not_built_yet,Spec 2 SAM stack)
+	scripts/destroy.sh
+
+smoke: ## Check a running API: health is 200 and an unsigned webhook is 401 (URL=base URL)
+	uv run python -m spendguard.deployment.smoke $(URL)
 
 destroy-bootstrap: ## Tear down the bootstrap stack
 	$(call not_built_yet,Spec 2 OIDC pipeline deploy)

@@ -22,6 +22,7 @@ from settings_factory import make_test_settings
 from spendguard.api.app import create_app
 from spendguard.api.dependencies import ApiDependencies
 from spendguard.db.database import ConnectionPool
+from spendguard.deployment.smoke import smoke_failures
 from spendguard.graph.build import build_graph
 from spendguard.graph.config import GraphConfig
 from spendguard.graph.nodes.execute import (
@@ -45,7 +46,7 @@ from spendguard.settings import Settings
 from spendguard.store import decision_events, precedents, submissions
 from spendguard.store.precedents import NewPrecedent
 from spendguard.submission import SupplierInvoiceDelivery
-from spendguard.worker import WorkerRuntime, handle_sqs_event, process_message
+from spendguard.worker import WorkerRuntime, create_worker_app, handle_sqs_event, process_message
 
 if TYPE_CHECKING:
     from mypy_boto3_sqs.client import SQSClient
@@ -284,6 +285,7 @@ async def application(
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url='http://testserver'
     ) as client:
+        assert application_settings.decision_event_url is not None
         sender = RecordingSender(
             SignedDecisionEventSender(
                 client=client,
@@ -322,6 +324,12 @@ async def test_health_returns_200(application: Application) -> None:
     response = await application.client.get('/health')
 
     assert response.status_code == 200
+
+
+async def test_the_deployment_smoke_check_passes_against_the_application(
+    application: Application,
+) -> None:
+    assert await smoke_failures(application.client) == []
 
 
 async def test_a_claim_signed_with_the_wrong_key_is_rejected_with_401(
@@ -1059,6 +1067,27 @@ async def test_a_failing_record_and_every_record_after_it_are_reported_as_batch_
     }
     assert await application.status_of(first.json()['submission_id']) == 'complete'
     assert await application.status_of(last.json()['submission_id']) == 'received'
+
+
+async def test_the_worker_app_answers_a_queue_event_posted_to_it_with_the_batch_failures(
+    application: Application,
+) -> None:
+    accepted = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    (start,) = application.queue.receive()
+    event = {
+        'Records': [
+            lambda_record('message-1', start.message.model_dump_json()),
+            lambda_record('message-2', '{"type": "unknown"}'),
+        ]
+    }
+    worker_app = create_worker_app(application.worker)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=worker_app), base_url='http://worker'
+    ) as worker_client:
+        response = await worker_client.post('/events', json=event)
+
+    assert response.json() == {'batchItemFailures': [{'itemIdentifier': 'message-2'}]}
+    assert await application.status_of(accepted.json()['submission_id']) == 'complete'
 
 
 def flagged(

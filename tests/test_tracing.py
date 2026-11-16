@@ -128,29 +128,29 @@ async def test_traced_payloads_carry_no_card_numbers_emails_or_phone_numbers(
         assert personal_data not in exported_text
 
 
-def test_a_handler_exports_its_traces_before_it_returns(
+async def test_a_handler_exports_its_traces_before_it_returns(
     tracing: Tracing, exporter: InMemorySpanExporter
 ) -> None:
     @flush_traces_before_return
-    def handler(event: dict[str, object], context: object) -> dict[str, object]:
+    async def handler(event: dict[str, object]) -> dict[str, object]:
         tracing.client.start_observation(name='advance').end()
         return {'batchItemFailures': []}
 
-    handler({}, None)
+    await handler({})
 
     assert [span.name for span in exporter.get_finished_spans()] == ['advance']
 
 
-def test_a_failing_handler_still_exports_its_traces(
+async def test_a_failing_handler_still_exports_its_traces(
     tracing: Tracing, exporter: InMemorySpanExporter
 ) -> None:
     @flush_traces_before_return
-    def handler(event: dict[str, object], context: object) -> dict[str, object]:
+    async def handler(event: dict[str, object]) -> dict[str, object]:
         tracing.client.start_observation(name='advance').end()
         raise RuntimeError('advance failed')
 
     with pytest.raises(RuntimeError):
-        handler({}, None)
+        await handler({})
 
     assert [span.name for span in exporter.get_finished_spans()] == ['advance']
 

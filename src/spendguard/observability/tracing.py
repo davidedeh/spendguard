@@ -1,6 +1,6 @@
 import functools
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -59,12 +59,14 @@ def create_tracing(
 
 
 def flush_traces_before_return[**Parameters, Result](
-    function: Callable[Parameters, Result],
-) -> Callable[Parameters, Result]:
+    function: Callable[Parameters, Awaitable[Result]],
+) -> Callable[Parameters, Awaitable[Result]]:
     @functools.wraps(function)
-    def flushing(*arguments: Parameters.args, **keyword_arguments: Parameters.kwargs) -> Result:
+    async def flushing(
+        *arguments: Parameters.args, **keyword_arguments: Parameters.kwargs
+    ) -> Result:
         try:
-            return function(*arguments, **keyword_arguments)
+            return await function(*arguments, **keyword_arguments)
         finally:
             get_client().flush()
 
