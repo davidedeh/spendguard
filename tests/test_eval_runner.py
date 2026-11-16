@@ -6,6 +6,7 @@ import pytest
 from spendguard.eval.cases import load_slice_plan
 from spendguard.eval.freeze import main as freeze
 from spendguard.eval.runner import DatasetRefusedError, frozen_cases
+from spendguard.eval.runner import main as run_eval_command
 from spendguard.policy.loader import load_policy
 from spendguard.seed.loader import read_seed_directory
 
@@ -58,3 +59,36 @@ def test_the_runner_returns_every_case_of_a_dataset_matching_its_lock(tmp_path: 
     assert sorted(case.id for case in cases) == sorted(
         path.stem for path in CASE_DIRECTORY.glob('*.yaml')
     )
+
+
+def test_the_eval_command_on_a_changed_dataset_exits_1_and_writes_no_results(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    lock_path = tmp_path / 'dataset.lock.json'
+    lock_path.write_text(json.dumps({'dataset_hash': '0' * 64}))
+    readme_path = tmp_path / 'README.md'
+    readme_path.write_text('unchanged\n')
+
+    exit_code = run_eval_command(
+        [
+            '--cases',
+            str(CASE_DIRECTORY),
+            '--plan',
+            str(FIXTURES / 'eval' / 'slice_plan.yaml'),
+            '--policy',
+            str(FIXTURES / 'policy' / 'valid_policy.yaml'),
+            '--seed',
+            str(FIXTURES / 'seed'),
+            '--lock',
+            str(lock_path),
+            '--results',
+            str(tmp_path / 'results'),
+            '--readme',
+            str(readme_path),
+        ]
+    )
+
+    assert exit_code == 1
+    assert 'does not match the lock' in capsys.readouterr().err
+    assert not (tmp_path / 'results').exists()
+    assert readme_path.read_text() == 'unchanged\n'
