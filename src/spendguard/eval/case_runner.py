@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import hashlib
 import time
 import uuid
 from collections.abc import Callable, Sequence
@@ -111,7 +110,6 @@ async def run_case(
         idempotency_key=idempotency_key,
         submission_type=case.submission.type,
         payload=payload,
-        payload_hash=hashlib.sha256(idempotency_key.encode()).hexdigest(),
     )
     initial_state: ReviewState = {
         'submission_id': str(recording.submission_id),

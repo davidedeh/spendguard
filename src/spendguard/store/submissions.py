@@ -1,4 +1,6 @@
 import datetime
+import hashlib
+import json
 import uuid
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
@@ -38,8 +40,10 @@ async def record_submission(
     idempotency_key: str,
     submission_type: SubmissionType,
     payload: dict[str, Any],
-    payload_hash: str,
 ) -> Recording:
+    payload_hash = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()
+    ).hexdigest()
     async with connection_pool.connection() as connection:
         inserted = await (
             await connection.execute(

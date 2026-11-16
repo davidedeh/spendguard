@@ -1,4 +1,3 @@
-import hashlib
 import json
 from typing import Annotated
 
@@ -48,7 +47,6 @@ async def receive_expense_claim(
         dependencies,
         idempotency_key=delivery.idempotency_key,
         submission=delivery.claim,
-        canonical_body=delivery.model_dump_json(),
     )
 
 
@@ -79,7 +77,6 @@ async def receive_supplier_invoice(
         dependencies,
         idempotency_key=delivery.idempotency_key,
         submission=delivery.invoice,
-        canonical_body=delivery.model_dump_json(),
     )
 
 
@@ -103,14 +100,12 @@ async def _accept(
     *,
     idempotency_key: str,
     submission: ExpenseClaim | SupplierInvoice,
-    canonical_body: str,
 ) -> Accepted:
     recording = await submissions.record_submission(
         dependencies.connection_pool,
         idempotency_key=idempotency_key,
         submission_type=submission.type,
         payload=submission.model_dump(mode='json'),
-        payload_hash=hashlib.sha256(canonical_body.encode()).hexdigest(),
     )
     if recording.outcome == 'conflicting':
         raise HTTPException(

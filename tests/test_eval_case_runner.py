@@ -211,7 +211,6 @@ async def leftover_precedent(connection_pool: ConnectionPool, subject: str) -> N
         idempotency_key=f'leftover:{uuid.uuid4().hex}',
         submission_type='expense_claim',
         payload={},
-        payload_hash='leftover',
     )
     weekend_clause = POLICY.finding_codes['WEEKEND_SPEND_UNJUSTIFIED'].clause
     await precedents.record_precedent(

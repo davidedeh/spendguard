@@ -1773,7 +1773,6 @@ async def test_only_the_three_most_recent_precedents_for_the_subject_are_returne
             idempotency_key=unique_invoice_number(),
             submission_type='supplier_invoice',
             payload={},
-            payload_hash='unused',
         )
         await precedents.record_precedent(
             application.connection_pool,
