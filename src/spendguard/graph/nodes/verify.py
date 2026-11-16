@@ -188,5 +188,11 @@ def verify(state: ReviewState, graph_config: GraphConfig) -> ReviewState:
             state['rule_findings'] + verification.findings, state['current_precedents']
         ),
         'judgement_outcomes': kept_outcomes,
+        'unanswered_checks': state['unanswered_checks']
+        + [
+            outcome['code']
+            for outcome in outcomes
+            if outcome not in kept_outcomes and outcome['code'] not in state['unanswered_checks']
+        ],
         'audit': audit,
     }

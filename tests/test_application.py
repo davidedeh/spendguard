@@ -429,6 +429,30 @@ async def test_a_clean_claim_whose_judgement_left_a_check_unanswered_waits_for_r
     ]
 
 
+async def test_a_clean_claim_whose_only_clearance_cites_an_unsupplied_precedent_waits_for_review(
+    application: Application,
+) -> None:
+    application.chat_model.verdicts = [
+        CheckVerdict(
+            code='PURPOSE_UNCLEAR',
+            outcome='cleared_by_precedent',
+            clause_reference=None,
+            quotes=[],
+            cited_precedent_ids=[],
+            precedent_id='PRECEDENT-NEVER-SUPPLIED',
+        )
+    ]
+    response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    assert await application.status_of(submission_id) == 'pending_review'
+    assert await application.recorded_events(submission_id) == []
+    state = await application.review_state(submission_id)
+    assert state['unanswered_checks'] == ['PURPOSE_UNCLEAR']
+
+
 async def test_a_claim_missing_a_required_receipt_waits_for_review_and_sends_no_event(
     application: Application,
 ) -> None:
