@@ -18,6 +18,7 @@ from spendguard.graph.state import ReviewState
 from spendguard.models.factory import build_embedder
 from spendguard.models.fake import FakeChatModel, structured_response
 from spendguard.policy.loader import FindingCode, load_policy
+from spendguard.privacy.prompt_data import DATA_TAG_INSTRUCTION, untrusted_data
 from spendguard.retrieval.policy_index import index_policy, retrieve_clauses
 from spendguard.seed.loader import read_seed_directory
 from spendguard.settings import ChatModelSettings, Settings
@@ -80,6 +81,7 @@ def claim_state() -> ReviewState:
         'idempotency_key': 'travel-desk:CLAIM-1',
         'submission_type': 'expense_claim',
         'submission': CLAIM,
+        'redacted_submission': CLAIM,
     }
 
 
@@ -104,6 +106,30 @@ async def test_planning_returns_queries_and_guidance_for_every_judgement_check_a
         f'what {JUDGEMENT_CODES[1]} should look for' if code == JUDGEMENT_CODES[1] else ''
         for code in JUDGEMENT_CODES
     ]
+
+
+async def test_the_planner_sees_only_the_redacted_submission_inside_data_tags(
+    connection_pool: ConnectionPool,
+) -> None:
+    model = FakeChatModel(
+        model_id='fake-planner',
+        responses=[planning_reply(['alcohol at dinner', 'weekend meal'], JUDGEMENT_CODES)],
+    )
+    state = claim_state()
+    state['submission'] = CLAIM | {'business_purpose': 'Team dinner, ask pat@example.com'}
+    state['redacted_submission'] = CLAIM | {'business_purpose': 'Team dinner, ask [EMAIL]'}
+
+    plan(state, graph_config(model, connection_pool))
+
+    [[system_message, human_message]] = model.received
+    assert DATA_TAG_INSTRUCTION in system_message.text
+    assert human_message.text == untrusted_data(
+        {
+            field: value if isinstance(value, str) else json.dumps(value)
+            for field, value in state['redacted_submission'].items()
+            if value is not None
+        }
+    )
 
 
 async def test_a_planner_set_to_json_schema_has_a_decorated_reply_read_as_its_plan(
