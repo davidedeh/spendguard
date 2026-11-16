@@ -2,9 +2,15 @@ from typing import Any
 
 import pytest
 
-from spendguard.graph.nodes.verify import DropReason, VerificationDrop, verified_findings
-from spendguard.graph.state import CandidateFinding, Quote
-from spendguard.policy.loader import POLICY_PATH, load_policy
+from spendguard.graph.nodes.verify import (
+    DropReason,
+    JudgementEvidence,
+    VerificationDrop,
+    verified_clearances,
+    verified_findings,
+)
+from spendguard.graph.state import CandidateFinding, JudgementOutcome, Quote
+from spendguard.policy.loader import POLICY_PATH, FindingCode, load_policy
 
 POLICY = load_policy(POLICY_PATH)
 REDACTED_SUBMISSION: dict[str, Any] = {
@@ -23,6 +29,22 @@ def reference_of(clause_id: str) -> str:
 ALCOHOL_CLAUSE = reference_of('no_alcohol')
 PURPOSE_CLAUSE = reference_of('business_purpose')
 RETRIEVED = [ALCOHOL_CLAUSE, PURPOSE_CLAUSE]
+JUDGEMENT_CHECKS: list[FindingCode] = [
+    'PURPOSE_UNCLEAR',
+    'RECEIPT_MISMATCH',
+    'ALCOHOL_NOT_PERMITTED',
+]
+
+
+def evidence(
+    retrieved_references: list[str] = RETRIEVED, supplied_precedent_ids: list[str] | None = None
+) -> JudgementEvidence:
+    return JudgementEvidence(
+        judgement_checks=JUDGEMENT_CHECKS,
+        retrieved_references=retrieved_references,
+        redacted_submission=REDACTED_SUBMISSION,
+        supplied_precedent_ids=supplied_precedent_ids or [],
+    )
 
 
 def alcohol_candidate(
@@ -44,10 +66,8 @@ def alcohol_candidate(
 def test_a_finding_that_passes_every_check_is_kept_with_its_severity_from_the_policy() -> None:
     result = verified_findings(
         [alcohol_candidate()],
-        retrieved_references=RETRIEVED,
-        redacted_submission=REDACTED_SUBMISSION,
-        supplied_precedent_ids=[],
-        policy=POLICY,
+        evidence(),
+        POLICY,
     )
 
     assert result.findings == [
@@ -69,6 +89,7 @@ def test_a_finding_that_passes_every_check_is_kept_with_its_severity_from_the_po
     ('candidate', 'reason'),
     [
         (alcohol_candidate(code='MISSING_RECEIPT'), 'code_not_judgement'),
+        (alcohol_candidate(code='WEEKEND_SPEND_UNJUSTIFIED'), 'code_not_judgement'),
         (alcohol_candidate(code='LATE_CLAIM'), 'code_not_judgement'),
         (alcohol_candidate(clause_reference=reference_of('tips')), 'clause_not_retrieved'),
         (alcohol_candidate(clause_reference='§99.1'), 'clause_not_retrieved'),
@@ -99,6 +120,7 @@ def test_a_finding_that_passes_every_check_is_kept_with_its_severity_from_the_po
     ],
     ids=[
         'a rule code',
+        'a judgement check not run for this submission',
         'a code outside the closed set',
         'a clause that was not retrieved',
         'a clause the policy does not have',
@@ -116,10 +138,8 @@ def test_a_finding_failing_one_check_is_dropped_with_that_reason(
 ) -> None:
     result = verified_findings(
         [candidate],
-        retrieved_references=RETRIEVED,
-        redacted_submission=REDACTED_SUBMISSION,
-        supplied_precedent_ids=['PRECEDENT-1'],
-        policy=POLICY,
+        evidence(supplied_precedent_ids=['PRECEDENT-1']),
+        POLICY,
     )
 
     assert result.findings == []
@@ -139,10 +159,8 @@ def test_findings_sharing_a_code_and_clause_collapse_into_the_first_and_the_rest
 
     result = verified_findings(
         [first, repeated, under_another_clause, repeated],
-        retrieved_references=RETRIEVED,
-        redacted_submission=REDACTED_SUBMISSION,
-        supplied_precedent_ids=[],
-        policy=POLICY,
+        evidence(),
+        POLICY,
     )
 
     assert [(finding['clause_reference'], finding['quotes']) for finding in result.findings] == [
@@ -168,13 +186,53 @@ def test_severity_comes_from_the_policy_for_each_code() -> None:
             alcohol_candidate(code='RECEIPT_MISMATCH', clause_reference=receipt_clause),
             alcohol_candidate(),
         ],
-        retrieved_references=[*RETRIEVED, receipt_clause],
-        redacted_submission=REDACTED_SUBMISSION,
-        supplied_precedent_ids=[],
-        policy=POLICY,
+        evidence(retrieved_references=[*RETRIEVED, receipt_clause]),
+        POLICY,
     )
 
     assert [(finding['code'], finding['severity']) for finding in result.findings] == [
         ('RECEIPT_MISMATCH', 'high'),
         ('ALCOHOL_NOT_PERMITTED', 'medium'),
+    ]
+
+
+def clearance(code: FindingCode, precedent_id: str) -> JudgementOutcome:
+    return {
+        'code': code,
+        'outcome': 'cleared_by_precedent',
+        'precedent_id': precedent_id,
+        'candidate': None,
+    }
+
+
+def test_a_clearance_is_kept_only_for_a_check_run_and_a_precedent_supplied() -> None:
+    supported = clearance('PURPOSE_UNCLEAR', 'PRECEDENT-1')
+    not_flagged: JudgementOutcome = {
+        'code': 'RECEIPT_MISMATCH',
+        'outcome': 'not_flagged',
+        'precedent_id': None,
+        'candidate': None,
+    }
+
+    kept, drops = verified_clearances(
+        [
+            supported,
+            clearance('PURPOSE_UNCLEAR', 'PRECEDENT-2'),
+            not_flagged,
+            clearance('WEEKEND_SPEND_UNJUSTIFIED', 'PRECEDENT-1'),
+        ],
+        evidence(supplied_precedent_ids=['PRECEDENT-1']),
+        POLICY,
+    )
+
+    assert kept == [supported, not_flagged]
+    assert drops == [
+        VerificationDrop(
+            code='PURPOSE_UNCLEAR', clause_reference=PURPOSE_CLAUSE, reason='precedent_not_supplied'
+        ),
+        VerificationDrop(
+            code='WEEKEND_SPEND_UNJUSTIFIED',
+            clause_reference=reference_of('weekend_and_holiday_spend'),
+            reason='code_not_judgement',
+        ),
     ]

@@ -10,9 +10,10 @@ import httpx
 import psycopg
 import pytest
 from langchain_core.callbacks import CallbackManagerForLLMRun
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from pydantic import Field
 
 from settings_factory import make_test_settings
 from spendguard.api.app import create_app
@@ -26,9 +27,10 @@ from spendguard.graph.nodes.execute import (
     SignedDecisionEventSender,
 )
 from spendguard.graph.nodes.plan import RetrievalPlan
+from spendguard.graph.nodes.run_judgement_checks import CheckVerdict, JudgementReport, QuotedText
 from spendguard.models.factory import build_embedder
 from spendguard.models.fake import FakeChatModel, structured_response
-from spendguard.policy.loader import POLICY_PATH, load_policy
+from spendguard.policy.loader import POLICY_PATH, FindingCode, load_policy
 from spendguard.queue.memory import InMemoryQueue
 from spendguard.queue.sqs import SqsQueue, sqs_client
 from spendguard.retrieval.policy_index import index_policy
@@ -119,6 +121,7 @@ class Application:
     connection_pool: ConnectionPool
     sender: RecordingSender
     branch_database: str
+    chat_model: 'PlanningChatModel'
 
     def issue_token(self, approver: str) -> str:
         with psycopg.connect(self.branch_database) as connection:
@@ -181,6 +184,8 @@ def clause_reference(clause_id: str) -> str:
 
 
 class PlanningChatModel(FakeChatModel):
+    verdicts: list[CheckVerdict] = Field(default_factory=list)
+
     def _generate(
         self,
         messages: list[BaseMessage],
@@ -189,12 +194,18 @@ class PlanningChatModel(FakeChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         self.received.append(list(messages))
-        reply = structured_response(
-            RetrievalPlan(
-                retrieval_queries=['is alcohol reimbursed with a meal', 'receipts for a lunch'],
-                check_guidance=[],
+        bound_tool_names = [tool['function']['name'] for tool in kwargs.get('tools', [])]
+        if bound_tool_names == [RetrievalPlan.__name__]:
+            reply = structured_response(
+                RetrievalPlan(
+                    retrieval_queries=['is alcohol reimbursed with a meal', 'receipts for a lunch'],
+                    check_guidance=[],
+                )
             )
-        )
+        elif bound_tool_names == [JudgementReport.__name__]:
+            reply = structured_response(JudgementReport(verdicts=self.verdicts))
+        else:
+            reply = AIMessage(content='Nothing to look up.')
         return ChatResult(generations=[ChatGeneration(message=reply)])
 
 
@@ -232,6 +243,7 @@ async def application(
             )
         )
         embedder = build_embedder(application_settings)
+        chat_model = PlanningChatModel(model_id='fake-chat')
         async with connection_pool.connection() as connection:
             await index_policy(connection, POLICY, embedder)
         graph = build_graph(
@@ -239,7 +251,7 @@ async def application(
                 settings=application_settings,
                 policy=POLICY,
                 seed_data=SEED_DATA,
-                chat_model=PlanningChatModel(model_id='fake-chat'),
+                chat_model=chat_model,
                 embedder=embedder,
                 connection_pool=connection_pool,
                 checkpointer=AsyncPostgresSaver(connection_pool),
@@ -253,6 +265,7 @@ async def application(
             connection_pool=connection_pool,
             sender=sender,
             branch_database=branch_database,
+            chat_model=chat_model,
         )
 
 
@@ -761,3 +774,122 @@ async def test_a_failing_record_and_every_record_after_it_are_reported_as_batch_
     }
     assert await application.status_of(first.json()['submission_id']) == 'complete'
     assert await application.status_of(last.json()['submission_id']) == 'received'
+
+
+def flagged(
+    code: FindingCode, clause_id: str, quotes: list[QuotedText], **fields: Any
+) -> CheckVerdict:
+    return CheckVerdict.model_validate(
+        {
+            'code': code,
+            'outcome': 'flagged',
+            'clause_reference': clause_reference(clause_id),
+            'quotes': quotes,
+            'cited_precedent_ids': [],
+            'precedent_id': None,
+        }
+        | fields
+    )
+
+
+PURPOSE_QUOTE = QuotedText(field='business_purpose', text='visiting the Leeds office')
+
+
+@pytest.mark.parametrize(
+    ('verdict', 'reason'),
+    [
+        (flagged('PURPOSE_UNCLEAR', 'approved_suppliers', [PURPOSE_QUOTE]), 'clause_not_retrieved'),
+        (
+            flagged(
+                'ALCOHOL_NOT_PERMITTED',
+                'no_alcohol',
+                [QuotedText(field='receipt_text', text='1 x Pint of lager')],
+            ),
+            'quote_not_verbatim',
+        ),
+        (
+            flagged(
+                'ALCOHOL_NOT_PERMITTED',
+                'no_alcohol',
+                [QuotedText(field='receipt_text', text='1 x Soup 6.50')],
+                cited_precedent_ids=['PRECEDENT-1'],
+            ),
+            'precedent_not_supplied',
+        ),
+    ],
+    ids=['an unretrieved clause', 'a quote not in the submission', 'an unsupplied precedent'],
+)
+async def test_a_judgement_finding_failing_verification_is_dropped_and_audited(
+    application: Application, verdict: CheckVerdict, reason: str
+) -> None:
+    application.chat_model.verdicts = [verdict]
+    response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    state = await application.review_state(submission_id)
+    assert verdict.clause_reference is not None
+    assert (
+        verdict.clause_reference
+        in [clause['clause_reference'] for clause in state['retrieved_clauses']]
+    ) is (reason != 'clause_not_retrieved')
+    assert state['findings'] == []
+    assert {
+        'node': 'verify',
+        'event': 'finding_dropped',
+        'detail': {
+            'code': verdict.code,
+            'clause_reference': verdict.clause_reference,
+            'reason': reason,
+        },
+    } in state['audit']
+    assert await application.status_of(submission_id) == 'complete'
+
+
+async def test_rule_and_judgement_findings_reach_review_as_one_verified_set(
+    application: Application,
+) -> None:
+    application.chat_model.verdicts = [
+        flagged(
+            'ALCOHOL_NOT_PERMITTED',
+            'no_alcohol',
+            [QuotedText(field='receipt_text', text='1 x Pint of   lager 12.50')],
+        ),
+        flagged(
+            'ALCOHOL_NOT_PERMITTED',
+            'no_alcohol',
+            [QuotedText(field='receipt_text', text='Pint of lager')],
+        ),
+    ]
+    response = await application.post_claim(
+        expense_claim_delivery(
+            unique_claim_id(),
+            spent_on='2026-09-14',
+            amount='42.50',
+            receipt_text=(
+                'Harbour Kitchen\n1 x Set menu 30.00\n1 x Pint of lager 12.50\nTOTAL 42.50'
+            ),
+        )
+    )
+    submission_id = response.json()['submission_id']
+    await application.run_worker()
+
+    listed = await application.pending_review(application.issue_token('EMP-001'))
+
+    [review] = [
+        item for item in listed.json()['submissions'] if item['submission_id'] == submission_id
+    ]
+    assert [
+        (finding['code'], finding['source'], finding['severity'], finding['quotes'])
+        for finding in review['findings']
+    ] == [
+        ('DUPLICATE_SUBMISSION', 'rule', 'high', []),
+        (
+            'ALCOHOL_NOT_PERMITTED',
+            'judgement',
+            'medium',
+            [{'field': 'receipt_text', 'text': '1 x Pint of   lager 12.50'}],
+        ),
+    ]
+    assert review['recommendation'] == 'reject'
