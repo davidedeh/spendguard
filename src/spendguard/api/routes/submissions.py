@@ -74,6 +74,12 @@ class DecisionRequest(StrictModel):
     reason: str | None
     dispositions: list[DispositionRequest]
 
+    @model_validator(mode='after')
+    def _rejection_has_a_reason(self) -> Self:
+        if self.outcome == 'reject' and not self.reason:
+            raise ValueError('a rejection needs a reason')
+        return self
+
 
 class DecisionAccepted(TypedDict):
     submission_id: str
