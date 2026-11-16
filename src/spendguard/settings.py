@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     signature_tolerance_seconds: int
 
     force_human_review: bool
+    maximum_field_length: int
     judgement_max_tool_calls: int
     retrieval_top_k: int
     worker_timeout_seconds: int

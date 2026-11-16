@@ -7,6 +7,7 @@ from spendguard import settings
 from spendguard.api.dependencies import ApiDependencies
 from spendguard.api.routes import health, mock_erp, submissions, webhooks
 from spendguard.db.database import async_connection_pool, branch_connection_info
+from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.queue.sqs import SqsQueue, ensure_branch_queue, sqs_client
 from spendguard.structured_logging import configure_logging
 
@@ -36,6 +37,11 @@ def create_production_app() -> FastAPI:
         await connection_pool.close()
 
     return create_app(
-        ApiDependencies(settings=loaded_settings, connection_pool=connection_pool, queue=queue),
+        ApiDependencies(
+            settings=loaded_settings,
+            policy=load_policy(POLICY_PATH),
+            connection_pool=connection_pool,
+            queue=queue,
+        ),
         lifespan=lifespan,
     )
