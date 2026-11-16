@@ -1,3 +1,5 @@
+import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal, Self
 
@@ -20,6 +22,14 @@ class ModelSettings(BaseModel):
 
 class ChatModelSettings(ModelSettings):
     structured_output_method: StructuredOutputMethod
+
+
+class ModelPrice(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    input_per_million_tokens_usd: Decimal
+    output_per_million_tokens_usd: Decimal
+    priced_on: datetime.date
 
 
 class Settings(BaseSettings):
@@ -45,6 +55,7 @@ class Settings(BaseSettings):
     primary_model_key: str
     drafting_model_keys: tuple[str, ...]
     embedding_model: ModelSettings
+    model_prices: dict[str, ModelPrice]
     google_api_key: SecretStr | None
 
     langfuse_public_key: SecretStr | None

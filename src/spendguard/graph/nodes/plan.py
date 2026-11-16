@@ -1,5 +1,6 @@
-from collections.abc import Mapping
+from spendguard.graph.config import GraphConfig
+from spendguard.graph.state import ReviewState
 
 
-def plan(state: Mapping[str, object]) -> dict[str, object]:
-    raise NotImplementedError
+def plan(state: ReviewState, graph_config: GraphConfig) -> ReviewState:
+    return {}

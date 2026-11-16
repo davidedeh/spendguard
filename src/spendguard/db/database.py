@@ -1,7 +1,10 @@
 import contextlib
 
 import psycopg
-from psycopg import sql
+from langgraph.checkpoint.postgres import PostgresSaver
+from psycopg import AsyncConnection, sql
+from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from spendguard.branch_names import database_name_for_branch
 from spendguard.db.migrator import apply_migrations
@@ -9,6 +12,8 @@ from spendguard.settings import Settings
 
 MAINTENANCE_DATABASE = 'postgres'
 CONNECT_TIMEOUT_SECONDS = 3
+
+type ConnectionPool = AsyncConnectionPool[AsyncConnection[DictRow]]
 
 
 class DatabaseUnreachableError(RuntimeError):
@@ -60,4 +65,15 @@ def ensure_branch_database(settings: Settings) -> str:
     connection_info = branch_connection_info(settings)
     with psycopg.connect(connection_info) as connection:
         apply_migrations(connection)
+    with psycopg.connect(connection_info, autocommit=True, row_factory=dict_row) as connection:
+        PostgresSaver(connection).setup()
     return connection_info
+
+
+def async_connection_pool(connection_info: str) -> ConnectionPool:
+    return AsyncConnectionPool(
+        connection_info,
+        connection_class=AsyncConnection[DictRow],
+        kwargs={'autocommit': True, 'prepare_threshold': None, 'row_factory': dict_row},
+        open=False,
+    )

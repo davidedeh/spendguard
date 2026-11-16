@@ -1,9 +1,10 @@
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, StringConstraints
 
 from spendguard.seed.schema import ExpenseClaimFields, SupplierInvoiceFields
+from spendguard.strict_model import StrictModel
 
 ExchangeRate = Annotated[Decimal, Field(gt=0)]
 ClaimedExchangeRate = Annotated[
@@ -34,3 +35,16 @@ class SupplierInvoice(SupplierInvoiceFields):
 
 
 Submission = Annotated[ExpenseClaim | SupplierInvoice, Field(discriminator='type')]
+
+
+SenderIdentifier = Annotated[str, StringConstraints(pattern=r'^[A-Za-z0-9_.-]{1,64}$')]
+
+
+class ExpenseClaimDelivery(StrictModel):
+    source: SenderIdentifier
+    claim_id: SenderIdentifier
+    claim: ExpenseClaim
+
+    @property
+    def idempotency_key(self) -> str:
+        return f'expense_claim:{self.source}:{self.claim_id}'

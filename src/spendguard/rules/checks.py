@@ -190,6 +190,10 @@ def _duplicate_invoice(invoice: SupplierInvoice, seed_data: SeedData, policy: Po
     )
 
 
+def _weekend_gate(claim: ExpenseClaim, seed_data: SeedData, policy: Policy) -> bool:
+    return falls_on_weekend_or_holiday(claim.spent_on, seed_data)
+
+
 ClaimCheck = Callable[[ExpenseClaim, SeedData, Policy], bool]
 InvoiceCheck = Callable[[SupplierInvoice, SeedData, Policy], bool]
 
@@ -199,6 +203,9 @@ EXPENSE_CLAIM_CHECKS: Mapping[FindingCode, ClaimCheck] = {
     'DUPLICATE_SUBMISSION': _duplicate_claim,
     'BUDGET_EXCEEDED': _claim_budget_exceeded,
     'CURRENCY_ANOMALY': _currency_anomaly,
+}
+EXPENSE_CLAIM_JUDGEMENT_GATES: Mapping[FindingCode, ClaimCheck] = {
+    WEEKEND_CODE: _weekend_gate,
 }
 SUPPLIER_INVOICE_CHECKS: Mapping[FindingCode, InvoiceCheck] = {
     'DUPLICATE_SUBMISSION': _duplicate_invoice,

@@ -1,10 +1,10 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 
 import psycopg
 import pytest
 
 from settings_factory import make_test_settings
-from spendguard.db.database import ensure_branch_database
+from spendguard.db.database import ConnectionPool, async_connection_pool, ensure_branch_database
 from spendguard.queue.sqs import ensure_branch_queue, sqs_client
 from spendguard.settings import Settings
 
@@ -37,3 +37,11 @@ def database_connection(branch_database: str) -> Iterator[psycopg.Connection]:
         connection.transaction(force_rollback=True),
     ):
         yield connection
+
+
+@pytest.fixture(scope='session')
+async def connection_pool(branch_database: str) -> AsyncIterator[ConnectionPool]:
+    pool = async_connection_pool(branch_database)
+    await pool.open(wait=True)
+    yield pool
+    await pool.close()

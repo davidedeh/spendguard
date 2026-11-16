@@ -1,5 +1,6 @@
-from collections.abc import Mapping
+from spendguard.graph.config import GraphConfig
+from spendguard.graph.state import ReviewState
 
 
-def run_judgement_checks(state: Mapping[str, object]) -> dict[str, object]:
-    raise NotImplementedError
+def run_judgement_checks(state: ReviewState, graph_config: GraphConfig) -> ReviewState:
+    return {}

@@ -1,0 +1,295 @@
+import json
+import time
+import uuid
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pytest
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+from settings_factory import make_test_settings
+from spendguard.api.app import create_app
+from spendguard.api.dependencies import ApiDependencies
+from spendguard.db.database import ConnectionPool
+from spendguard.graph.build import build_graph
+from spendguard.graph.config import GraphConfig
+from spendguard.graph.nodes.execute import (
+    DecisionEvent,
+    DecisionEventSender,
+    SignedDecisionEventSender,
+)
+from spendguard.models.factory import build_embedder
+from spendguard.models.fake import FakeChatModel
+from spendguard.policy.loader import POLICY_PATH, load_policy
+from spendguard.queue.memory import InMemoryQueue
+from spendguard.security.signatures import sign
+from spendguard.seed.loader import read_seed_directory
+from spendguard.store import decision_events, submissions
+from spendguard.worker import WorkerRuntime, process_message
+
+SETTINGS = make_test_settings()
+WEBHOOK_KEY = b'test-webhook-signing-key'
+POLICY = load_policy(POLICY_PATH)
+SEED_DATA = read_seed_directory(Path(__file__).parent / 'fixtures' / 'seed')
+
+
+def unique_claim_id() -> str:
+    return f'CLAIM-{uuid.uuid4().hex}'
+
+
+def expense_claim_delivery(claim_id: str, **claim_overrides: Any) -> dict[str, Any]:
+    return {
+        'source': 'travel-desk',
+        'claim_id': claim_id,
+        'claim': {
+            'type': 'expense_claim',
+            'claimant': 'EMP-003',
+            'spent_on': '2026-10-06',
+            'category': 'subsistence',
+            'quantity': 1,
+            'merchant': 'Harbour Kitchen',
+            'amount': '14.50',
+            'currency': 'GBP',
+            'claimed_exchange_rate': None,
+            'business_purpose': 'Lunch while visiting the Leeds office for Halden Group',
+            'receipt_text': 'Harbour Kitchen\n1 x Soup 6.50\n1 x Sandwich 8.00\nTOTAL 14.50',
+        }
+        | claim_overrides,
+    }
+
+
+def signed_headers(key: bytes, raw_body: bytes, signed_at: int | None = None) -> dict[str, str]:
+    timestamp = int(time.time()) if signed_at is None else signed_at
+    return {'X-Signature': sign(key, timestamp, raw_body), 'Content-Type': 'application/json'}
+
+
+@dataclass
+class RecordingSender:
+    inner: DecisionEventSender
+    sent: list[DecisionEvent] = field(default_factory=list)
+
+    async def send(self, event: DecisionEvent) -> None:
+        self.sent.append(event)
+        await self.inner.send(event)
+
+
+@dataclass
+class Application:
+    client: httpx.AsyncClient
+    queue: InMemoryQueue
+    worker: WorkerRuntime
+    connection_pool: ConnectionPool
+    sender: RecordingSender
+
+    async def post_claim(
+        self, delivery: dict[str, Any], key: bytes = WEBHOOK_KEY, signed_at: int | None = None
+    ) -> httpx.Response:
+        raw_body = json.dumps(delivery).encode()
+        return await self.client.post(
+            '/webhooks/expense-claims',
+            content=raw_body,
+            headers=signed_headers(key, raw_body, signed_at),
+        )
+
+    async def run_worker(self) -> None:
+        for message in self.queue.receive():
+            await process_message(message, self.worker)
+
+    async def status_of(self, submission_id: str) -> str:
+        record = await submissions.find_submission(self.connection_pool, uuid.UUID(submission_id))
+        assert record is not None
+        return record.status
+
+    async def recorded_events(self, submission_id: str) -> list[dict[str, Any]]:
+        return await decision_events.events_for(self.connection_pool, submission_id)
+
+
+@pytest.fixture
+async def application(connection_pool: ConnectionPool) -> AsyncIterator[Application]:
+    queue = InMemoryQueue()
+    app = create_app(
+        ApiDependencies(settings=SETTINGS, connection_pool=connection_pool, queue=queue)
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url='http://testserver'
+    ) as client:
+        sender = RecordingSender(
+            SignedDecisionEventSender(
+                client=client,
+                url=SETTINGS.decision_event_url,
+                key=b'test-decision-event-signing-key',
+            )
+        )
+        graph = build_graph(
+            GraphConfig(
+                settings=SETTINGS,
+                policy=POLICY,
+                seed_data=SEED_DATA,
+                chat_model=FakeChatModel(model_id='fake-chat'),
+                embedder=build_embedder(SETTINGS),
+                connection_pool=connection_pool,
+                checkpointer=AsyncPostgresSaver(connection_pool),
+                decision_event_sender=sender,
+            )
+        )
+        yield Application(
+            client=client,
+            queue=queue,
+            worker=WorkerRuntime(graph=graph, connection_pool=connection_pool),
+            connection_pool=connection_pool,
+            sender=sender,
+        )
+
+
+async def test_health_returns_200(application: Application) -> None:
+    response = await application.client.get('/health')
+
+    assert response.status_code == 200
+
+
+async def test_a_claim_signed_with_the_wrong_key_is_rejected_with_401(
+    application: Application,
+) -> None:
+    response = await application.post_claim(
+        expense_claim_delivery(unique_claim_id()), key=b'another-key'
+    )
+
+    assert response.status_code == 401
+
+
+async def test_a_claim_signed_more_than_the_tolerance_ago_is_rejected_with_401(
+    application: Application,
+) -> None:
+    response = await application.post_claim(
+        expense_claim_delivery(unique_claim_id()), signed_at=int(time.time()) - 301
+    )
+
+    assert response.status_code == 401
+
+
+async def test_a_signed_claim_with_a_receipt_under_the_threshold_ends_complete_with_one_erp_event(
+    application: Application,
+) -> None:
+    response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    assert response.status_code == 202
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    assert await application.status_of(submission_id) == 'complete'
+    events = await application.recorded_events(submission_id)
+    assert [(event['idempotency_key'], event['outcome']) for event in events] == [
+        (submission_id, 'approved')
+    ]
+
+
+async def test_a_claim_missing_a_required_receipt_waits_for_review_and_sends_no_event(
+    application: Application,
+) -> None:
+    response = await application.post_claim(
+        expense_claim_delivery(unique_claim_id(), amount='30.00', receipt_text=None)
+    )
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    assert await application.status_of(submission_id) == 'pending_review'
+    assert await application.recorded_events(submission_id) == []
+
+
+async def test_an_identical_retry_returns_202_with_the_same_id_and_enqueues_nothing_more(
+    application: Application,
+) -> None:
+    delivery = expense_claim_delivery(unique_claim_id())
+    first = await application.post_claim(delivery)
+
+    retry = await application.post_claim(delivery)
+
+    assert retry.status_code == 202
+    assert retry.json()['submission_id'] == first.json()['submission_id']
+    assert [message.type for message in application.queue.receive()] == ['start']
+
+
+async def test_the_same_claim_id_with_a_changed_body_returns_409(
+    application: Application,
+) -> None:
+    claim_id = unique_claim_id()
+    await application.post_claim(expense_claim_delivery(claim_id, amount='14.50'))
+
+    changed = await application.post_claim(expense_claim_delivery(claim_id, amount='41.50'))
+
+    assert changed.status_code == 409
+
+
+async def test_a_duplicate_start_message_is_a_no_op(application: Application) -> None:
+    response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    [start] = application.queue.receive()
+    await process_message(start, application.worker)
+
+    await process_message(start, application.worker)
+
+    assert [event.submission_id for event in application.sender.sent] == [
+        response.json()['submission_id']
+    ]
+
+
+async def test_the_mock_erp_stores_a_repeated_event_once(application: Application) -> None:
+    submission_id = str(uuid.uuid4())
+    event = DecisionEvent(
+        idempotency_key=submission_id,
+        submission_id=submission_id,
+        outcome='rejected',
+        decided_by='EMP-001',
+        reason='Not a business expense',
+    )
+
+    await application.sender.inner.send(event)
+    await application.sender.inner.send(event)
+
+    assert await application.recorded_events(submission_id) == [event.model_dump(mode='json')]
+
+
+async def test_the_mock_erp_rejects_an_event_signed_with_the_webhook_key(
+    application: Application,
+) -> None:
+    submission_id = str(uuid.uuid4())
+    raw_body = (
+        DecisionEvent(
+            idempotency_key=submission_id,
+            submission_id=submission_id,
+            outcome='approved',
+            decided_by=None,
+            reason=None,
+        )
+        .model_dump_json()
+        .encode()
+    )
+
+    response = await application.client.post(
+        '/mock-erp/decision-events',
+        content=raw_body,
+        headers=signed_headers(WEBHOOK_KEY, raw_body),
+    )
+
+    assert response.status_code == 401
+    assert await application.recorded_events(submission_id) == []
+
+
+@pytest.mark.parametrize(
+    ('method', 'path'),
+    [
+        ('POST', '/webhooks/supplier-invoices'),
+        ('GET', '/submissions?status=pending_review'),
+        ('GET', '/submissions/00000000-0000-0000-0000-000000000001'),
+        ('POST', '/submissions/00000000-0000-0000-0000-000000000001/decision'),
+    ],
+)
+async def test_every_endpoint_not_built_yet_returns_501(
+    application: Application, method: str, path: str
+) -> None:
+    response = await application.client.request(method, path)
+
+    assert response.status_code == 501

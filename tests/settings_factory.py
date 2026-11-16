@@ -26,6 +26,7 @@ def make_test_settings(**overrides: Any) -> Settings:
         'primary_model_key': 'fake_primary',
         'drafting_model_keys': ('fake_primary',),
         'embedding_model': ModelSettings(provider='fake', model_id='fake-embedder'),
+        'model_prices': {},
         'google_api_key': None,
         'langfuse_public_key': None,
         'langfuse_secret_key': None,
