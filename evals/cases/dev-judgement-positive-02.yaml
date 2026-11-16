@@ -1,0 +1,35 @@
+id: dev-judgement-positive-02
+split: dev
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - PURPOSE_UNCLEAR
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-001
+  spent_on: '2026-08-24'
+  category: subsistence
+  quantity: 2
+  merchant: The Riverside Bistro
+  amount: '120.00'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Attended client site meetings with external partners.
+  receipt_text: "The Riverside Bistro\n24/08/2026\nMeal A \u2013 Chicken Caesar Salad\
+    \ 55.00\nMeal B \u2013 Grilled Salmon 55.00\nService charge 10.00\nTOTAL 120.00"
+expected_findings:
+- id: PURPOSE_UNCLEAR
+  code: PURPOSE_UNCLEAR
+  gold_clauses:
+  - "\xA72.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

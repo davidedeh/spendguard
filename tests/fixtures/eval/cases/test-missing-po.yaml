@@ -1,23 +1,30 @@
 id: test-missing-po
 split: test
 slice: rule_coverage
+intent:
+  rule_codes: [MISSING_PO]
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
 submission:
   type: supplier_invoice
   supplier: SUP-001
   supplier_invoice_number: A-91
   purchase_order: null
-  cost_centre: CC-200
+  cost_centre: CC-300
   issued_on: 2026-10-09
   amount: 780.00
   currency: GBP
-  claimed_gbp_per_unit: null
+  claimed_exchange_rate: null
   description: Replacement office chairs, 6 units.
 expected_findings:
   - id: po
     code: MISSING_PO
     gold_clauses: ['§3.2']
 expected_route: human_review
-expected_recommendation: reject
+expected_recommendation: none
+expected_clearance: null
 drafted_by:
   provider: fake
   model_id: fake-drafter-c

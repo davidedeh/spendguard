@@ -1,0 +1,8 @@
+- reference: CLM-0001
+  claimant: EMP-003
+  spent_on: 2026-10-14
+  category: subsistence
+  quantity: 1
+  merchant: Harbour Kitchen
+  amount: 22.50
+  currency: GBP

@@ -1,14 +1,18 @@
 from collections.abc import Callable, Sequence
+from operator import itemgetter
 from typing import Any
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
 from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.output_parsers import JsonOutputParser, PydanticOutputParser
 from langchain_core.outputs import ChatGeneration, ChatResult
-from langchain_core.runnables import Runnable
+from langchain_core.runnables import Runnable, RunnableMap, RunnablePassthrough
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel, Field
+
+from spendguard.settings import StructuredOutputMethod
 
 
 class FakeResponsesExhaustedError(Exception):
@@ -19,6 +23,7 @@ class FakeChatModel(BaseChatModel):
     model_id: str
     responses: list[AIMessage] = Field(default_factory=list)
     received: list[list[BaseMessage]] = Field(default_factory=list)
+    structured_output_calls: list[tuple[StructuredOutputMethod, Any]] = Field(default_factory=list)
 
     @property
     def _llm_type(self) -> str:
@@ -38,6 +43,32 @@ class FakeChatModel(BaseChatModel):
             )
         response = self.responses[len(self.received) - 1]
         return ChatResult(generations=[ChatGeneration(message=response)])
+
+    def with_structured_output(
+        self,
+        schema: dict[str, Any] | type,
+        *,
+        include_raw: bool = False,
+        method: StructuredOutputMethod = 'function_calling',
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, dict[str, Any] | BaseModel]:
+        self.structured_output_calls.append((method, schema))
+        if method == 'function_calling':
+            return super().with_structured_output(schema, include_raw=include_raw, **kwargs)
+        output_parser: JsonOutputParser | PydanticOutputParser[BaseModel] = (
+            PydanticOutputParser(pydantic_object=schema)
+            if isinstance(schema, type) and issubclass(schema, BaseModel)
+            else JsonOutputParser()
+        )
+        if not include_raw:
+            return self | output_parser
+        parse = RunnablePassthrough.assign(
+            parsed=itemgetter('raw') | output_parser, parsing_error=lambda _: None
+        )
+        leave_unparsed = RunnablePassthrough.assign(parsed=lambda _: None)
+        return RunnableMap(raw=self) | parse.with_fallbacks(
+            [leave_unparsed], exception_key='parsing_error'
+        )
 
     def bind_tools(
         self,

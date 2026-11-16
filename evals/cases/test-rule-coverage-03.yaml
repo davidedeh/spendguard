@@ -1,0 +1,33 @@
+id: test-rule-coverage-03
+split: test
+slice: rule_coverage
+intent:
+  rule_codes:
+  - DUPLICATE_SUBMISSION
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  supplier: SUP-003
+  supplier_invoice_number: INV/2026/0712
+  purchase_order: PO-0003
+  cost_centre: null
+  issued_on: '2026-09-21'
+  amount: '6300.0'
+  currency: GBP
+  type: supplier_invoice
+  claimed_exchange_rate: null
+  description: Stage payment 1 of 2 for CRM data migration consultancy under PO-0003.
+expected_findings:
+- id: rule-duplicate-submission
+  code: DUPLICATE_SUBMISSION
+  gold_clauses:
+  - "\xA73.3"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

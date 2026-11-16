@@ -1,0 +1,36 @@
+id: test-judgement-positive-04
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - WEEKEND_SPEND_UNJUSTIFIED
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-006
+  spent_on: '2026-05-31'
+  category: public_transport
+  quantity: 1
+  merchant: Capital Bus Lines
+  amount: '30.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Bus travel between Northgate Logistics' Croydon and Wimbledon
+    depots on a Sunday to finish my stock-check notes.
+  receipt_text: "Capital Bus Lines\n31/05/2026\nSingle bus ticket 2.50\nTravel card\
+    \ top\u2011up 27.50\nTOTAL 30.00\nPayment slip: 4532198745"
+expected_findings:
+- id: WEEKEND_SPEND_UNJUSTIFIED
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  gold_clauses:
+  - "\xA72.4"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

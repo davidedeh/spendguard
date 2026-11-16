@@ -117,6 +117,13 @@ def test_the_policy_carries_its_grades_currencies_approval_limits_and_budget_yea
     assert policy.budget_year_start.latest_on_or_before(datetime.date(2026, 4, 1)) == (
         datetime.date(2026, 4, 1)
     )
+    assert (
+        policy.receipt_threshold,
+        policy.purchase_order_threshold,
+        policy.currency_deviation_percent,
+        policy.split_purchase_window_days,
+        policy.auto_approve_threshold,
+    ) == (Decimal('25'), Decimal('500'), Decimal('3'), 21, Decimal('250'))
 
 
 @pytest.mark.parametrize(

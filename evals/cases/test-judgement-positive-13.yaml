@@ -1,0 +1,55 @@
+id: test-judgement-positive-13
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - ALCOHOL_NOT_PERMITTED
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-005
+  spent_on: '2026-05-08'
+  category: subsistence
+  quantity: 1
+  merchant: The Anchor Kitchen
+  amount: '44.5'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Lunch away from the office during a site visit to the supplier
+    Corvel Components in Birmingham on 8 May 2026.
+  receipt_text: 'The Anchor Kitchen
+
+    2026-05-08
+
+    Chicken and mushroom pie -  13.50
+
+    Steamed seasonal vegetables -  4.50
+
+    Pint of bitter -  5.80
+
+    Sparkling water -  3.20
+
+    Carrot cake -  6.50
+
+    Filter coffee -  3.00
+
+    Service charge 10% -  3.65
+
+    VAT 20% -  4.35
+
+    TOTAL 44.50'
+expected_findings:
+- id: F-001
+  code: ALCOHOL_NOT_PERMITTED
+  gold_clauses:
+  - "\xA75.3"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

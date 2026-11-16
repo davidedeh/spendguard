@@ -1,0 +1,28 @@
+id: dev-clean-01
+split: dev
+slice: clean
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  supplier: SUP-008
+  supplier_invoice_number: INV-2026-0842
+  purchase_order: null
+  cost_centre: CC-300
+  issued_on: '2026-09-18'
+  amount: '620.0'
+  currency: GBP
+  type: supplier_invoice
+  claimed_exchange_rate: null
+  description: Quarterly cleaning of the CC-300 office, September 2026.
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

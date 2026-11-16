@@ -1,0 +1,33 @@
+id: test-rule-coverage-05
+split: test
+slice: rule_coverage
+intent:
+  rule_codes:
+  - NON_APPROVED_SUPPLIER
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  supplier: SUP-009
+  supplier_invoice_number: INV-2026-0630-001
+  purchase_order: null
+  cost_centre: CC-100
+  issued_on: '2026-06-30'
+  amount: '950.0'
+  currency: GBP
+  type: supplier_invoice
+  claimed_exchange_rate: null
+  description: Software licence renewal for the CC-100 team's analytics platform.
+expected_findings:
+- id: rule-non-approved-supplier
+  code: NON_APPROVED_SUPPLIER
+  gold_clauses:
+  - "\xA79.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

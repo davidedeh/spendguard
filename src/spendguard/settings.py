@@ -1,13 +1,14 @@
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, SecretStr, model_validator
+from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from spendguard.branch_names import current_branch_name
 
 Provider = Literal['bedrock', 'google_genai', 'fake']
 AppEnvironment = Literal['local', 'test', 'deployed']
+StructuredOutputMethod = Literal['function_calling', 'json_schema']
 
 
 class ModelSettings(BaseModel):
@@ -15,6 +16,10 @@ class ModelSettings(BaseModel):
 
     provider: Provider
     model_id: str
+
+
+class ChatModelSettings(ModelSettings):
+    structured_output_method: StructuredOutputMethod
 
 
 class Settings(BaseSettings):
@@ -36,7 +41,7 @@ class Settings(BaseSettings):
     ssm_parameter_prefix: str | None
 
     allowed_providers: tuple[Provider, ...]
-    chat_models: dict[str, ModelSettings]
+    chat_models: dict[str, ChatModelSettings]
     primary_model_key: str
     drafting_model_keys: tuple[str, ...]
     embedding_model: ModelSettings
@@ -105,9 +110,19 @@ class _EnvironmentSettings(Settings):
         return (init_settings, env_settings, dotenv_settings)
 
 
+class MissingEnvFileError(RuntimeError):
+    def __init__(self, env_file: Path) -> None:
+        super().__init__(f'{env_file} does not exist: copy .env.example to it and fill it in')
+
+
 def load_settings(env_file: Path | None = Path('.env')) -> Settings:
-    environment_settings = _EnvironmentSettings(  # type: ignore[call-arg]
-        _env_file=env_file,
-        branch_name=current_branch_name(),
-    )
+    try:
+        environment_settings = _EnvironmentSettings(  # type: ignore[call-arg]
+            _env_file=env_file,
+            branch_name=current_branch_name(),
+        )
+    except ValidationError as error:
+        if env_file is not None and not env_file.exists():
+            raise MissingEnvFileError(env_file) from error
+        raise
     return Settings.model_validate(environment_settings.model_dump())

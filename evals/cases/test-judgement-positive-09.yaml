@@ -1,0 +1,36 @@
+id: test-judgement-positive-09
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - RECEIPT_MISMATCH
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: receipt_mismatch
+submission:
+  claimant: EMP-012
+  spent_on: '2026-04-21'
+  category: client_entertainment
+  quantity: 4
+  merchant: The Gourmet Bistro
+  amount: '200'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Client entertainment dinner with three guests from Acme Corp and
+    1 Halden attendee, to discuss a potential partnership.
+  receipt_text: "The Gourmet Bistro\n2026-04-21\n\nSteak and ale pie\t\t\t20\nSalad\t\
+    \t\t\t10\nGinger beer\t\t\t6\nSparkling water\t\t\t4\n\nTOTAL\t\t\t\t40"
+expected_findings:
+- id: RECEIPT_MISMATCH
+  code: RECEIPT_MISMATCH
+  gold_clauses:
+  - "\xA73.2"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

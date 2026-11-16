@@ -1,0 +1,31 @@
+id: test-hard-negative-01
+split: test
+slice: hard_negative
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: WEEKEND_SPEND_UNJUSTIFIED
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-011
+  spent_on: '2026-06-27'
+  category: subsistence
+  quantity: 1
+  merchant: "The Crown Caf\xE9"
+  amount: '27.0'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Meals on approved business trip TA-2026-041 (approved by EMP-005)
+    to Berlin for the distribution review with Kessler Handel GmbH, 25 to 29 June.
+  receipt_text: "The Crown Caf\xE9\nDate: 2026-06-27\nSteak sandwich 14.00\nSide salad\
+    \ 4.00\nSparkling water 2.00\nCoffee 2.00\nDessert 5.00\nTOTAL 27.00"
+expected_findings: []
+expected_route: auto_approve
+expected_recommendation: approve
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

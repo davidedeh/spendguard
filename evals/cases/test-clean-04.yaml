@@ -1,0 +1,28 @@
+id: test-clean-04
+split: test
+slice: clean
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  supplier: SUP-007
+  supplier_invoice_number: INV-001
+  purchase_order: PO-0008
+  cost_centre: null
+  issued_on: '2026-07-29'
+  amount: '18500.0'
+  currency: GBP
+  type: supplier_invoice
+  claimed_exchange_rate: null
+  description: Delivery of office supplies for the CC-200 team's offices under PO-0008.
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

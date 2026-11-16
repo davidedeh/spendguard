@@ -1,0 +1,36 @@
+id: dev-rule-coverage-01
+split: dev
+slice: rule_coverage
+intent:
+  rule_codes:
+  - OVER_CATEGORY_LIMIT
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-007
+  spent_on: '2026-09-10'
+  category: public_transport
+  quantity: 1
+  merchant: Trans-Nord Rail
+  amount: '112.6'
+  currency: EUR
+  type: expense_claim
+  claimed_exchange_rate: '0.8579'
+  business_purpose: Train from Paris Gare du Nord to Lille-Flandres to visit the Halden
+    Group Lille warehouse with the CC-300 operations team and review its processes.
+  receipt_text: "Trans-Nord Rail\n2026-09-10\nParis Nord \u2192 Lille-Flandres 2nd\
+    \ class x1  112.60\nTOTAL  112.60"
+expected_findings:
+- id: rule-over-category-limit
+  code: OVER_CATEGORY_LIMIT
+  gold_clauses:
+  - "\xA74.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

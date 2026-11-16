@@ -1,0 +1,52 @@
+id: test-hard-negative-07
+split: test
+slice: hard_negative
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: RECEIPT_MISMATCH
+  injection: null
+  receipt_total_differs_because: room_extras_removed
+submission:
+  claimant: EMP-002
+  spent_on: '2026-06-12'
+  category: accommodation
+  quantity: 3
+  merchant: Kingsmere Hotel Northampton
+  amount: '450.00'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Three nights for the on-site system installation at Westbrook
+    Foods' Northampton plant, 12 to 15 June, on approved business trip TA-2026-037
+    (approved by EMP-001).
+  receipt_text: '
+
+    Kingsmere Hotel Northampton
+
+    Date: 2026-06-12
+
+    Room night 1               150.00
+
+    Room night 2               150.00
+
+    Room night 3               150.00
+
+    Minibar                     30.00
+
+    Laundry                     20.00
+
+    TOTAL                      500.00
+
+
+    Payment slip: Card ****1234
+
+    '
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

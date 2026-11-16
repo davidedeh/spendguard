@@ -12,6 +12,8 @@ parameters:
   meal_limit: 40
   purchase_order_threshold: 500
   currency_deviation_percent: 3
+  split_purchase_window_days: 21
+  auto_approve_threshold: 250
   category_limits:
     subsistence:
       label: Meals

@@ -1,0 +1,44 @@
+id: test-judgement-positive-05
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - PURPOSE_UNCLEAR
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-003
+  spent_on: '2026-04-01'
+  category: client_entertainment
+  quantity: 2
+  merchant: The Juniper Brasserie
+  amount: '138'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Lunch with client contacts.
+  receipt_text: "The Juniper Brasserie\n2026-04-01\nSea bass fillet  32.00\nRibeye\
+    \ steak  38.00\nSparkling water  6.00\nSparkling water  6.00\nTiramisu  14.00\n\
+    Cr\xE8me br\xFBl\xE9e  13.00\nService charge  12.00\nVAT  17.00\nTOTAL  138.00"
+expected_findings:
+- id: F1
+  code: PURPOSE_UNCLEAR
+  gold_clauses:
+  - "\xA72.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review:
+  approver: EMP-001
+  dispositions:
+  - code: PURPOSE_UNCLEAR
+    disposition: dismissed
+    reason: EMP-003's role as cost-centre manager for CC-300 regularly involves hosting
+      client contacts at working lunches; brief purpose statements of this kind are
+      consistent with that standing pattern and are accepted for this and future submissions
+      from EMP-003 of the same character.
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

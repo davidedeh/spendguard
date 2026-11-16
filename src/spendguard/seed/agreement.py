@@ -8,6 +8,20 @@ from spendguard.seed.integrity import check_seed_integrity
 from spendguard.seed.schema import SeedData
 
 CLIENT_ENTERTAINMENT = 'client_entertainment'
+CLIENT_ENTERTAINMENT_MINIMUM_QUANTITY = 2
+
+
+def minimum_quantity(category: str) -> int:
+    return CLIENT_ENTERTAINMENT_MINIMUM_QUANTITY if category == CLIENT_ENTERTAINMENT else 1
+
+
+def quantity_problem(category: str, quantity: int) -> str | None:
+    if quantity >= minimum_quantity(category):
+        return None
+    return (
+        'a client entertainment quantity counts the claimant and every guest, so it is at least'
+        f' {CLIENT_ENTERTAINMENT_MINIMUM_QUANTITY}, not {quantity}'
+    )
 
 
 def _grade_problems(seed_data: SeedData, policy: Policy) -> Iterator[str]:
@@ -161,11 +175,8 @@ def _claim_problems(seed_data: SeedData, policy: Policy) -> Iterator[str]:
                 f'historical claim {claim.reference}: category {claim.category!r}'
                 ' is not a policy category'
             )
-        elif claim.category == CLIENT_ENTERTAINMENT and claim.quantity < 2:
-            yield (
-                f'historical claim {claim.reference}: a client entertainment quantity of'
-                f' {claim.quantity} leaves no guest besides the claimant'
-            )
+        elif problem := quantity_problem(claim.category, claim.quantity):
+            yield f'historical claim {claim.reference}: {problem}'
 
 
 def check_policy_agreement(seed_data: SeedData, policy: Policy) -> list[str]:

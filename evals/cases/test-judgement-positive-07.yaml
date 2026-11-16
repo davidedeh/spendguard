@@ -1,0 +1,50 @@
+id: test-judgement-positive-07
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - PURPOSE_UNCLEAR
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-008
+  spent_on: '2026-04-13'
+  category: subsistence
+  quantity: 2
+  merchant: The Crown & Anchor
+  amount: '68.4'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Lunch for two on Monday.
+  receipt_text: 'The Crown & Anchor
+
+    2026-04-13
+
+    Chicken Caesar salad          14.50
+
+    Beef burger and fries         15.90
+
+    Grilled salmon                18.20
+
+    Courgette fritters            13.80
+
+    Sparkling water                3.00
+
+    Sparkling water                3.00
+
+    TOTAL                         68.40'
+expected_findings:
+- id: F-001
+  code: PURPOSE_UNCLEAR
+  gold_clauses:
+  - "\xA72.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

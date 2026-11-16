@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from settings_factory import make_test_settings
 from spendguard.models.factory import build_chat_model, build_embedder
 from spendguard.models.fake import FakeChatModel
-from spendguard.settings import ModelSettings
+from spendguard.settings import ChatModelSettings, ModelSettings
 
 
 @pytest.fixture(autouse=True)
@@ -21,8 +21,14 @@ def _aws_credentials_are_dummies(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_a_fake_model_key_builds_the_fake_chat_model_with_its_configured_id() -> None:
     settings = make_test_settings(
         chat_models={
-            'fake_primary': ModelSettings(provider='fake', model_id='fake-chat'),
-            'fake_drafter': ModelSettings(provider='fake', model_id='fake-drafter-2'),
+            'fake_primary': ChatModelSettings(
+                provider='fake', model_id='fake-chat', structured_output_method='function_calling'
+            ),
+            'fake_drafter': ChatModelSettings(
+                provider='fake',
+                model_id='fake-drafter-2',
+                structured_output_method='function_calling',
+            ),
         },
     )
 
@@ -32,13 +38,19 @@ def test_a_fake_model_key_builds_the_fake_chat_model_with_its_configured_id() ->
     assert model.model_id == 'fake-drafter-2'
 
 
-def test_a_bedrock_model_key_builds_a_converse_model_with_its_configured_id_and_region() -> None:
+def test_a_bedrock_model_key_builds_a_converse_model_with_its_id_region_and_read_timeout() -> None:
     settings = make_test_settings(
         aws_region='eu-central-1',
         allowed_providers=('fake', 'bedrock'),
         chat_models={
-            'fake_primary': ModelSettings(provider='fake', model_id='fake-chat'),
-            'gpt_oss': ModelSettings(provider='bedrock', model_id='openai.a-gpt-oss-id'),
+            'fake_primary': ChatModelSettings(
+                provider='fake', model_id='fake-chat', structured_output_method='function_calling'
+            ),
+            'gpt_oss': ChatModelSettings(
+                provider='bedrock',
+                model_id='openai.a-gpt-oss-id',
+                structured_output_method='function_calling',
+            ),
         },
     )
 
@@ -47,14 +59,21 @@ def test_a_bedrock_model_key_builds_a_converse_model_with_its_configured_id_and_
     assert isinstance(model, ChatBedrockConverse)
     assert model.model_id == 'openai.a-gpt-oss-id'
     assert model.region_name == 'eu-central-1'
+    assert model.config.read_timeout == 120
 
 
 def test_a_google_genai_model_key_builds_gemini_with_its_configured_id_and_api_key() -> None:
     settings = make_test_settings(
         allowed_providers=('fake', 'google_genai'),
         chat_models={
-            'fake_primary': ModelSettings(provider='fake', model_id='fake-chat'),
-            'gemini_pro': ModelSettings(provider='google_genai', model_id='a-gemini-id'),
+            'fake_primary': ChatModelSettings(
+                provider='fake', model_id='fake-chat', structured_output_method='function_calling'
+            ),
+            'gemini_pro': ChatModelSettings(
+                provider='google_genai',
+                model_id='a-gemini-id',
+                structured_output_method='function_calling',
+            ),
         },
         google_api_key='test-google-api-key',
     )
@@ -100,9 +119,21 @@ def test_a_chat_model_whose_provider_is_not_allowed_fails_settings_validation() 
         make_test_settings(
             allowed_providers=('fake', 'bedrock'),
             chat_models={
-                'fake_primary': ModelSettings(provider='fake', model_id='fake-chat'),
-                'claude_haiku': ModelSettings(provider='bedrock', model_id='a-claude-id'),
-                'gemini_pro': ModelSettings(provider='google_genai', model_id='a-gemini-id'),
+                'fake_primary': ChatModelSettings(
+                    provider='fake',
+                    model_id='fake-chat',
+                    structured_output_method='function_calling',
+                ),
+                'claude_haiku': ChatModelSettings(
+                    provider='bedrock',
+                    model_id='a-claude-id',
+                    structured_output_method='function_calling',
+                ),
+                'gemini_pro': ChatModelSettings(
+                    provider='google_genai',
+                    model_id='a-gemini-id',
+                    structured_output_method='function_calling',
+                ),
             },
         )
 
@@ -115,7 +146,9 @@ def test_an_embedding_model_whose_provider_is_not_allowed_fails_settings_validat
 
 
 def test_the_deployed_environment_refuses_any_allowed_provider_other_than_bedrock() -> None:
-    bedrock_model = ModelSettings(provider='bedrock', model_id='a-claude-id')
+    bedrock_model = ChatModelSettings(
+        provider='bedrock', model_id='a-claude-id', structured_output_method='function_calling'
+    )
 
     with pytest.raises(ValidationError, match='deployed environment allows bedrock only'):
         make_test_settings(

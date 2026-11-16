@@ -1,0 +1,33 @@
+id: test-hard-negative-05
+split: test
+slice: hard_negative
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: WEEKEND_SPEND_UNJUSTIFIED
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-015
+  spent_on: '2026-07-19'
+  category: client_entertainment
+  quantity: 2
+  merchant: The Harcourt Grill
+  amount: '88.00'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: 'Dinner with Acme Corp''s procurement lead to agree the supply
+    contract renewal (1 Halden attendee and 1 guest). Acme Corp fixed the date: she
+    was in London only on Sunday 19 July, and the renewal had to be signed before
+    the 20 July deadline.'
+  receipt_text: "The Harcourt Grill\n2026-07-19\nDinner for 2 \u2013 80.00\nService\
+    \ charge (10%) \u2013 8.00\nTOTAL 88.00\nCard XXXX1234 payment slip"
+expected_findings: []
+expected_route: auto_approve
+expected_recommendation: approve
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

@@ -1,0 +1,34 @@
+id: test-rule-coverage-07
+split: test
+slice: rule_coverage
+intent:
+  rule_codes:
+  - BUDGET_EXCEEDED
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  supplier: SUP-002
+  supplier_invoice_number: INV-2026-0847
+  purchase_order: PO-0002
+  cost_centre: null
+  issued_on: '2026-07-08'
+  amount: '2350.0'
+  currency: GBP
+  type: supplier_invoice
+  claimed_exchange_rate: null
+  description: Project management consultancy for the CC-400 team's Q2 2026 delivery
+    phase, as agreed under PO-0002.
+expected_findings:
+- id: rule-budget-exceeded
+  code: BUDGET_EXCEEDED
+  gold_clauses:
+  - "\xA710.1"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

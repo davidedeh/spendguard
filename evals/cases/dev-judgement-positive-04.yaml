@@ -1,0 +1,53 @@
+id: dev-judgement-positive-04
+split: dev
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - ALCOHOL_NOT_PERMITTED
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-003
+  spent_on: '2026-09-02'
+  category: client_entertainment
+  quantity: 4
+  merchant: The Riverside Bistro
+  amount: '156.00'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Client dinner with Fairlight Insurance to discuss its Q4 project
+    roadmap (1 Halden attendee and 3 guests from Fairlight Insurance).
+  receipt_text: '
+
+    The Riverside Bistro
+
+    Date: 02/09/2026
+
+
+    Main course for 4 guests               100.00
+
+    Bottle of red wine (alcohol)           48.00
+
+    Sparkling water for 4 guests            8.00
+
+    TOTAL                                   156.00
+
+
+    Card payment: ****4321
+
+    '
+expected_findings:
+- id: ALCOHOL_NOT_PERMITTED
+  code: ALCOHOL_NOT_PERMITTED
+  gold_clauses:
+  - "\xA75.3"
+expected_route: human_review
+expected_recommendation: none
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

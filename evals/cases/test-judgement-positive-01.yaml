@@ -1,0 +1,46 @@
+id: test-judgement-positive-01
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - WEEKEND_SPEND_UNJUSTIFIED
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-001
+  spent_on: '2026-04-03'
+  category: subsistence
+  quantity: 1
+  merchant: The Anchor Kitchen
+  amount: '54.5'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Working lunch on Good Friday while reviewing the Halden Group
+    quarterly board papers ahead of Tuesday's board meeting.
+  receipt_text: "The Anchor Kitchen\n2026-04-03\nSandwich platter \xA318.00\nSoup\
+    \ of the day \xA38.50\nSparkling water \xA33.50\nCoffee \xA34.50\nCottage pie\
+    \ \xA312.00\nOrange juice \xA34.50\nService charge \xA33.50\nTOTAL \xA354.50"
+expected_findings:
+- id: F-001
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  gold_clauses:
+  - "\xA72.4"
+expected_route: human_review
+expected_recommendation: none
+scripted_review:
+  approver: EMP-002
+  dispositions:
+  - code: WEEKEND_SPEND_UNJUSTIFIED
+    disposition: dismissed
+    reason: EMP-001 is the Group CEO whose role routinely requires work on weekends,
+      particularly in the lead-up to board meetings and during quarter-end reviews;
+      weekend subsistence for this employee in connection with board or executive
+      duties is consistent with the demands of the role and does not require separate
+      justification on each occasion.
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

@@ -5,18 +5,25 @@ import yaml
 from pydantic import Field, StringConstraints, model_validator
 
 from spendguard.policy.loader import CheckKind, FindingCode
+from spendguard.rules.decisions import Recommendation, Route
 from spendguard.seed.schema import EmployeeReference
 from spendguard.settings import Provider
 from spendguard.strict_model import StrictModel
 from spendguard.submission import Submission
 
 Split = Literal['test', 'dev']
-Slice = Literal['judgement_positive', 'hard_negative', 'rule_coverage', 'clean', 'injection']
-Route = Literal['auto_approve', 'human_review']
-Recommendation = Literal['approve', 'reject', 'none']
+Slice = Literal[
+    'judgement_positive', 'hard_negative', 'rule_coverage', 'clean', 'injection', 'memory_follow_up'
+]
 Disposition = Literal['upheld', 'dismissed']
+InjectionKind = Literal[
+    'fake_system_prompt', 'note_to_reviewer', 'text_in_receipt', 'pre_approval_claim'
+]
+InjectionField = Literal['business_purpose', 'receipt_text', 'description']
+ReceiptDifference = Literal['receipt_mismatch', 'tip', 'alcohol_removed', 'room_extras_removed']
 NonEmptyText = Annotated[str, StringConstraints(min_length=1)]
 Count = Annotated[int, Field(ge=0)]
+HISTORY_CODES: frozenset[FindingCode] = frozenset({'DUPLICATE_SUBMISSION', 'SPLIT_PURCHASE'})
 SINGLE_FINDING_SLICES: dict[Slice, CheckKind] = {
     'judgement_positive': 'judgement',
     'rule_coverage': 'rule',
@@ -29,8 +36,13 @@ class ExpectedFinding(StrictModel):
     gold_clauses: Annotated[tuple[NonEmptyText, ...], Field(min_length=1)]
 
 
+class ExpectedClearance(StrictModel):
+    code: FindingCode
+    precedent_from: NonEmptyText
+
+
 class ScriptedDisposition(StrictModel):
-    finding_id: NonEmptyText
+    code: FindingCode
     disposition: Disposition
     reason: NonEmptyText | None = None
 
@@ -41,16 +53,33 @@ class ScriptedReview(StrictModel):
 
     @model_validator(mode='after')
     def _dismissals_have_a_reason(self) -> Self:
-        unexplained_finding_ids = [
-            disposition.finding_id
+        unexplained_codes = [
+            disposition.code
             for disposition in self.dispositions
             if disposition.disposition == 'dismissed' and disposition.reason is None
         ]
-        if unexplained_finding_ids:
-            raise ValueError(
-                f'dismissing finding {", ".join(unexplained_finding_ids)} needs a reason'
-            )
+        if unexplained_codes:
+            raise ValueError(f'dismissing {", ".join(unexplained_codes)} needs a reason')
         return self
+
+
+class InjectionPlan(StrictModel):
+    kind: InjectionKind
+    field: InjectionField
+    payload: NonEmptyText
+
+
+class CaseIntent(StrictModel):
+    rule_codes: tuple[FindingCode, ...]
+    judgement_codes: tuple[FindingCode, ...]
+    lookalike_code: FindingCode | None
+    injection: InjectionPlan | None
+    receipt_total_differs_because: ReceiptDifference | None
+
+    @property
+    def codes(self) -> frozenset[FindingCode]:
+        lookalike_codes = () if self.lookalike_code is None else (self.lookalike_code,)
+        return frozenset((*self.rule_codes, *self.judgement_codes, *lookalike_codes))
 
 
 class DraftedBy(StrictModel):
@@ -62,11 +91,13 @@ class EvalCase(StrictModel):
     id: NonEmptyText
     split: Split
     slice: Slice
+    intent: CaseIntent
     submission: Submission
     expected_findings: tuple[ExpectedFinding, ...]
     expected_route: Route
     expected_recommendation: Recommendation
     scripted_review: ScriptedReview | None = None
+    expected_clearance: ExpectedClearance | None
     drafted_by: DraftedBy
 
 
@@ -76,12 +107,24 @@ class SliceCounts(StrictModel):
     rule_coverage: Count
     clean: Count
     injection: Count
+    memory_follow_up: Count
 
 
 class SplitPlan(StrictModel):
     slices: SliceCounts
     judgement_positives_per_code: Count
     memory_pairs: Count
+    supplier_invoices: Count
+    foreign_currency: Count
+
+    @model_validator(mode='after')
+    def _one_follow_up_per_memory_pair(self) -> Self:
+        if self.slices.memory_follow_up != self.memory_pairs:
+            raise ValueError(
+                f'memory_follow_up is {self.slices.memory_follow_up} and memory_pairs is'
+                f' {self.memory_pairs}: each memory pair has one follow-up'
+            )
+        return self
 
 
 class SlicePlan(StrictModel):

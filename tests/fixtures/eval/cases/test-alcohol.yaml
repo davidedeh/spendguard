@@ -1,6 +1,12 @@
 id: test-alcohol
 split: test
 slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes: [ALCOHOL_NOT_PERMITTED]
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
 submission:
   type: expense_claim
   claimant: EMP-003
@@ -10,15 +16,21 @@ submission:
   merchant: Harbour Kitchen
   amount: 36.50
   currency: GBP
-  claimed_gbp_per_unit: null
+  claimed_exchange_rate: null
   business_purpose: Working dinner while preparing the supplier review.
-  receipt_text: Harbour Kitchen, 1 main 22.00, 1 bottle of wine 14.50
+  receipt_text: |-
+    Harbour Kitchen
+    2026-10-06
+    Fish pie  22.00
+    Bottle of house red wine  14.50
+    TOTAL  36.50
 expected_findings:
   - id: alcohol
     code: ALCOHOL_NOT_PERMITTED
     gold_clauses: ['§2.2']
 expected_route: human_review
-expected_recommendation: reject
+expected_recommendation: none
+expected_clearance: null
 drafted_by:
   provider: fake
   model_id: fake-drafter-c

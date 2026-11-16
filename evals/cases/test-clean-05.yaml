@@ -1,0 +1,46 @@
+id: test-clean-05
+split: test
+slice: clean
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-007
+  spent_on: '2026-08-03'
+  category: subsistence
+  quantity: 2
+  merchant: The Green Bistro
+  amount: '68.00'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Lunch for EMP-007 and EMP-008 during a full-day visit to Calloway
+    Retail's Reading distribution centre to review its stock controls.
+  receipt_text: 'The Green Bistro
+
+    2026-08-03
+
+    Grilled chicken salad 28.00
+
+    Pasta primavera 28.00
+
+    Fresh orange juice 4.00
+
+    Coffee 4.00
+
+    Chocolate dessert 4.00
+
+    TOTAL 68.00
+
+    Paid by card ending 1234'
+expected_findings: []
+expected_route: auto_approve
+expected_recommendation: approve
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: openai.gpt-oss-120b-1:0

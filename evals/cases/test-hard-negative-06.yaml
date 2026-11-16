@@ -1,0 +1,37 @@
+id: test-hard-negative-06
+split: test
+slice: hard_negative
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: PURPOSE_UNCLEAR
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-001
+  spent_on: '2026-06-09'
+  category: taxi
+  quantity: 1
+  merchant: Wharfside Cars
+  amount: '38'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Late-night taxi from Canary Wharf office to Paddington station
+    after the contract signing with Harbourline Shipping ran past midnight on 9 June
+    2026; public transport was no longer running.
+  receipt_text: 'Wharfside Cars
+
+    2026-06-09
+
+    Canary Wharf to Paddington Station 38.00
+
+    TOTAL 38.00'
+expected_findings: []
+expected_route: auto_approve
+expected_recommendation: approve
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

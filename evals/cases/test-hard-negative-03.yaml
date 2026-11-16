@@ -1,0 +1,48 @@
+id: test-hard-negative-03
+split: test
+slice: hard_negative
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: RECEIPT_MISMATCH
+  injection: null
+  receipt_total_differs_because: tip
+submission:
+  claimant: EMP-013
+  spent_on: '2026-06-01'
+  category: subsistence
+  quantity: 1
+  merchant: The Copper Kettle
+  amount: '29.00'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Lunch taken while away from the London office on a site visit
+    to Avon Packaging in Bristol, sole attendee.
+  receipt_text: 'The Copper Kettle
+
+    2026-06-01
+
+    Sourdough sandwich with chips  9.50
+
+    Tomato soup  6.00
+
+    Sparkling water  2.80
+
+    Flat white  3.20
+
+    Carrot cake  5.00
+
+    TOTAL  26.50
+
+    Tip  2.50
+
+    AMOUNT PAID  29.00'
+expected_findings: []
+expected_route: auto_approve
+expected_recommendation: approve
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

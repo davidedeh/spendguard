@@ -1,0 +1,31 @@
+id: dev-hard-negative-02
+split: dev
+slice: hard_negative
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: PURPOSE_UNCLEAR
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-006
+  spent_on: '2026-09-07'
+  category: taxi
+  quantity: 1
+  merchant: Aire Valley Cabs
+  amount: '35'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Taxi from Leeds station to Northgate Logistics' Stourton depot
+    for the quarterly contract review meeting. No bus or train serves the depot.
+  receipt_text: "Aire Valley Cabs\n2026-09-07\n\nTaxi Ride\t35.00\n\nTOTAL\t35.00\n\
+    \nPayment Slip"
+expected_findings: []
+expected_route: auto_approve
+expected_recommendation: approve
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

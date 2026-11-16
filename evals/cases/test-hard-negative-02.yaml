@@ -1,0 +1,41 @@
+id: test-hard-negative-02
+split: test
+slice: hard_negative
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: PURPOSE_UNCLEAR
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-012
+  spent_on: '2026-05-27'
+  category: accommodation
+  quantity: 3
+  merchant: Hotel Europa
+  amount: '489.91'
+  currency: EUR
+  type: expense_claim
+  claimed_exchange_rate: '0.8573'
+  business_purpose: Three nights at Hotel Europa, Hamburg, for the on-site warehouse
+    process review with Brenner Logistik GmbH from 27 to 29 May. The review closed
+    on Friday evening, so I flew home on Saturday morning.
+  receipt_text: 'Hotel Europa
+
+    2026-05-27
+
+    Room 101, night of 27 May: 163.30
+
+    Room 101, night of 28 May: 163.30
+
+    Room 101, night of 29 May: 163.31
+
+    TOTAL: 489.91'
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0

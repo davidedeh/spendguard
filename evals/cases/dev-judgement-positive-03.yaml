@@ -1,0 +1,36 @@
+id: dev-judgement-positive-03
+split: dev
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - RECEIPT_MISMATCH
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: receipt_mismatch
+submission:
+  claimant: EMP-002
+  spent_on: '2026-08-27'
+  category: accommodation
+  quantity: 1
+  merchant: Irwell House Hotel
+  amount: '190'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Overnight stay in Manchester for a business meeting with Marlow
+    Freight.
+  receipt_text: "Irwell House Hotel\n2026-08-27\nRoom 101\t180\nBreakfast\t20\nTOTAL\t\
+    200"
+expected_findings:
+- id: RECEIPT_MISMATCH
+  code: RECEIPT_MISMATCH
+  gold_clauses:
+  - "\xA73.2"
+expected_route: human_review
+expected_recommendation: reject
+scripted_review: null
+expected_clearance: null
+drafted_by:
+  provider: bedrock
+  model_id: us.amazon.nova-pro-v1:0
