@@ -2,11 +2,11 @@ from typing import assert_never
 
 from botocore.config import Config
 from langchain_aws import BedrockEmbeddings, ChatBedrockConverse
-from langchain_core.embeddings import DeterministicFakeEmbedding, Embeddings
+from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseChatModel
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from spendguard.models.fake import FakeChatModel
+from spendguard.models.fake import FakeChatModel, KeywordFakeEmbedder
 from spendguard.settings import Settings
 
 EMBEDDING_DIMENSIONS = 1024
@@ -45,6 +45,6 @@ def build_embedder(settings: Settings) -> Embeddings:
         case 'google_genai':
             raise ValueError('Embeddings are served by bedrock, or fake in tests, not google_genai')
         case 'fake':
-            return DeterministicFakeEmbedding(size=EMBEDDING_DIMENSIONS)
+            return KeywordFakeEmbedder(size=EMBEDDING_DIMENSIONS)
         case _:
             assert_never(model.provider)
