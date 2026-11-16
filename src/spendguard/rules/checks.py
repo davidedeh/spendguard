@@ -207,6 +207,7 @@ EXPENSE_CLAIM_CHECKS: Mapping[FindingCode, ClaimCheck] = {
 EXPENSE_CLAIM_JUDGEMENT_GATES: Mapping[FindingCode, ClaimCheck] = {
     WEEKEND_CODE: _weekend_gate,
 }
+SUPPLIER_INVOICE_JUDGEMENT_CHECKS: tuple[FindingCode, ...] = ('PURPOSE_UNCLEAR',)
 SUPPLIER_INVOICE_CHECKS: Mapping[FindingCode, InvoiceCheck] = {
     'DUPLICATE_SUBMISSION': _duplicate_invoice,
     'SPLIT_PURCHASE': _split_purchase,
@@ -236,6 +237,24 @@ def rule_findings(
             and SUPPLIER_INVOICE_CHECKS[code](invoice, seed_data, policy)
         ]
     return tuple(finding_for(code, policy) for code in raised)
+
+
+def judgement_checks(
+    submission: Submission, seed_data: SeedData, policy: Policy
+) -> list[FindingCode]:
+    if isinstance(submission, ExpenseClaim):
+        claim = submission
+        return [
+            code
+            for code in policy.codes_with_check('judgement')
+            if code not in EXPENSE_CLAIM_JUDGEMENT_GATES
+            or EXPENSE_CLAIM_JUDGEMENT_GATES[code](claim, seed_data, policy)
+        ]
+    return [
+        code
+        for code in policy.codes_with_check('judgement')
+        if code in SUPPLIER_INVOICE_JUDGEMENT_CHECKS
+    ]
 
 
 def raised_rule_codes(

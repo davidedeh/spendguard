@@ -1,21 +1,10 @@
 import io
 import json
 import logging
-from collections.abc import Iterator
 
 import pytest
 
-from spendguard.structured_logging import configure_logging, log_event
-
-
-@pytest.fixture
-def log_stream() -> Iterator[io.StringIO]:
-    root = logging.getLogger()
-    original_handlers, original_level = root.handlers[:], root.level
-    stream = io.StringIO()
-    configure_logging('INFO', stream)
-    yield stream
-    root.handlers, root.level = original_handlers, original_level
+from spendguard.structured_logging import log_event
 
 
 def test_an_event_is_one_json_line_carrying_its_identifiers(log_stream: io.StringIO) -> None:

@@ -18,6 +18,12 @@ from spendguard.graph.config import GraphConfig
 from spendguard.graph.nodes.execute import SignedDecisionEventSender
 from spendguard.graph.state import ReviewState
 from spendguard.models.factory import build_chat_model, build_embedder
+from spendguard.observability.tracing import (
+    Tracing,
+    create_tracing,
+    flush_traces_before_return,
+    traced_advance,
+)
 from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.queue.messages import MessageType, QueueMessage
 from spendguard.seed.loader import SEED_DIRECTORY, read_seed_directory
@@ -36,6 +42,7 @@ STATUS_EXPECTED_BY: dict[MessageType, SubmissionStatus] = {
 class WorkerRuntime:
     graph: ReviewGraph
     connection_pool: ConnectionPool
+    tracing: Tracing | None
 
 
 async def process_message(message: QueueMessage, runtime: WorkerRuntime) -> None:
@@ -50,10 +57,16 @@ async def process_message(message: QueueMessage, runtime: WorkerRuntime) -> None
     thread: RunnableConfig = {'configurable': {'thread_id': submission.idempotency_key}}
     snapshot = await runtime.graph.aget_state(thread)
     if snapshot.interrupts:
-        await runtime.graph.ainvoke(Command(resume=submission.decision), thread)
+        await traced_advance(
+            runtime.tracing,
+            runtime.graph,
+            Command(resume=submission.decision),
+            thread,
+            str(submission.id),
+        )
         return
     if snapshot.next:
-        await runtime.graph.ainvoke(None, thread)
+        await traced_advance(runtime.tracing, runtime.graph, None, thread, str(submission.id))
         return
     initial_state: ReviewState = {
         'submission_id': str(submission.id),
@@ -61,7 +74,7 @@ async def process_message(message: QueueMessage, runtime: WorkerRuntime) -> None
         'submission_type': submission.submission_type,
         'submission': submission.payload,
     }
-    await runtime.graph.ainvoke(initial_state, thread)
+    await traced_advance(runtime.tracing, runtime.graph, initial_state, thread, str(submission.id))
 
 
 class SqsRecord(BaseModel):
@@ -125,13 +138,16 @@ def build_worker_runtime(loaded_settings: Settings) -> WorkerRuntime:
             ),
         )
     )
-    return WorkerRuntime(graph=graph, connection_pool=connection_pool)
+    return WorkerRuntime(
+        graph=graph, connection_pool=connection_pool, tracing=create_tracing(loaded_settings)
+    )
 
 
 def create_worker_app(runtime: WorkerRuntime, lifespan: Lifespan | None = None) -> FastAPI:
     app = FastAPI(title='SpendGuard worker', lifespan=lifespan)
 
     @app.post('/events')
+    @flush_traces_before_return
     async def events(event: dict[str, object]) -> BatchResponse:
         return await handle_sqs_event(event, runtime)
 
