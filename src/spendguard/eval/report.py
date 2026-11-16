@@ -2,6 +2,7 @@ import datetime
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from typing import assert_never
 
 from spendguard.eval.metrics import Proportion, RowMetrics, RuleMetrics
 from spendguard.settings import ChatModelSettings, EvalRow, ModelPrice
@@ -53,6 +54,16 @@ def _cost(cost: Decimal | None) -> str:
     return 'not priced' if cost is None else f'${cost:.4f}'
 
 
+def _retrieval_recall(result: RowResult) -> str:
+    match result.row.policy_context:
+        case 'retrieved_clauses':
+            return _rate(result.metrics.retrieval_recall)
+        case 'whole_policy':
+            return 'not applicable'
+        case _:
+            assert_never(result.row.policy_context)
+
+
 def _table_row(result: RowResult) -> str:
     metrics = result.metrics
     cells = (
@@ -64,7 +75,7 @@ def _table_row(result: RowResult) -> str:
         _rate(metrics.recommendation_accuracy),
         _rate(metrics.verify_drop_rate),
         _rate(metrics.injection_survival),
-        _rate(metrics.retrieval_recall),
+        _retrieval_recall(result),
         f'{metrics.p50_latency_seconds:.1f} s',
         _cost(metrics.cost_per_submission_usd),
     )

@@ -1,7 +1,7 @@
 import asyncio
 import json
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, assert_never
 
 from langchain_core.messages import (
     AIMessage,
@@ -76,7 +76,7 @@ def judgement_instructions(
     policy: Policy,
     checks: Sequence[FindingCode],
     guidance: Sequence[CheckGuidance],
-    retrieved_clauses: Sequence[RetrievedClause],
+    policy_text: str,
 ) -> str:
     look_for = {item['code']: item['look_for'] for item in guidance}
     check_lines = '\n'.join(
@@ -84,9 +84,6 @@ def judgement_instructions(
         f' {" > ".join(policy.finding_codes[code].clause.heading_path)})'
         + (f': look for {look_for[code]}' if look_for.get(code) else '')
         for code in checks
-    )
-    clause_blocks = '\n\n'.join(
-        f'**{clause["clause_reference"]}** {clause["text"]}' for clause in retrieved_clauses
     )
     return (
         f'You review one submission against the {policy.title}. Run each of these judgement'
@@ -99,9 +96,25 @@ def judgement_instructions(
         ' from the clauses below, and quote the evidence: each quote names the submission'
         ' field and copies text from that field exactly, character for character. Cite by'
         ' precedent_id any precedent you rely on.\n\n'
-        f'Policy clauses:\n\n{clause_blocks}\n\n'
+        f'Policy clauses:\n\n{policy_text}\n\n'
         f'{DATA_TAG_INSTRUCTION}'
     )
+
+
+def _clause_blocks(retrieved_clauses: Sequence[RetrievedClause]) -> str:
+    return '\n\n'.join(
+        f'**{clause["clause_reference"]}** {clause["text"]}' for clause in retrieved_clauses
+    )
+
+
+def _policy_text(state: ReviewState, graph_config: GraphConfig) -> str:
+    match graph_config.policy_context:
+        case 'retrieved_clauses':
+            return _clause_blocks(state['retrieved_clauses'])
+        case 'whole_policy':
+            return graph_config.policy.rendered_text
+        case _:
+            assert_never(graph_config.policy_context)
 
 
 async def run_judgement_checks(state: ReviewState, graph_config: GraphConfig) -> ReviewState:
@@ -131,7 +144,7 @@ def _judged(
                 graph_config.policy,
                 checks,
                 state['check_guidance'],
-                state['retrieved_clauses'],
+                _policy_text(state, graph_config),
             )
         ),
         HumanMessage(content=untrusted_data(prompt_fields(state['redacted_submission']))),

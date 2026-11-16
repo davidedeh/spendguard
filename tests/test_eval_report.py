@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -53,7 +54,11 @@ RESULTS = EvalResults(
     judgement_max_tool_calls=6,
     rows=(
         RowResult(
-            row=EvalRow(model_key='claude_haiku', label='Claude Haiku (primary)'),
+            row=EvalRow(
+                model_key='claude_haiku',
+                label='Claude Haiku (primary)',
+                policy_context='retrieved_clauses',
+            ),
             model=ChatModelSettings(
                 provider='bedrock',
                 model_id='us.anthropic.claude-haiku-4-5-20251001-v1:0',
@@ -68,7 +73,9 @@ RESULTS = EvalResults(
             metrics=metrics(Proportion(1, 4), Decimal('0.0016')),
         ),
         RowResult(
-            row=EvalRow(model_key='gemini_pro', label='Gemini Pro'),
+            row=EvalRow(
+                model_key='gemini_pro', label='Gemini Pro', policy_context='retrieved_clauses'
+            ),
             model=ChatModelSettings(
                 provider='google_genai',
                 model_id='gemini-3.1-pro-preview',
@@ -161,3 +168,29 @@ def test_the_project_readme_states_the_fixed_wording_around_the_results_table() 
     assert "GPT OSS 120B is OpenAI's open-weight model, not frontier GPT." in readme
     assert readme.count(RESULTS_START_MARKER) == 1
     assert readme.count(RESULTS_END_MARKER) == 1
+
+
+def test_the_whole_policy_row_shows_retrieval_recall_as_not_applicable(tmp_path: Path) -> None:
+    haiku = RESULTS.rows[0]
+    whole_policy = RowResult(
+        row=EvalRow(
+            model_key='claude_haiku',
+            label='Claude Haiku (whole policy)',
+            policy_context='whole_policy',
+        ),
+        model=haiku.model,
+        price=haiku.price,
+        metrics=haiku.metrics,
+    )
+    results = dataclasses.replace(RESULTS, rows=(haiku, whole_policy))
+    readme_path = tmp_path / 'README.md'
+    readme_path.write_text(README_BEFORE)
+
+    write_results(results, tmp_path / 'results', readme_path)
+
+    readme = readme_path.read_text()
+    whole_policy_cells = table_row(readme, 'Claude Haiku (whole policy)').split(' | ')
+    haiku_cells = table_row(readme, 'Claude Haiku (primary)').split(' | ')
+    assert haiku_cells[8] == '2/3 = 0.67'
+    assert whole_policy_cells[8] == 'not applicable'
+    assert whole_policy_cells[:8] == ['| Claude Haiku (whole policy)', *haiku_cells[1:8]]

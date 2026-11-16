@@ -72,6 +72,7 @@ def graph_config(
         checkpointer=InMemorySaver(),
         decision_event_sender=UnusedSender(),
         precedent_memory=True,
+        policy_context='retrieved_clauses',
     )
 
 

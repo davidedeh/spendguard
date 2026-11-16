@@ -56,7 +56,15 @@ def test_a_visibility_timeout_of_exactly_six_worker_timeouts_is_accepted() -> No
 
 def test_an_eval_row_naming_an_unconfigured_chat_model_is_rejected() -> None:
     with pytest.raises(ValueError, match="Eval row 'Claude Opus' uses chat model 'claude_opus'"):
-        make_test_settings(eval_rows=[{'model_key': 'claude_opus', 'label': 'Claude Opus'}])
+        make_test_settings(
+            eval_rows=[
+                {
+                    'model_key': 'claude_opus',
+                    'label': 'Claude Opus',
+                    'policy_context': 'retrieved_clauses',
+                }
+            ]
+        )
 
 
 def test_a_sweeper_threshold_equal_to_the_visibility_timeout_is_rejected() -> None:
