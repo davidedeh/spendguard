@@ -5,6 +5,7 @@ from langchain_core.runnables import RunnableConfig
 from spendguard.db.database import ConnectionPool
 from spendguard.graph.build import ReviewGraph
 from spendguard.graph.state import ReviewState
+from spendguard.observability.tracing import Tracing, flush_traces_before_return, traced_advance
 from spendguard.queue.messages import MessageType, QueueMessage
 from spendguard.store import submissions
 from spendguard.store.submissions import SubmissionStatus
@@ -20,6 +21,7 @@ STATUS_EXPECTED_BY: dict[MessageType, SubmissionStatus] = {
 class WorkerRuntime:
     graph: ReviewGraph
     connection_pool: ConnectionPool
+    tracing: Tracing | None
 
 
 async def process_message(message: QueueMessage, runtime: WorkerRuntime) -> None:
@@ -36,7 +38,7 @@ async def process_message(message: QueueMessage, runtime: WorkerRuntime) -> None
     thread: RunnableConfig = {'configurable': {'thread_id': submission.idempotency_key}}
     snapshot = await runtime.graph.aget_state(thread)
     if snapshot.next:
-        await runtime.graph.ainvoke(None, thread)
+        await traced_advance(runtime.tracing, runtime.graph, None, thread, str(submission.id))
         return
     initial_state: ReviewState = {
         'submission_id': str(submission.id),
@@ -44,8 +46,9 @@ async def process_message(message: QueueMessage, runtime: WorkerRuntime) -> None
         'submission_type': submission.submission_type,
         'submission': submission.payload,
     }
-    await runtime.graph.ainvoke(initial_state, thread)
+    await traced_advance(runtime.tracing, runtime.graph, initial_state, thread, str(submission.id))
 
 
+@flush_traces_before_return
 def handler(event: dict[str, object], context: object) -> dict[str, object]:
     raise NotImplementedError

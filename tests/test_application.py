@@ -140,7 +140,7 @@ async def application(connection_pool: ConnectionPool) -> AsyncIterator[Applicat
         yield Application(
             client=client,
             queue=queue,
-            worker=WorkerRuntime(graph=graph, connection_pool=connection_pool),
+            worker=WorkerRuntime(graph=graph, connection_pool=connection_pool, tracing=None),
             connection_pool=connection_pool,
             sender=sender,
         )
