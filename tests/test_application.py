@@ -111,7 +111,9 @@ class Application:
 async def application(connection_pool: ConnectionPool) -> AsyncIterator[Application]:
     queue = InMemoryQueue()
     app = create_app(
-        ApiDependencies(settings=SETTINGS, connection_pool=connection_pool, queue=queue)
+        ApiDependencies(
+            settings=SETTINGS, policy=POLICY, connection_pool=connection_pool, queue=queue
+        )
     )
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url='http://testserver'
@@ -198,6 +200,38 @@ async def test_a_claim_missing_a_required_receipt_waits_for_review_and_sends_no_
 
     assert await application.status_of(submission_id) == 'pending_review'
     assert await application.recorded_events(submission_id) == []
+
+
+async def test_a_receipted_claim_repeating_an_earlier_claim_waits_for_review_and_sends_no_event(
+    application: Application,
+) -> None:
+    response = await application.post_claim(
+        expense_claim_delivery(
+            unique_claim_id(),
+            spent_on='2026-09-14',
+            amount='42.50',
+            receipt_text='Harbour Kitchen\n1 x Set menu 42.50\nTOTAL 42.50',
+        )
+    )
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    assert await application.status_of(submission_id) == 'pending_review'
+    assert await application.recorded_events(submission_id) == []
+
+
+async def test_a_claim_whose_category_is_not_a_policy_category_is_rejected_with_422(
+    application: Application,
+) -> None:
+    response = await application.post_claim(
+        expense_claim_delivery(unique_claim_id(), category='spa_treatments')
+    )
+
+    assert response.status_code == 422
+    [error] = response.json()['detail']
+    assert (error['loc'], error['input']) == (['claim', 'category'], 'spa_treatments')
+    assert application.queue.receive() == []
 
 
 async def test_an_identical_retry_returns_202_with_the_same_id_and_enqueues_nothing_more(

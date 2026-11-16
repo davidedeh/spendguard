@@ -6,6 +6,7 @@ from fastapi import HTTPException, Request, status
 from pydantic import SecretStr
 
 from spendguard.db.database import ConnectionPool
+from spendguard.policy.loader import Policy
 from spendguard.queue.messages import MessageQueue
 from spendguard.security.signatures import SIGNATURE_HEADER, verify_signature
 from spendguard.settings import Settings
@@ -14,6 +15,7 @@ from spendguard.settings import Settings
 @dataclass(frozen=True)
 class ApiDependencies:
     settings: Settings
+    policy: Policy
     connection_pool: ConnectionPool
     queue: MessageQueue
 
