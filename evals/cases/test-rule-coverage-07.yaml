@@ -7,9 +7,10 @@ intent:
   judgement_codes: []
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
   supplier: SUP-002
-  supplier_invoice_number: INV-2026-0441
+  supplier_invoice_number: INV-2026-0847
   purchase_order: PO-0002
   cost_centre: null
   issued_on: '2026-07-08'
@@ -17,8 +18,8 @@ submission:
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: Provision of professional data analysis services for Q2 reporting cycle
-    as agreed under contract ref DA-2026-02
+  description: Provision of project management consultancy services for Q2 2026 delivery
+    phase as agreed under PO-0002
 expected_findings:
 - id: rule-budget-exceeded
   code: BUDGET_EXCEEDED
@@ -27,6 +28,7 @@ expected_findings:
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: us.anthropic.claude-sonnet-4-6

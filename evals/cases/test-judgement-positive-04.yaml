@@ -7,28 +7,30 @@ intent:
   - WEEKEND_SPEND_UNJUSTIFIED
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-005
+  claimant: EMP-006
   spent_on: '2026-05-31'
-  category: taxi
+  category: public_transport
   quantity: 1
-  merchant: City Cabs Manchester
-  amount: '32.5'
+  merchant: London Buses Ltd
+  amount: '30.0'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Taxi from Manchester Piccadilly station to the office to collect
-    project documentation needed for Monday morning client presentation.
-  receipt_text: "City Cabs Manchester\n2026-05-31\nFare: Manchester Piccadilly to\
-    \ Halden House \xA332.50\nTOTAL \xA332.50"
+  business_purpose: "Travel between client sites required on a Saturday, no alternative\
+    \ public\u2011transport options were available."
+  receipt_text: "London Buses Ltd\n31/05/2026\nSingle bus ticket 2.50\nTravel card\
+    \ top\u2011up 27.50\nTOTAL 30.00\nPayment slip: 4532198745"
 expected_findings:
-- id: F-001
+- id: WEEKEND_SPEND_UNJUSTIFIED
   code: WEEKEND_SPEND_UNJUSTIFIED
   gold_clauses:
   - "\xA72.4"
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
-  model_id: us.anthropic.claude-sonnet-4-6
+  model_id: openai.gpt-oss-120b-1:0

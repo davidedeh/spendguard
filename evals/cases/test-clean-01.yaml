@@ -6,21 +6,24 @@ intent:
   judgement_codes: []
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
   supplier: SUP-004
-  supplier_invoice_number: INV-2026-07-001
+  supplier_invoice_number: INV-2026-0892
   purchase_order: null
   cost_centre: CC-500
   issued_on: '2026-07-16'
-  amount: '950.00'
+  amount: '840'
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: Software consulting services rendered for July 2026
+  description: Printed marketing brochures and folded leaflets for the Q3 product
+    launch campaign
 expected_findings: []
 expected_route: human_review
 expected_recommendation: approve
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
-  model_id: openai.gpt-oss-120b-1:0
+  model_id: us.anthropic.claude-sonnet-4-6

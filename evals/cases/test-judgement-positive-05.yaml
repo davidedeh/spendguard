@@ -7,36 +7,38 @@ intent:
   - PURPOSE_UNCLEAR
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-006
+  claimant: EMP-003
   spent_on: '2026-04-01'
-  category: public_transport
-  quantity: 1
-  merchant: National Rail
-  amount: '70.00'
+  category: client_entertainment
+  quantity: 2
+  merchant: The Ivy Brasserie
+  amount: '138'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: "Travel to mandatory client site visit \u2013 Project\u202FAlpha\
-    \ \u2013 required to attend on\u2011site meeting with client representatives."
-  receipt_text: "National Rail\n01\u201104\u20112026\nTrain ticket \u2013 London to\
-    \ Manchester\t\xA370.00\nTOTAL\t\xA370.00"
+  business_purpose: Lunch with client contacts.
+  receipt_text: "The Ivy Brasserie\n2026-04-01\nSea bass fillet  32.00\nRibeye steak\
+    \  38.00\nSparkling water  6.00\nSparkling water  6.00\nTiramisu  14.00\nCr\xE8\
+    me br\xFBl\xE9e  13.00\nService charge  12.00\nVAT  17.00\nTOTAL  138.00"
 expected_findings:
-- id: PURPOSE_UNCLEAR
+- id: F1
   code: PURPOSE_UNCLEAR
   gold_clauses:
   - "\xA72.1"
 expected_route: human_review
 expected_recommendation: none
 scripted_review:
-  approver: EMP-003
+  approver: EMP-001
   dispositions:
-  - finding_id: PURPOSE_UNCLEAR
+  - code: PURPOSE_UNCLEAR
     disposition: dismissed
-    reason: "Standing reason \u2013 the travel is part of a pre\u2011approved on\u2011\
-      site client visit (Project\u202FAlpha) that required use of public transport\
-      \ on the scheduled date. The purpose is fully documented in the project plan,\
-      \ satisfying \xA72.1."
+    reason: EMP-003's role as cost-centre manager for CC-300 regularly involves hosting
+      client contacts at working lunches; brief purpose statements of this kind are
+      consistent with that standing pattern and are accepted for this and future submissions
+      from EMP-003 of the same character.
+expected_clearance: null
 drafted_by:
   provider: bedrock
-  model_id: openai.gpt-oss-120b-1:0
+  model_id: us.anthropic.claude-sonnet-4-6

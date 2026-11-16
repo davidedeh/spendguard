@@ -7,19 +7,21 @@ intent:
   - ALCOHOL_NOT_PERMITTED
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-003
+  claimant: EMP-007
   spent_on: '2026-05-18'
   category: subsistence
   quantity: 1
-  merchant: Local Pub
-  amount: '45'
+  merchant: "The Green Caf\xE9"
+  amount: '17.00'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Meeting with client
-  receipt_text: "Local Pub\n2026-05-18\nMeal\t\xA330\nDrinks\t\xA315\nTOTAL\t\xA3\
-    45"
+  business_purpose: Meeting with Acme Ltd to review Q3 project status and deliverables
+  receipt_text: "The Green Caf\xE9\n18/05/2026\nChicken sandwich      10.00\nPint\
+    \ of lager          5.00\nBottled water          2.00\nTOTAL                 \
+    \ 17.00\nCard payment ****1234"
 expected_findings:
 - id: ALCOHOL_NOT_PERMITTED
   code: ALCOHOL_NOT_PERMITTED
@@ -28,6 +30,7 @@ expected_findings:
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
-  model_id: us.amazon.nova-pro-v1:0
+  model_id: openai.gpt-oss-120b-1:0

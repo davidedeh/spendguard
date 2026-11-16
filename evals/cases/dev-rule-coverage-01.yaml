@@ -7,20 +7,21 @@ intent:
   judgement_codes: []
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-003
+  claimant: EMP-007
   spent_on: '2026-09-10'
   category: public_transport
   quantity: 1
-  merchant: MetroTransit Ltd
-  amount: '120.00'
+  merchant: SNCF
+  amount: '112.6'
   currency: EUR
   type: expense_claim
-  claimed_exchange_rate: null
-  business_purpose: "Travel between client sites on 10\u202FSep\u202F2026; required\
-    \ because no public rail service operated on that date."
-  receipt_text: "MetroTransit Ltd\n2026\u201109\u201110\nTicket \u2013 Business day\
-    \ travel    120.00\nTOTAL 120.00"
+  claimed_exchange_rate: '0.8579'
+  business_purpose: Train from Paris Gare du Nord to Lille-Flandres for a site visit
+    with the CC-300 operations team to review warehouse processes.
+  receipt_text: "SNCF\n2026-09-10\nParis Nord \u2192 Lille-Flandres 2nd class x1 \
+    \ 112.60\nTOTAL  112.60"
 expected_findings:
 - id: rule-over-category-limit
   code: OVER_CATEGORY_LIMIT
@@ -29,6 +30,7 @@ expected_findings:
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
-  model_id: openai.gpt-oss-120b-1:0
+  model_id: us.anthropic.claude-sonnet-4-6

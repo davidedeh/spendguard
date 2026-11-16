@@ -6,24 +6,36 @@ intent:
   judgement_codes: []
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-005
+  claimant: EMP-008
   spent_on: '2026-08-06'
   category: accommodation
   quantity: 1
-  merchant: Hilton London
-  amount: '160.0'
+  merchant: Grand Oak Hotel
+  amount: '140.0'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Hotel stay for client site visit in London; overnight required
-    because the meeting ran past normal working hours.
-  receipt_text: "Hilton London\n2026-08-06\nRoom \u2013 1 night 150.00\nBreakfast\
-    \ 10.00\nTOTAL 160.00"
+  business_purpose: overnight stay for client site visit
+  receipt_text: 'Grand Oak Hotel
+
+    Date: 2026-08-06
+
+    Room charge 120.00
+
+    Breakfast 15.00
+
+    Service charge 5.00
+
+    TOTAL 140.00
+
+    Paid by card ending 1234'
 expected_findings: []
 expected_route: human_review
 expected_recommendation: approve
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: openai.gpt-oss-120b-1:0

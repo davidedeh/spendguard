@@ -7,25 +7,21 @@ intent:
   - WEEKEND_SPEND_UNJUSTIFIED
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
   claimant: EMP-002
   spent_on: '2026-04-19'
   category: accommodation
   quantity: 3
-  merchant: The Marlow Hotel
-  amount: '480'
+  merchant: Hilton London
+  amount: '180.0'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Three nights' accommodation in Edinburgh during a client site
-    engagement with Forthright Systems. The stay ran from Friday 17 April to Monday
-    20 April; the engagement schedule was set by the client and could not be moved
-    to weekday-only dates.
-  receipt_text: "The Marlow Hotel\n15 Charlotte Square\nEdinburgh EH2 4DR\n2026-04-17\
-    \ \u2013 2026-04-20\nRoom 214 \u2013 3 nights @ \xA3160.00: \xA3480.00\nTOTAL\
-    \ \xA3480.00"
+  business_purpose: Business travel requiring overnight stay on a weekend
+  receipt_text: "Hilton London\n2026-04-19\nRoom \u2013 3 nights   180.00\nTOTAL 180.00"
 expected_findings:
-- id: F-001
+- id: WEEKEND_SPEND_UNJUSTIFIED
   code: WEEKEND_SPEND_UNJUSTIFIED
   gold_clauses:
   - "\xA72.4"
@@ -34,13 +30,12 @@ expected_recommendation: none
 scripted_review:
   approver: EMP-001
   dispositions:
-  - finding_id: F-001
+  - code: WEEKEND_SPEND_UNJUSTIFIED
     disposition: dismissed
-    reason: EMP-002 regularly leads multi-day client engagements whose dates are fixed
-      by the client. The stay spanning a weekend is consistent with this role and
-      the engagement with Forthright Systems was confirmed as a client-scheduled event
-      that could not be restricted to weekdays. Dismissing as a standing fact about
-      this employee's responsibilities.
+    reason: "EMP-002 is on a standing weekend on\u2011call schedule, a fact that justifies\
+      \ weekend accommodation without an additional justification and also covers\
+      \ any later weekend accommodation claims."
+expected_clearance: null
 drafted_by:
   provider: bedrock
-  model_id: us.anthropic.claude-sonnet-4-6
+  model_id: openai.gpt-oss-120b-1:0

@@ -7,20 +7,22 @@ intent:
   - PURPOSE_UNCLEAR
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
   claimant: EMP-011
   spent_on: '2026-04-16'
   category: accommodation
   quantity: 1
-  merchant: Hilton London
-  amount: '130.00'
+  merchant: Grand Central Hotel
+  amount: '140.00'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: "Accommodation for overnight business trip to client site \u2013\
-    \ required because travel back the same day was impractical."
-  receipt_text: "Hilton London\nDate: 2026-04-16\nHotel room \u2013 1 night \u2013\
-    \ \xA3130.00\nTOTAL \xA3130.00"
+  business_purpose: "Travel required for client site visit; overnight stay needed\
+    \ to attend a daily on\u2011site workshop that could not be completed within normal\
+    \ working hours."
+  receipt_text: "\nGrand Central Hotel\nDate: 2026-04-16\nRoom - Standard\t140.00\n\
+    TOTAL 140.00\n\nPayment slip \u2013 Card ****1234\n"
 expected_findings:
 - id: PURPOSE_UNCLEAR
   code: PURPOSE_UNCLEAR
@@ -29,6 +31,7 @@ expected_findings:
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: openai.gpt-oss-120b-1:0

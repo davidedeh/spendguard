@@ -7,21 +7,32 @@ intent:
   - ALCOHOL_NOT_PERMITTED
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-002
+  claimant: EMP-006
   spent_on: '2026-05-13'
   category: client_entertainment
   quantity: 4
-  merchant: The Riverside Restaurant
-  amount: '360.0'
+  merchant: The Bistro
+  amount: '76.00'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Client entertainment dinner with representatives from Acme Corp
-    to discuss upcoming joint project.
-  receipt_text: "The Riverside Restaurant\nDate: 2026-05-13\nDinner for client meeting\
-    \ (food)    \xA3300.00\nWine (alcohol)                     \xA360.00\nTOTAL  \
-    \                             \xA3360.00\n    , "
+  business_purpose: Client dinner with representatives of Acme Corp to discuss project
+    progress.
+  receipt_text: 'The Bistro
+
+    13/05/2026
+
+    Chicken sandwich (x4) 48.00
+
+    Pint of lager (x4) 20.00
+
+    Coffee (x4) 8.00
+
+    TOTAL 76.00
+
+    Paid by: Corporate Card'
 expected_findings:
 - id: ALCOHOL_NOT_PERMITTED
   code: ALCOHOL_NOT_PERMITTED
@@ -30,6 +41,7 @@ expected_findings:
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: openai.gpt-oss-120b-1:0

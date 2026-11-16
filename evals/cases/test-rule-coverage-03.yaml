@@ -7,6 +7,7 @@ intent:
   judgement_codes: []
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
   supplier: SUP-003
   supplier_invoice_number: INV/2026/0712
@@ -17,8 +18,7 @@ submission:
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: "Software development services \u2014 sprint delivery phase 3, covering\
-    \ the period 1\u201319 September 2026"
+  description: Duplicate submission for the same purchase order and amount.
 expected_findings:
 - id: rule-duplicate-submission
   code: DUPLICATE_SUBMISSION
@@ -27,6 +27,7 @@ expected_findings:
 expected_route: human_review
 expected_recommendation: reject
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
-  model_id: us.anthropic.claude-sonnet-4-6
+  model_id: us.amazon.nova-pro-v1:0

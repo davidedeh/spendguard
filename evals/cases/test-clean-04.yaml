@@ -6,9 +6,10 @@ intent:
   judgement_codes: []
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
   supplier: SUP-007
-  supplier_invoice_number: INV-2026-0847
+  supplier_invoice_number: INV-001
   purchase_order: PO-0008
   cost_centre: null
   issued_on: '2026-07-29'
@@ -16,11 +17,12 @@ submission:
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: Managed IT infrastructure support services for CC-200, July 2026
+  description: Delivery of office supplies
 expected_findings: []
 expected_route: human_review
 expected_recommendation: approve
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
-  model_id: us.anthropic.claude-sonnet-4-6
+  model_id: us.amazon.nova-pro-v1:0

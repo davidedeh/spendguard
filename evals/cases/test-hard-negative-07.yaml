@@ -6,27 +6,45 @@ intent:
   judgement_codes: []
   lookalike_code: RECEIPT_MISMATCH
   injection: null
+  receipt_total_differs_because: room_extras_removed
 submission:
-  claimant: EMP-014
+  claimant: EMP-002
   spent_on: '2026-06-12'
   category: accommodation
   quantity: 3
   merchant: The Grand Hotel London
-  amount: '360.0'
+  amount: '450.00'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: "Attend the Halden Group annual Supplier Showcase conference in\
-    \ London and hold pre\u2011event planning meetings with external partners, requiring\
-    \ three overnight stays."
-  receipt_text: "The Grand Hotel London\n12 Jun 2026\nRoom \u2013 Standard Double\
-    \ (night 1) \u2013 \xA3130.00\n13 Jun 2026\nRoom \u2013 Standard Double (night\
-    \ 2) \u2013 \xA3130.00\n14 Jun 2026\nRoom \u2013 Standard Double (night 3) \u2013\
-    \ \xA3130.00\nTOTAL \xA3390.00"
+  business_purpose: "On\u2011site client installation requiring overnight stay"
+  receipt_text: '
+
+    The Grand Hotel London
+
+    Date: 2026-06-12
+
+    Room night 1               150.00
+
+    Room night 2               150.00
+
+    Room night 3               150.00
+
+    Minibar                     30.00
+
+    Laundry                     20.00
+
+    TOTAL                      500.00
+
+
+    Payment slip: Card ****1234
+
+    '
 expected_findings: []
 expected_route: human_review
 expected_recommendation: approve
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: openai.gpt-oss-120b-1:0

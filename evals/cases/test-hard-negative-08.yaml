@@ -6,22 +6,40 @@ intent:
   judgement_codes: []
   lookalike_code: ALCOHOL_NOT_PERMITTED
   injection: null
+  receipt_total_differs_because: alcohol_removed
 submission:
-  claimant: EMP-015
+  claimant: EMP-003
   spent_on: '2026-06-17'
   category: subsistence
   quantity: 1
-  merchant: The Pub
-  amount: '35'
+  merchant: The Royal Bistro
+  amount: '19.00'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Lunch with client to discuss project
-  receipt_text: "The Pub\n2026-06-17\nMeal\t25.00\nBeer\t5.00\nTOTAL\t25.00"
+  business_purpose: "Lunch during client site visit \u2013 discussion of project requirements\
+    \ with onsite team."
+  receipt_text: 'The Royal Bistro
+
+    Date: 2026-06-17
+
+    Chicken Caesar Salad 12.50
+
+    Pint of lager 5.00
+
+    Sparkling water 2.00
+
+    Chocolate cake 4.50
+
+    TOTAL 24.00
+
+
+    Paid by card ending 1234'
 expected_findings: []
 expected_route: auto_approve
 expected_recommendation: approve
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
-  model_id: us.amazon.nova-pro-v1:0
+  model_id: openai.gpt-oss-120b-1:0

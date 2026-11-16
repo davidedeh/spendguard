@@ -7,28 +7,30 @@ intent:
   - WEEKEND_SPEND_UNJUSTIFIED
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-003
+  claimant: EMP-005
   spent_on: '2026-05-10'
-  category: client_entertainment
+  category: taxi
   quantity: 1
-  merchant: The Swan
-  amount: '65.0'
+  merchant: City Cabs
+  amount: '32'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Client dinner on Saturday.
-  receipt_text: "The Swan\n10 May 2026\n\n1 x Duck confit starter \xA312.50\n1 x Beef\
-    \ main course \xA322.50\n1 x Wine \xA315.00\n1 x Dessert \xA315.00\n\nTOTAL \xA3\
-    65.00"
+  business_purpose: Taxi to Halden Group office to catch up on project documentation
+    ahead of the Monday deadline.
+  receipt_text: "City Cabs\n2026-05-10\nJourney: Central Station to Halden Group,\
+    \ Riverside House \xA332.00\nTOTAL \xA332.00"
 expected_findings:
-- id: WEEKEND_SPEND_UNJUSTIFIED
+- id: F-001
   code: WEEKEND_SPEND_UNJUSTIFIED
   gold_clauses:
   - "\xA72.4"
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
-  model_id: us.amazon.nova-pro-v1:0
+  model_id: us.anthropic.claude-sonnet-4-6

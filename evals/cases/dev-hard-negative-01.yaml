@@ -6,30 +6,35 @@ intent:
   judgement_codes: []
   lookalike_code: WEEKEND_SPEND_UNJUSTIFIED
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-001
+  claimant: EMP-005
   spent_on: '2026-09-27'
   category: client_entertainment
-  quantity: 1
-  merchant: The Riverside Restaurant
-  amount: '90.0'
+  quantity: 2
+  merchant: Brightside Conference Centre
+  amount: '120.0'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: "Client entertainment dinner with Acme Ltd to discuss the upcoming\
-    \ Project\u202FX contract. The client scheduled the dinner for 27\u202FSeptember\u202F\
-    2026 and no alternative date was available."
-  receipt_text: 'The Riverside Restaurant
+  business_purpose: "Client meeting with Acme Corp to discuss contract renewal \u2013\
+    \ catering provided for two attendees."
+  receipt_text: 'Brightside Conference Centre
 
     27/09/2026
 
-    Dinner (food only)          90.00
+    Lunch for client - catering 60.00
 
-    TOTAL                       90.00'
+    Dinner for client - catering 60.00
+
+    TOTAL 120.00
+
+    Payment slip: Card ****1234'
 expected_findings: []
-expected_route: auto_approve
+expected_route: human_review
 expected_recommendation: approve
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: openai.gpt-oss-120b-1:0

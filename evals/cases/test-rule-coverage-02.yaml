@@ -7,17 +7,18 @@ intent:
   judgement_codes: []
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-002
+  claimant: EMP-006
   spent_on: '2026-06-25'
   category: office_supplies
   quantity: 1
   merchant: ''
-  amount: '45.00'
+  amount: '45.0'
   currency: EUR
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Purchase of office stationery items required for project delivery.
+  business_purpose: ''
   receipt_text: null
 expected_findings:
 - id: rule-missing-receipt
@@ -27,6 +28,7 @@ expected_findings:
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: openai.gpt-oss-120b-1:0

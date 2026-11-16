@@ -7,32 +7,55 @@ intent:
   - ALCOHOL_NOT_PERMITTED
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-005
+  claimant: EMP-008
   spent_on: '2026-05-21'
   category: client_entertainment
   quantity: 4
-  merchant: The Ivy City Garden
-  amount: '272'
+  merchant: The Anchor House
+  amount: '196'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Lunch with three representatives from Meridian Logistics (account
-    managers Sarah Cole, James Farrow and Priya Nair) to discuss the renewal of their
-    distribution services contract and Q3 volume commitments. Attended by EMP-005
-    and three guests.
-  receipt_text: "The Ivy City Garden\n1 Trinity Square, London EC3N 4AJ\n2026-05-21\n\
-    \nSet lunch x4 @ \xA352.00     208.00\nMineral water x4 @ \xA34.00   16.00\nWine\
-    \ (2 bottles Chablis)   48.00\n\nTOTAL                     272.00"
+  business_purpose: Lunch with two representatives from Calloway Retail to discuss
+    the renewal of the Q3 logistics contract. Attended by EMP-008 and EMP-007 from
+    Halden Group and Sarah Okonkwo and James Patel from Calloway Retail (4 people
+    total).
+  receipt_text: 'The Anchor House
+
+    2026-05-21
+
+    Sea bass with new potatoes (x2) 38.00
+
+    Roast chicken breast (x2) 34.00
+
+    Side salad (x4) 20.00
+
+    Sparkling water (x4) 16.00
+
+    Pint of lager (x2) 14.00
+
+    Glass of Sauvignon Blanc (x2) 22.00
+
+    Coffee (x4) 20.00
+
+    Service charge 10% 16.40
+
+    VAT 20% 15.60
+
+    TOTAL 196.00
+
+    Visa **** 1842 196.00'
 expected_findings:
-- id: F-001
+- id: F1
   code: ALCOHOL_NOT_PERMITTED
   gold_clauses:
   - "\xA75.3"
-  - "\xA77.3"
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: us.anthropic.claude-sonnet-4-6

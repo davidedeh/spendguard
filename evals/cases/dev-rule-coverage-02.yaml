@@ -7,18 +7,18 @@ intent:
   judgement_codes: []
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-005
+  claimant: EMP-008
   spent_on: '2026-09-15'
   category: office_supplies
   quantity: 1
-  merchant: ''
-  amount: '30.00'
+  merchant: Stationery World
+  amount: '35.0'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: "Purchase of a printer cartridge required for department CC\u2011\
-    500 operations"
+  business_purpose: Purchase of printer paper for office use
   receipt_text: null
 expected_findings:
 - id: rule-missing-receipt
@@ -28,6 +28,7 @@ expected_findings:
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: openai.gpt-oss-120b-1:0

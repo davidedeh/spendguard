@@ -7,30 +7,35 @@ intent:
   - PURPOSE_UNCLEAR
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
   claimant: EMP-008
   spent_on: '2026-04-13'
   category: subsistence
   quantity: 2
-  merchant: The Copper Kettle
-  amount: '68.0'
+  merchant: The Crown & Anchor
+  amount: '68.4'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Lunch for two colleagues during a meeting.
-  receipt_text: 'The Copper Kettle
+  business_purpose: Lunch for two on Monday.
+  receipt_text: 'The Crown & Anchor
 
     2026-04-13
 
-    Sandwich x2 24.00
+    Chicken Caesar salad          14.50
 
-    Soup x2 18.00
+    Beef burger and fries         15.90
 
-    Coffee x2 10.00
+    Grilled salmon                18.20
 
-    Water x2 16.00
+    Courgette fritters            13.80
 
-    TOTAL 68.00'
+    Sparkling water                3.00
+
+    Sparkling water                3.00
+
+    TOTAL                         68.40'
 expected_findings:
 - id: F-001
   code: PURPOSE_UNCLEAR
@@ -39,6 +44,7 @@ expected_findings:
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: us.anthropic.claude-sonnet-4-6

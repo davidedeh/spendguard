@@ -7,36 +7,43 @@ intent:
   - WEEKEND_SPEND_UNJUSTIFIED
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-012
+  claimant: EMP-015
   spent_on: '2026-09-05'
   category: office_supplies
   quantity: 1
   merchant: Ryman
-  amount: '38.49'
+  amount: '18.99'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Purchased a pack of A4 ruled notepads for use at the CC-500 team
-    desk.
-  receipt_text: "Ryman\n2026-09-05\nA4 ruled notepad 5-pack \xA338.49\nTOTAL \xA3\
-    38.49"
+  business_purpose: Purchased a pack of heavy-duty document folders for the CC-200
+    contract files needed on Monday morning.
+  receipt_text: 'Ryman
+
+    2026-09-05
+
+    Heavy-duty document folders x10 18.99
+
+    TOTAL 18.99'
 expected_findings:
-- id: F-001
+- id: F1
   code: WEEKEND_SPEND_UNJUSTIFIED
   gold_clauses:
   - "\xA72.4"
 expected_route: human_review
 expected_recommendation: none
 scripted_review:
-  approver: EMP-005
+  approver: EMP-002
   dispositions:
-  - finding_id: F-001
+  - code: WEEKEND_SPEND_UNJUSTIFIED
     disposition: dismissed
-    reason: EMP-012's role routinely requires attendance at the CC-500 site office
-      on Saturdays to support weekend production runs; ad-hoc stationery purchases
-      on those days are a standing feature of this role and do not require separate
-      justification each time.
+    reason: EMP-015 regularly works weekends as part of their role supporting CC-200
+      client deliverables that have hard Monday deadlines; weekend stationery purchases
+      to prepare materials ahead of the working week are a standing expectation of
+      this position and do not require individual justification.
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: us.anthropic.claude-sonnet-4-6

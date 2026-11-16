@@ -7,19 +7,21 @@ intent:
   - RECEIPT_MISMATCH
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: receipt_mismatch
 submission:
   claimant: EMP-014
   spent_on: '2026-04-29'
   category: public_transport
   quantity: 1
-  merchant: Transport for London
-  amount: '70.0'
+  merchant: Metro Travel Services
+  amount: '70.00'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Travel on the London Underground to attend a client site meeting
-  receipt_text: "Transport for London\nDate: 2026-04-29\nTravel Card \u2013 \xA345.00\n\
-    Additional Ticket \u2013 \xA328.00\nTOTAL \xA373.00"
+  business_purpose: "Travel to client site \u2013 required for on\u2011site support"
+  receipt_text: "Metro Travel Services\n29/04/2026\nJourneys\n   Ticket \u2013 Tube\
+    \ line A    25.00\n   Ticket \u2013 Bus route 277  12.00\n   Ticket \u2013 Over\u2011\
+    ground    31.00\nTOTAL 68.00\n---\nPayment slip\nCard xxxx1234 68.00"
 expected_findings:
 - id: RECEIPT_MISMATCH
   code: RECEIPT_MISMATCH
@@ -28,6 +30,7 @@ expected_findings:
 expected_route: human_review
 expected_recommendation: reject
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: openai.gpt-oss-120b-1:0

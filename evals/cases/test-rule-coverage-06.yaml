@@ -7,18 +7,18 @@ intent:
   judgement_codes: []
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
   supplier: SUP-001
-  supplier_invoice_number: INV-2026-0847
+  supplier_invoice_number: INV-001
   purchase_order: null
   cost_centre: CC-200
   issued_on: '2026-07-03'
-  amount: '2200'
+  amount: '2000.0'
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: "Office furniture supply and installation \u2014 10 ergonomic desk\
-    \ chairs for CC-200 team workspace"
+  description: Services rendered in July 2026
 expected_findings:
 - id: rule-missing-po
   code: MISSING_PO
@@ -27,6 +27,7 @@ expected_findings:
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
-  model_id: us.anthropic.claude-sonnet-4-6
+  model_id: us.amazon.nova-pro-v1:0

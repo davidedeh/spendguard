@@ -1,0 +1,38 @@
+id: dev-memory-follow-up-01
+split: dev
+slice: memory_follow_up
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-015
+  spent_on: '2026-09-12'
+  category: office_supplies
+  quantity: 1
+  merchant: Ryman
+  amount: '24.5'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Purchased a set of presentation binders for CC-200 client report
+    packs required for Monday's review meeting.
+  receipt_text: 'Ryman
+
+    2026-09-12
+
+    Presentation binders x5 24.50
+
+    TOTAL 24.50'
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+expected_clearance:
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  precedent_from: dev-judgement-positive-01
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6

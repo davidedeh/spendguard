@@ -6,9 +6,10 @@ intent:
   judgement_codes: []
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
   supplier: SUP-005
-  supplier_invoice_number: INV-2026-0847
+  supplier_invoice_number: INV-2026-00847
   purchase_order: null
   cost_centre: CC-100
   issued_on: '2026-07-21'
@@ -16,11 +17,14 @@ submission:
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: Quarterly stationery and office supplies delivery for CC-100
+  description: Quarterly supply of printed presentation folders and branded notepads
+    for the executive team, 920 units delivered to Halden Group head office on 21
+    July 2026.
 expected_findings: []
 expected_route: human_review
 expected_recommendation: approve
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: us.anthropic.claude-sonnet-4-6

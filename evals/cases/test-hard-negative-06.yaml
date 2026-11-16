@@ -6,29 +6,32 @@ intent:
   judgement_codes: []
   lookalike_code: PURPOSE_UNCLEAR
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-013
+  claimant: EMP-001
   spent_on: '2026-06-09'
   category: taxi
   quantity: 1
   merchant: City Cabs London
-  amount: '32'
+  amount: '38'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Taxi from Halden Group head office to Heathrow Terminal 5 for
-    the Manchester client site visit trip approved by EMP-006 on 4 June 2026.
+  business_purpose: Late-night taxi from Canary Wharf office to Paddington station
+    after client contract signing that ran past midnight on 9 June 2026; public transport
+    was no longer running.
   receipt_text: 'City Cabs London
 
     2026-06-09
 
-    Airport transfer (HQ to LHR T5): 32.00
+    Canary Wharf to Paddington Station 38.00
 
-    TOTAL 32.00'
+    TOTAL 38.00'
 expected_findings: []
 expected_route: auto_approve
 expected_recommendation: approve
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: us.anthropic.claude-sonnet-4-6

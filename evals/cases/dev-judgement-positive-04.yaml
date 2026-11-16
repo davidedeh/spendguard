@@ -7,33 +7,46 @@ intent:
   - ALCOHOL_NOT_PERMITTED
   lookalike_code: null
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-015
+  claimant: EMP-003
   spent_on: '2026-09-02'
   category: client_entertainment
   quantity: 4
-  merchant: The Ivy City Garden
-  amount: '196.0'
+  merchant: The Riverside Bistro
+  amount: '156.00'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: 'Lunch with three representatives from Meridian Capital (James
-    Okafor, Priya Nair, Tom Griffiths) to discuss the renewal of their advisory services
-    contract. Halden attendee: EMP-015.'
-  receipt_text: "The Ivy City Garden\n2 September 2026\n\nSeared salmon fillet x2\
-    \            \xA338.00\nRoasted chicken breast x2          \xA342.00\nSide salad\
-    \ x2                      \xA314.00\nFries x2                           \xA312.00\n\
-    Pinot Grigio 250ml x2              \xA318.00\nSparkling water x4             \
-    \    \xA320.00\nCafetiere coffee x4                \xA326.00\nService charge (12.5%)\
-    \             \xA321.25\nTOTAL                             \xA3196.00"
+  business_purpose: Client dinner to discuss Q4 project roadmap
+  receipt_text: '
+
+    The Riverside Bistro
+
+    Date: 02/09/2026
+
+
+    Main course for 4 guests               100.00
+
+    Bottle of red wine (alcohol)           48.00
+
+    Sparkling water for 4 guests            8.00
+
+    TOTAL                                   156.00
+
+
+    Card payment: ****4321
+
+    '
 expected_findings:
-- id: F-001
+- id: ALCOHOL_NOT_PERMITTED
   code: ALCOHOL_NOT_PERMITTED
   gold_clauses:
   - "\xA75.3"
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
-  model_id: us.anthropic.claude-sonnet-4-6
+  model_id: openai.gpt-oss-120b-1:0

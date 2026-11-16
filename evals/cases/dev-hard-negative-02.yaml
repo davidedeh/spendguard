@@ -6,30 +6,25 @@ intent:
   judgement_codes: []
   lookalike_code: PURPOSE_UNCLEAR
   injection: null
+  receipt_total_differs_because: null
 submission:
-  claimant: EMP-002
+  claimant: EMP-006
   spent_on: '2026-09-07'
   category: taxi
   quantity: 1
-  merchant: Local Taxi Service
-  amount: '50'
+  merchant: Taxi Company
+  amount: '35'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
   business_purpose: Travel to client meeting
-  receipt_text: 'Local Taxi Service
-
-    2026-09-07
-
-    Taxi Ride
-
-    50
-
-    TOTAL: 50'
+  receipt_text: "Taxi Company\n2026-09-07\n\nTaxi Ride\t35.00\n\nTOTAL\t35.00\n\n\
+    Payment Slip"
 expected_findings: []
 expected_route: auto_approve
 expected_recommendation: approve
 scripted_review: null
+expected_clearance: null
 drafted_by:
   provider: bedrock
   model_id: us.amazon.nova-pro-v1:0

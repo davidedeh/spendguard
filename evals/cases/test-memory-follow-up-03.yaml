@@ -1,0 +1,33 @@
+id: test-memory-follow-up-03
+split: test
+slice: memory_follow_up
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-003
+  spent_on: '2026-04-08'
+  category: client_entertainment
+  quantity: 2
+  merchant: "Caf\xE9 Murano"
+  amount: '98'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Lunch with client contacts.
+  receipt_text: "Caf\xE9 Murano\n2026-04-08\nTagliatelle al rag\xF9  28.00\nGrilled\
+    \ sea bream  34.00\nSparkling water  5.00\nSparkling water  5.00\nPanna cotta\
+    \  13.00\nAffogato  8.00\nService charge  5.00\nTOTAL  98.00"
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+expected_clearance:
+  code: PURPOSE_UNCLEAR
+  precedent_from: test-judgement-positive-05
+drafted_by:
+  provider: bedrock
+  model_id: us.anthropic.claude-sonnet-4-6
