@@ -9,6 +9,7 @@ from spendguard.db.database import ConnectionPool
 from spendguard.policy.loader import Policy
 from spendguard.queue.messages import MessageQueue
 from spendguard.security.signatures import SIGNATURE_HEADER, verify_signature
+from spendguard.seed.schema import SeedData
 from spendguard.settings import Settings
 
 
@@ -16,6 +17,7 @@ from spendguard.settings import Settings
 class ApiDependencies:
     settings: Settings
     policy: Policy
+    seed_data: SeedData
     connection_pool: ConnectionPool
     queue: MessageQueue
 
