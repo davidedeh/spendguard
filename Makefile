@@ -65,8 +65,8 @@ issue-token: ## Issue an approver bearer token and print it once (APPROVER=emplo
 eval: ## Run the eval against the frozen dataset
 	$(call not_built_yet,Spec 2 eval runner)
 
-bootstrap: ## Set up GitHub OIDC trust and the image repository
-	$(call not_built_yet,Spec 2 OIDC pipeline deploy)
+bootstrap: ## Set up the GitHub OIDC pipeline role for this repository's main branch
+	scripts/bootstrap.sh
 
 secrets: ## Write SecureString parameters
 	scripts/secrets.sh
@@ -80,5 +80,5 @@ destroy: ## Delete the stack and empty the image repository
 smoke: ## Check a running API: health is 200 and an unsigned webhook is 401 (URL=base URL)
 	uv run python -m spendguard.deployment.smoke $(URL)
 
-destroy-bootstrap: ## Tear down the bootstrap stack
-	$(call not_built_yet,Spec 2 OIDC pipeline deploy)
+destroy-bootstrap: ## Tear down the bootstrap stack, warning first about the shared OIDC provider
+	scripts/destroy-bootstrap.sh

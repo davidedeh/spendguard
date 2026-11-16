@@ -53,6 +53,7 @@ jobs:
           version: 0.13.7
       - uses: aws-actions/setup-sam@v2
         with:
+          version: 1.172.1
           use-installer: true
       - run: uv sync --frozen
       - run: make validate-template

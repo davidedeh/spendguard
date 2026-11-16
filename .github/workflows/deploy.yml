@@ -1,0 +1,40 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
+      PIPELINE_EXECUTION_ROLE_ARN: ${{ vars.PIPELINE_EXECUTION_ROLE_ARN }}
+      CLOUDFORMATION_EXECUTION_ROLE_ARN: ${{ vars.CLOUDFORMATION_EXECUTION_ROLE_ARN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.PIPELINE_EXECUTION_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: 0.13.7
+      - uses: aws-actions/setup-sam@v2
+        with:
+          version: 1.172.1
+          use-installer: true
+      - run: uv sync --frozen
+      - run: make deploy
