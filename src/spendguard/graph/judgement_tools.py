@@ -1,12 +1,12 @@
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from langchain_core.tools import BaseTool, StructuredTool
 
 from spendguard.graph.state import SuppliedPrecedent
-from spendguard.policy.loader import FindingCode, Policy
+from spendguard.policy.loader import FindingCode
 from spendguard.seed.schema import SeedData
-from spendguard.store import precedents
 from spendguard.submission import ExpenseClaim, Submission
 
 NO_SUPPLIER = 'This submission has no supplier.'
@@ -44,7 +44,10 @@ def _cost_centre_reference(
 
 
 def submission_tools(
-    submission: Submission, requester: str, seed_data: SeedData, policy: Policy
+    submission: Submission,
+    requester: str,
+    seed_data: SeedData,
+    available_precedents: Sequence[SuppliedPrecedent],
 ) -> SubmissionTools:
     supplier = None if isinstance(submission, ExpenseClaim) else submission.supplier
     cost_centre = _cost_centre_reference(submission, requester, seed_data)
@@ -98,14 +101,7 @@ def submission_tools(
         )
 
     def get_precedents(code: FindingCode) -> str:
-        match policy.finding_codes[code].precedent_scope:
-            case 'employee':
-                subject: str | None = requester
-            case 'supplier':
-                subject = supplier
-            case None:
-                subject = None
-        found = [] if subject is None else precedents.recent_precedents(subject, code)
+        found = [precedent for precedent in available_precedents if precedent['code'] == code]
         supplied_precedents.extend(found)
         return json.dumps(found)
 

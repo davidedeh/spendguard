@@ -11,8 +11,9 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import psycopg
 import pytest
+import yaml
 from langchain_core.callbacks import CallbackManagerForLLMRun
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from pydantic import Field
@@ -33,7 +34,7 @@ from spendguard.graph.nodes.plan import RetrievalPlan
 from spendguard.graph.nodes.run_judgement_checks import CheckVerdict, JudgementReport, QuotedText
 from spendguard.models.factory import build_embedder
 from spendguard.models.fake import FakeChatModel, structured_response
-from spendguard.policy.loader import POLICY_PATH, FindingCode, load_policy
+from spendguard.policy.loader import POLICY_PATH, FindingCode, Policy, load_policy
 from spendguard.queue.memory import InMemoryQueue
 from spendguard.queue.messages import QueueMessage
 from spendguard.queue.sqs import SqsQueue, sqs_client
@@ -42,7 +43,8 @@ from spendguard.security.approver_tokens import issue_token
 from spendguard.security.signatures import sign
 from spendguard.seed.loader import load_seed_data, read_seed_directory
 from spendguard.settings import Settings
-from spendguard.store import decision_events, submissions
+from spendguard.store import decision_events, precedents, submissions
+from spendguard.store.precedents import NewPrecedent
 from spendguard.submission import SupplierInvoiceDelivery
 from spendguard.worker import WorkerRuntime, create_worker_app, handle_sqs_event, process_message
 
@@ -199,6 +201,10 @@ def clause_reference(clause_id: str) -> str:
 
 class PlanningChatModel(FakeChatModel):
     verdicts: list[CheckVerdict] = Field(default_factory=list)
+    retrieval_queries: list[str] = Field(
+        default_factory=lambda: ['is alcohol reimbursed with a meal', 'receipts for a lunch']
+    )
+    precedent_lookups: list[FindingCode] = Field(default_factory=list)
 
     def _generate(
         self,
@@ -211,13 +217,20 @@ class PlanningChatModel(FakeChatModel):
         bound_tool_names = [tool['function']['name'] for tool in kwargs.get('tools', [])]
         if bound_tool_names == [RetrievalPlan.__name__]:
             reply = structured_response(
-                RetrievalPlan(
-                    retrieval_queries=['is alcohol reimbursed with a meal', 'receipts for a lunch'],
-                    check_guidance=[],
-                )
+                RetrievalPlan(retrieval_queries=self.retrieval_queries, check_guidance=[])
             )
         elif bound_tool_names == [JudgementReport.__name__]:
             reply = structured_response(JudgementReport(verdicts=self.verdicts))
+        elif self.precedent_lookups and not any(
+            isinstance(message, ToolMessage) for message in messages
+        ):
+            reply = AIMessage(
+                content='',
+                tool_calls=[
+                    {'name': 'get_precedents', 'args': {'code': code}, 'id': f'lookup-{code}'}
+                    for code in self.precedent_lookups
+                ],
+            )
         else:
             reply = AIMessage(content='Nothing to look up.')
         return ChatResult(generations=[ChatGeneration(message=reply)])
@@ -228,19 +241,42 @@ def application_settings() -> Settings:
     return SETTINGS
 
 
+def policy_with_revised_clause(directory: Path, clause_id: str) -> Policy:
+    policy_source = yaml.safe_load(POLICY_PATH.read_text())
+    for section in policy_source['sections']:
+        for clause in section['clauses']:
+            if clause['id'] == clause_id:
+                clause['text'] = f'{clause["text"]} This clause was revised.'
+    revised_path = directory / 'policy.yaml'
+    revised_path.write_text(yaml.safe_dump(policy_source, sort_keys=False, allow_unicode=True))
+    return load_policy(revised_path)
+
+
+@pytest.fixture
+def application_policy(request: pytest.FixtureRequest, tmp_path: Path) -> Policy:
+    revised_clause_id: str | None = getattr(request, 'param', None)
+    if revised_clause_id is None:
+        return POLICY
+    return policy_with_revised_clause(tmp_path, revised_clause_id)
+
+
 @pytest.fixture
 async def application(
-    connection_pool: ConnectionPool, branch_database: str, application_settings: Settings
+    connection_pool: ConnectionPool,
+    branch_database: str,
+    application_settings: Settings,
+    application_policy: Policy,
 ) -> AsyncIterator[Application]:
     with psycopg.connect(branch_database) as connection:
         load_seed_data(connection, SEED_DATA)
+    await precedents.clear_precedents(connection_pool)
     queue = InMemoryQueue(
         visibility_timeout_seconds=application_settings.queue_visibility_timeout_seconds
     )
     app = create_app(
         ApiDependencies(
             settings=application_settings,
-            policy=POLICY,
+            policy=application_policy,
             seed_data=SEED_DATA,
             connection_pool=connection_pool,
             queue=queue,
@@ -260,11 +296,11 @@ async def application(
         embedder = build_embedder(application_settings)
         chat_model = PlanningChatModel(model_id='fake-chat')
         async with connection_pool.connection() as connection:
-            await index_policy(connection, POLICY, embedder)
+            await index_policy(connection, application_policy, embedder)
         graph = build_graph(
             GraphConfig(
                 settings=application_settings,
-                policy=POLICY,
+                policy=application_policy,
                 seed_data=SEED_DATA,
                 chat_model=chat_model,
                 embedder=embedder,
@@ -1240,3 +1276,263 @@ async def test_a_resume_redelivered_after_a_failed_erp_send_completes_with_one_r
     assert [(event['outcome'], event['reason']) for event in events] == [
         ('rejected', 'Receipt never supplied')
     ]
+
+
+async def review_of(application: Application, submission_id: str) -> dict[str, Any]:
+    listed = await application.pending_review(application.issue_token('EMP-001'))
+    [review] = [
+        item for item in listed.json()['submissions'] if item['submission_id'] == submission_id
+    ]
+    return dict(review)
+
+
+async def unapproved_supplier_invoice_waiting_for_review(application: Application) -> str:
+    response = await application.post_invoice(
+        supplier_invoice_delivery(
+            unique_invoice_number(), supplier='SUP-002', purchase_order=None, cost_centre='CC-200'
+        )
+    )
+    submission_id: str = response.json()['submission_id']
+    await application.run_worker()
+    assert await application.status_of(submission_id) == 'pending_review'
+    return submission_id
+
+
+async def decide_dismissing(
+    application: Application,
+    submission_id: str,
+    *,
+    approver: str,
+    outcome: str,
+    dismissed: dict[str, str],
+) -> None:
+    review = await review_of(application, submission_id)
+    decided = await application.decide(
+        submission_id,
+        application.issue_token(approver),
+        {
+            'outcome': outcome,
+            'reason': None if outcome == 'approve' else 'Rejected for another reason',
+            'dispositions': [
+                {
+                    'finding_id': finding['finding_id'],
+                    'verdict': 'dismissed' if finding['code'] in dismissed else 'upheld',
+                    'reason': dismissed.get(finding['code']),
+                }
+                for finding in review['findings']
+            ],
+        },
+    )
+    assert decided.status_code == 202
+    await application.run_worker()
+    assert await application.status_of(submission_id) == 'complete'
+
+
+@pytest.mark.parametrize('outcome', ['approve', 'reject'])
+async def test_a_dismissed_supplier_finding_annotates_the_next_invoice_from_that_supplier(
+    application: Application, outcome: str
+) -> None:
+    first = await unapproved_supplier_invoice_waiting_for_review(application)
+    await decide_dismissing(
+        application,
+        first,
+        approver='EMP-001',
+        outcome=outcome,
+        dismissed={'NON_APPROVED_SUPPLIER': 'Onboarding with procurement is under way'},
+    )
+
+    second = await unapproved_supplier_invoice_waiting_for_review(application)
+
+    [finding] = [
+        finding
+        for finding in (await review_of(application, second))['findings']
+        if finding['code'] == 'NON_APPROVED_SUPPLIER'
+    ]
+    assert [
+        (precedent['code'], precedent['clause_reference'], precedent['reason'])
+        for precedent in finding['precedents']
+    ] == [
+        (
+            'NON_APPROVED_SUPPLIER',
+            clause_reference('approved_suppliers'),
+            'Onboarding with procurement is under way',
+        )
+    ]
+
+
+async def test_dismissing_a_finding_whose_code_is_instance_only_writes_no_precedent(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+
+    await decide_dismissing(
+        application,
+        submission_id,
+        approver='EMP-002',
+        outcome='approve',
+        dismissed={'MISSING_RECEIPT': 'Receipt lost in the post'},
+    )
+
+    assert (
+        await precedents.recent_precedents(
+            application.connection_pool, 'EMP-003', 'MISSING_RECEIPT', POLICY
+        )
+        == []
+    )
+
+
+async def purpose_unclear_claim_waiting_for_review(application: Application, claimant: str) -> str:
+    application.chat_model.retrieval_queries = ['business purpose of the spend', 'Halden business']
+    application.chat_model.verdicts = [
+        flagged('PURPOSE_UNCLEAR', 'business_purpose', [PURPOSE_QUOTE])
+    ]
+    return await claim_waiting_for_review(
+        application, claimant=claimant, amount='14.50', receipt_text=None
+    )
+
+
+async def test_a_dismissed_purpose_finding_annotates_that_employee_s_next_claim_only(
+    application: Application,
+) -> None:
+    first = await purpose_unclear_claim_waiting_for_review(application, 'EMP-003')
+    await decide_dismissing(
+        application,
+        first,
+        approver='EMP-002',
+        outcome='approve',
+        dismissed={'PURPOSE_UNCLEAR': 'Visits the Leeds office every week'},
+    )
+
+    same_employee = await purpose_unclear_claim_waiting_for_review(application, 'EMP-003')
+    other_employee = await purpose_unclear_claim_waiting_for_review(application, 'EMP-002')
+
+    annotations = {
+        submission_id: [
+            (finding['code'], [precedent['reason'] for precedent in finding['precedents']])
+            for finding in (await review_of(application, submission_id))['findings']
+        ]
+        for submission_id in (same_employee, other_employee)
+    }
+    assert annotations == {
+        same_employee: [('PURPOSE_UNCLEAR', ['Visits the Leeds office every week'])],
+        other_employee: [('PURPOSE_UNCLEAR', [])],
+    }
+
+
+async def test_a_judgement_check_cleared_by_precedent_is_audited_shown_and_sent_to_review(
+    application: Application,
+) -> None:
+    first = await purpose_unclear_claim_waiting_for_review(application, 'EMP-003')
+    await decide_dismissing(
+        application,
+        first,
+        approver='EMP-002',
+        outcome='approve',
+        dismissed={'PURPOSE_UNCLEAR': 'Visits the Leeds office every week'},
+    )
+    [precedent] = await precedents.recent_precedents(
+        application.connection_pool, 'EMP-003', 'PURPOSE_UNCLEAR', POLICY
+    )
+    application.chat_model.precedent_lookups = ['PURPOSE_UNCLEAR']
+    application.chat_model.verdicts = [
+        CheckVerdict(
+            code='PURPOSE_UNCLEAR',
+            outcome='cleared_by_precedent',
+            clause_reference=None,
+            quotes=[],
+            cited_precedent_ids=[],
+            precedent_id=precedent['precedent_id'],
+        )
+    ]
+    response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    assert await application.status_of(submission_id) == 'pending_review'
+    review = await review_of(application, submission_id)
+    assert (review['findings'], review['clearances_by_precedent']) == (
+        [],
+        [{'code': 'PURPOSE_UNCLEAR', 'precedent': precedent}],
+    )
+    assert {
+        'node': 'verify',
+        'event': 'cleared_by_precedent',
+        'detail': {'code': 'PURPOSE_UNCLEAR', 'precedent_id': precedent['precedent_id']},
+    } in (await application.review_state(submission_id))['audit']
+
+
+@pytest.mark.parametrize('application_policy', ['approved_suppliers'], indirect=True)
+async def test_a_precedent_stops_annotating_once_the_text_of_its_clause_changes(
+    application: Application, application_policy: Policy
+) -> None:
+    reference = clause_reference('approved_suppliers')
+    written_under = {
+        'the earlier text': POLICY,
+        'the current text': application_policy,
+    }
+    for reason, policy in written_under.items():
+        submission_id = await unapproved_supplier_invoice_waiting_for_review(application)
+        await precedents.record_precedent(
+            application.connection_pool,
+            NewPrecedent(
+                subject='SUP-002',
+                code='NON_APPROVED_SUPPLIER',
+                clause_reference=reference,
+                clause_hash=next(
+                    clause.hash for clause in policy.clauses if clause.reference == reference
+                ),
+                reason=f'Written under {reason}',
+                approver='EMP-001',
+                submission_id=uuid.UUID(submission_id),
+            ),
+        )
+
+    later = await unapproved_supplier_invoice_waiting_for_review(application)
+
+    [finding] = [
+        finding
+        for finding in (await review_of(application, later))['findings']
+        if finding['code'] == 'NON_APPROVED_SUPPLIER'
+    ]
+    assert [precedent['reason'] for precedent in finding['precedents']] == [
+        'Written under the current text'
+    ]
+
+
+async def test_only_the_three_most_recent_precedents_for_the_subject_are_returned(
+    application: Application,
+) -> None:
+    reference = clause_reference('approved_suppliers')
+    for subject, reason in [
+        ('SUP-002', 'First'),
+        ('SUP-002', 'Second'),
+        ('SUP-002', 'Third'),
+        ('SUP-009', 'Another supplier'),
+        ('SUP-002', 'Fourth'),
+    ]:
+        recording = await submissions.record_submission(
+            application.connection_pool,
+            idempotency_key=unique_invoice_number(),
+            submission_type='supplier_invoice',
+            payload={},
+            payload_hash='unused',
+        )
+        await precedents.record_precedent(
+            application.connection_pool,
+            NewPrecedent(
+                subject=subject,
+                code='NON_APPROVED_SUPPLIER',
+                clause_reference=reference,
+                clause_hash=POLICY.finding_codes['NON_APPROVED_SUPPLIER'].clause.hash,
+                reason=reason,
+                approver='EMP-001',
+                submission_id=recording.submission_id,
+            ),
+        )
+
+    found = await precedents.recent_precedents(
+        application.connection_pool, 'SUP-002', 'NON_APPROVED_SUPPLIER', POLICY
+    )
+
+    assert [precedent['reason'] for precedent in found] == ['Fourth', 'Third', 'Second']
