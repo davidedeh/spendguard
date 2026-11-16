@@ -35,22 +35,28 @@ from spendguard.settings import Settings
 from spendguard.structured_logging import log_event
 
 
-def _redacted_text(attributes: Mapping[str, object]) -> dict[str, str | list[str]]:
-    redacted: dict[str, str | list[str]] = {}
+def _attributes_changed_by_redaction(
+    attributes: Mapping[str, object],
+) -> dict[str, str | list[str]]:
+    changed: dict[str, str | list[str]] = {}
     for key, value in attributes.items():
-        if isinstance(value, str) and redact(value) != value:
-            redacted[key] = redact(value)
-        elif isinstance(value, Sequence) and not isinstance(value, str):
+        if isinstance(value, str):
+            redacted_value = redact(value)
+            if redacted_value != value:
+                changed[key] = redacted_value
+        elif isinstance(value, Sequence):
             texts = [item for item in value if isinstance(item, str)]
-            if len(texts) == len(value) and [redact(text) for text in texts] != texts:
-                redacted[key] = [redact(text) for text in texts]
-    return redacted
+            if len(texts) == len(value):
+                redacted_texts = [redact(text) for text in texts]
+                if redacted_texts != texts:
+                    changed[key] = redacted_texts
+    return changed
 
 
 def mask_span_attributes(*, params: MaskOtelSpansParams) -> MaskOtelSpansResult:
     patches: dict[OtelSpanIdentifier, OtelSpanPatch | None] = {}
     for identifier, span in params.spans.items():
-        redacted = _redacted_text(span.attributes)
+        redacted = _attributes_changed_by_redaction(span.attributes)
         patches[identifier] = OtelSpanPatch(set_attributes=redacted) if redacted else None
     return MaskOtelSpansResult(span_patches=patches)
 
@@ -82,7 +88,7 @@ def _with_redacted_status_and_events(span: ReadableSpan) -> ReadableSpan:
                 name=event.name,
                 attributes={
                     **(event.attributes or {}),
-                    **_redacted_text(event.attributes or {}),
+                    **_attributes_changed_by_redaction(event.attributes or {}),
                 },
                 timestamp=event.timestamp,
             )
