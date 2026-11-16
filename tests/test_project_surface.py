@@ -78,3 +78,18 @@ def test_the_eval_workflow_runs_only_when_dispatched_by_hand() -> None:
     )
 
     assert workflow['on'] == {'workflow_dispatch': ''}
+
+
+def test_the_readme_has_no_em_dashes() -> None:
+    readme = (REPOSITORY_ROOT / 'README.md').read_text()
+
+    assert '\N{EM DASH}' not in readme
+
+
+def test_every_relative_link_in_the_readme_points_to_a_file_in_the_repository() -> None:
+    readme = (REPOSITORY_ROOT / 'README.md').read_text()
+    link_targets = re.findall(r'\]\(([^)#\s]+)', readme)
+
+    relative_targets = [target for target in link_targets if '://' not in target]
+    assert relative_targets
+    assert [target for target in relative_targets if not (REPOSITORY_ROOT / target).exists()] == []
