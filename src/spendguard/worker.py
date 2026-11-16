@@ -25,17 +25,11 @@ from spendguard.observability.tracing import (
     traced_advance,
 )
 from spendguard.policy.loader import POLICY_PATH, load_policy
-from spendguard.queue.messages import MessageType, QueueMessage
+from spendguard.queue.messages import STATUS_EXPECTED_BY, QueueMessage
 from spendguard.seed.loader import SEED_DIRECTORY, read_seed_directory
 from spendguard.settings import Settings
 from spendguard.store import submissions
-from spendguard.store.submissions import SubmissionStatus
 from spendguard.structured_logging import configure_logging, log_event
-
-STATUS_EXPECTED_BY: dict[MessageType, SubmissionStatus] = {
-    'start': 'received',
-    'resume': 'decided',
-}
 
 
 @dataclass(frozen=True)

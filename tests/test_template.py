@@ -73,6 +73,17 @@ def test_a_message_moves_to_the_dead_letter_queue_after_three_receives() -> None
     assert redrive['deadLetterTargetArn'] == {'Fn::GetAtt': ['DeadLetterQueue', 'Arn']}
 
 
+def test_an_eventbridge_scheduler_rule_runs_the_sweeper_every_five_minutes() -> None:
+    sweeper = RESOURCES['SweeperFunction']['Properties']
+
+    [schedule] = sweeper['Events'].values()
+    assert schedule['Type'] == 'ScheduleV2'
+    assert schedule['Properties']['ScheduleExpression'] == 'rate(5 minutes)'
+    assert (
+        sweeper['ImageConfig']['Command'][1] == 'spendguard.sweeper:create_production_sweeper_app'
+    )
+
+
 def test_every_setting_is_configured_for_the_functions() -> None:
     environment = TEMPLATE['Globals']['Function']['Environment']['Variables']
     configured = {key.split('__')[0].lower() for key in environment}
@@ -119,7 +130,9 @@ def stubbed_parameter_store(service_name: Literal['ssm'], region_name: str) -> '
     return client
 
 
-@pytest.mark.parametrize('function_name', ['ApiFunction', 'WorkerFunction', 'PreparationFunction'])
+@pytest.mark.parametrize(
+    'function_name', ['ApiFunction', 'WorkerFunction', 'PreparationFunction', 'SweeperFunction']
+)
 def test_each_function_environment_with_its_secrets_loads_into_deployed_settings(
     monkeypatch: pytest.MonkeyPatch, function_name: str
 ) -> None:

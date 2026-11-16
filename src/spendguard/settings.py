@@ -142,6 +142,16 @@ class Settings(BaseSettings):
             )
         return self
 
+    @model_validator(mode='after')
+    def _sweeper_waits_out_the_visibility_timeout(self) -> Self:
+        if self.sweeper_stuck_after_seconds <= self.queue_visibility_timeout_seconds:
+            raise ValueError(
+                'SWEEPER_STUCK_AFTER_SECONDS must be greater than'
+                f' QUEUE_VISIBILITY_TIMEOUT_SECONDS ({self.queue_visibility_timeout_seconds}),'
+                f' but is {self.sweeper_stuck_after_seconds}'
+            )
+        return self
+
     @classmethod
     def settings_customise_sources(
         cls,

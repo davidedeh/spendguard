@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import json
 import time
 import uuid
@@ -44,6 +45,7 @@ from spendguard.seed.loader import load_seed_data, read_seed_directory
 from spendguard.settings import Settings
 from spendguard.store import decision_events, submissions
 from spendguard.submission import SupplierInvoiceDelivery
+from spendguard.sweeper import create_sweeper_app, sweep
 from spendguard.worker import WorkerRuntime, create_worker_app, handle_sqs_event, process_message
 
 if TYPE_CHECKING:
@@ -167,6 +169,12 @@ class Application:
     async def run_worker(self) -> None:
         for delivery in self.queue.receive():
             await process_message(delivery.message, self.worker)
+            self.queue.acknowledge(delivery.receipt_handle)
+
+    async def run_worker_for(self, submission_id: str) -> None:
+        for delivery in self.queue.receive():
+            if str(delivery.message.submission_id) == submission_id:
+                await process_message(delivery.message, self.worker)
             self.queue.acknowledge(delivery.receipt_handle)
 
     async def status_of(self, submission_id: str) -> str:
@@ -1240,3 +1248,161 @@ async def test_a_resume_redelivered_after_a_failed_erp_send_completes_with_one_r
     assert [(event['outcome'], event['reason']) for event in events] == [
         ('rejected', 'Receipt never supplied')
     ]
+
+
+def every_submission_changed_until_now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=1)
+
+
+async def test_a_decided_claim_whose_resume_was_lost_is_swept_and_completes_once(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+    await application.decide(
+        submission_id, application.issue_token('EMP-001'), missing_receipt_decision('approve', None)
+    )
+    [lost_resume] = application.queue.receive()
+    application.queue.acknowledge(lost_resume.receipt_handle)
+
+    await sweep(
+        application.connection_pool, application.queue, every_submission_changed_until_now()
+    )
+    await application.run_worker_for(submission_id)
+
+    assert await application.status_of(submission_id) == 'complete'
+    assert [event.submission_id for event in application.sender.sent] == [submission_id]
+
+
+async def test_a_sweep_duplicating_an_in_flight_resume_still_completes_once(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+    await application.decide(
+        submission_id, application.issue_token('EMP-001'), missing_receipt_decision('approve', None)
+    )
+
+    await sweep(
+        application.connection_pool, application.queue, every_submission_changed_until_now()
+    )
+    resumes = [
+        delivery.message
+        for delivery in application.queue.receive()
+        if str(delivery.message.submission_id) == submission_id
+    ]
+    for resume in resumes:
+        await process_message(resume, application.worker)
+
+    assert [resume.type for resume in resumes] == ['resume', 'resume']
+    assert await application.status_of(submission_id) == 'complete'
+    assert [event.submission_id for event in application.sender.sent] == [submission_id]
+
+
+async def test_a_claim_decided_more_recently_than_the_threshold_is_not_swept(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+    await application.decide(
+        submission_id, application.issue_token('EMP-001'), missing_receipt_decision('approve', None)
+    )
+    [resume] = application.queue.receive()
+    application.queue.acknowledge(resume.receipt_handle)
+
+    await sweep(
+        application.connection_pool,
+        application.queue,
+        datetime.datetime.now(datetime.UTC)
+        - datetime.timedelta(seconds=SETTINGS.sweeper_stuck_after_seconds),
+    )
+
+    assert submission_id not in [
+        str(delivery.message.submission_id) for delivery in application.queue.receive()
+    ]
+    assert await application.status_of(submission_id) == 'decided'
+
+
+async def test_a_received_claim_whose_start_was_lost_is_swept_and_completes_once(
+    application: Application,
+) -> None:
+    response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    submission_id = response.json()['submission_id']
+    [lost_start] = application.queue.receive()
+    application.queue.acknowledge(lost_start.receipt_handle)
+
+    await sweep(
+        application.connection_pool, application.queue, every_submission_changed_until_now()
+    )
+    await application.run_worker_for(submission_id)
+
+    assert await application.status_of(submission_id) == 'complete'
+    assert [event.submission_id for event in application.sender.sent] == [submission_id]
+
+
+async def test_a_claim_waiting_for_review_is_never_swept(application: Application) -> None:
+    submission_id = await claim_waiting_for_review(application)
+
+    await sweep(
+        application.connection_pool, application.queue, every_submission_changed_until_now()
+    )
+
+    assert submission_id not in [
+        str(delivery.message.submission_id) for delivery in application.queue.receive()
+    ]
+
+
+async def test_a_stuck_claim_is_swept_once_until_its_status_changes(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+    await application.decide(
+        submission_id, application.issue_token('EMP-001'), missing_receipt_decision('approve', None)
+    )
+    [lost_resume] = application.queue.receive()
+    application.queue.acknowledge(lost_resume.receipt_handle)
+
+    await sweep(
+        application.connection_pool, application.queue, every_submission_changed_until_now()
+    )
+    await sweep(
+        application.connection_pool, application.queue, every_submission_changed_until_now()
+    )
+
+    swept = [
+        delivery.message.type
+        for delivery in application.queue.receive()
+        if str(delivery.message.submission_id) == submission_id
+    ]
+    assert swept == ['resume']
+
+
+async def test_the_sweeper_app_sweeps_claims_unchanged_for_the_configured_threshold(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+    await application.decide(
+        submission_id, application.issue_token('EMP-001'), missing_receipt_decision('approve', None)
+    )
+    [lost_resume] = application.queue.receive()
+    application.queue.acknowledge(lost_resume.receipt_handle)
+    decided_at = datetime.datetime.now(datetime.UTC)
+    seconds_since_decision = [SETTINGS.sweeper_stuck_after_seconds - 60]
+    sweeper_app = create_sweeper_app(
+        application.connection_pool,
+        application.queue,
+        SETTINGS,
+        clock=lambda: decided_at + datetime.timedelta(seconds=seconds_since_decision[0]),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=sweeper_app), base_url='http://sweeper'
+    ) as sweeper:
+        await sweeper.post('/events', json={})
+        swept_too_early = submission_id in [
+            str(delivery.message.submission_id) for delivery in application.queue.receive()
+        ]
+        seconds_since_decision[0] = SETTINGS.sweeper_stuck_after_seconds + 1
+        response = await sweeper.post('/events', json={})
+    await application.run_worker_for(submission_id)
+
+    assert not swept_too_early
+    assert response.status_code == 200
+    assert await application.status_of(submission_id) == 'complete'

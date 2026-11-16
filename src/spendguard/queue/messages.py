@@ -2,10 +2,16 @@ import uuid
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
+from spendguard.store.submissions import SubmissionStatus
 from spendguard.strict_model import StrictModel
 
 MessageType = Literal['start', 'resume']
 MAX_RECEIVE_COUNT = 3
+
+STATUS_EXPECTED_BY: dict[MessageType, SubmissionStatus] = {
+    'start': 'received',
+    'resume': 'decided',
+}
 
 
 class QueueMessage(StrictModel):

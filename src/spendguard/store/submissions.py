@@ -1,5 +1,6 @@
+import datetime
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -143,3 +144,35 @@ async def record_decision(
             )
         ).fetchone()
     return decided is not None
+
+
+@dataclass(frozen=True)
+class StuckSubmission:
+    id: uuid.UUID
+    idempotency_key: str
+    status: SubmissionStatus
+
+
+async def sweep_stuck_submissions(
+    connection_pool: ConnectionPool,
+    statuses: Collection[SubmissionStatus],
+    changed_before: datetime.datetime,
+    enqueue: Callable[[StuckSubmission], None],
+) -> int:
+    async with connection_pool.connection() as connection:
+        rows = await (
+            await connection.execute(
+                'update submissions set swept_at = now()'
+                ' where status = any(%s) and status_changed_at < %s'
+                ' and (swept_at is null or swept_at < status_changed_at)'
+                ' returning id, idempotency_key, status',
+                (list(statuses), changed_before),
+            )
+        ).fetchall()
+        for row in rows:
+            enqueue(
+                StuckSubmission(
+                    id=row['id'], idempotency_key=row['idempotency_key'], status=row['status']
+                )
+            )
+    return len(rows)
