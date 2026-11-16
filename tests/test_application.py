@@ -4,7 +4,7 @@ import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import pytest
@@ -25,10 +25,14 @@ from spendguard.models.factory import build_embedder
 from spendguard.models.fake import FakeChatModel
 from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.queue.memory import InMemoryQueue
+from spendguard.queue.sqs import SqsQueue, sqs_client
 from spendguard.security.signatures import sign
 from spendguard.seed.loader import read_seed_directory
 from spendguard.store import decision_events, submissions
-from spendguard.worker import WorkerRuntime, process_message
+from spendguard.worker import WorkerRuntime, handle_sqs_event, process_message
+
+if TYPE_CHECKING:
+    from mypy_boto3_sqs.type_defs import ReceiveMessageResultTypeDef
 
 SETTINGS = make_test_settings()
 WEBHOOK_KEY = b'test-webhook-signing-key'
@@ -95,8 +99,9 @@ class Application:
         )
 
     async def run_worker(self) -> None:
-        for message in self.queue.receive():
-            await process_message(message, self.worker)
+        for delivery in self.queue.receive():
+            await process_message(delivery.message, self.worker)
+            self.queue.acknowledge(delivery.receipt_handle)
 
     async def status_of(self, submission_id: str) -> str:
         record = await submissions.find_submission(self.connection_pool, uuid.UUID(submission_id))
@@ -109,7 +114,7 @@ class Application:
 
 @pytest.fixture
 async def application(connection_pool: ConnectionPool) -> AsyncIterator[Application]:
-    queue = InMemoryQueue()
+    queue = InMemoryQueue(visibility_timeout_seconds=SETTINGS.queue_visibility_timeout_seconds)
     app = create_app(
         ApiDependencies(settings=SETTINGS, connection_pool=connection_pool, queue=queue)
     )
@@ -210,7 +215,7 @@ async def test_an_identical_retry_returns_202_with_the_same_id_and_enqueues_noth
 
     assert retry.status_code == 202
     assert retry.json()['submission_id'] == first.json()['submission_id']
-    assert [message.type for message in application.queue.receive()] == ['start']
+    assert [delivery.message.type for delivery in application.queue.receive()] == ['start']
 
 
 async def test_the_same_claim_id_with_a_changed_body_returns_409(
@@ -227,9 +232,9 @@ async def test_the_same_claim_id_with_a_changed_body_returns_409(
 async def test_a_duplicate_start_message_is_a_no_op(application: Application) -> None:
     response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
     [start] = application.queue.receive()
-    await process_message(start, application.worker)
+    await process_message(start.message, application.worker)
 
-    await process_message(start, application.worker)
+    await process_message(start.message, application.worker)
 
     assert [event.submission_id for event in application.sender.sent] == [
         response.json()['submission_id']
@@ -293,3 +298,75 @@ async def test_every_endpoint_not_built_yet_returns_501(
     response = await application.client.request(method, path)
 
     assert response.status_code == 501
+
+
+def lambda_event_from(received: 'ReceiveMessageResultTypeDef') -> dict[str, Any]:
+    return {
+        'Records': [
+            {
+                'messageId': message['MessageId'],
+                'receiptHandle': message['ReceiptHandle'],
+                'body': message['Body'],
+                'attributes': message.get('Attributes', {}),
+                'eventSource': 'aws:sqs',
+            }
+            for message in received.get('Messages', [])
+        ]
+    }
+
+
+async def test_the_worker_handler_runs_a_start_message_from_elasticmq_to_complete(
+    application: Application, branch_queue: str
+) -> None:
+    client = sqs_client(SETTINGS)
+    queue_backed_app = create_app(
+        ApiDependencies(
+            settings=SETTINGS,
+            connection_pool=application.connection_pool,
+            queue=SqsQueue(client=client, queue_url=branch_queue),
+        )
+    )
+    raw_body = json.dumps(expense_claim_delivery(unique_claim_id())).encode()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=queue_backed_app), base_url='http://testserver'
+    ) as webhook_client:
+        response = await webhook_client.post(
+            '/webhooks/expense-claims',
+            content=raw_body,
+            headers=signed_headers(WEBHOOK_KEY, raw_body),
+        )
+    submission_id = response.json()['submission_id']
+    received = client.receive_message(QueueUrl=branch_queue, MaxNumberOfMessages=10)
+
+    outcome = await handle_sqs_event(lambda_event_from(received), application.worker)
+
+    assert outcome == {'batchItemFailures': []}
+    assert await application.status_of(submission_id) == 'complete'
+    assert [event.submission_id for event in application.sender.sent] == [submission_id]
+
+
+def lambda_record(message_id: str, body: str) -> dict[str, Any]:
+    return {'messageId': message_id, 'body': body, 'eventSource': 'aws:sqs'}
+
+
+async def test_a_failing_record_and_every_record_after_it_are_reported_as_batch_failures(
+    application: Application,
+) -> None:
+    first = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    last = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    first_start, last_start = application.queue.receive()
+    event = {
+        'Records': [
+            lambda_record('message-1', first_start.message.model_dump_json()),
+            lambda_record('message-2', '{"type": "unknown"}'),
+            lambda_record('message-3', last_start.message.model_dump_json()),
+        ]
+    }
+
+    outcome = await handle_sqs_event(event, application.worker)
+
+    assert outcome == {
+        'batchItemFailures': [{'itemIdentifier': 'message-2'}, {'itemIdentifier': 'message-3'}]
+    }
+    assert await application.status_of(first.json()['submission_id']) == 'complete'
+    assert await application.status_of(last.json()['submission_id']) == 'received'

@@ -16,4 +16,4 @@ COPY --from=build /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH" PORT=8000
 WORKDIR /app
 
-CMD ["uvicorn", "spendguard.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "spendguard.api.app:create_production_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

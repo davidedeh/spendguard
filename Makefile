@@ -41,7 +41,7 @@ build-image: ## Build the container image
 	docker build -t spendguard:local .
 
 run-api: ## Serve the API locally
-	uv run uvicorn spendguard.api.app:create_app --factory --reload
+	uv run uvicorn spendguard.api.app:create_production_app --factory --reload
 
 validate-template: ## Validate the SAM template with sam validate and cfn-lint
 	$(call not_built_yet,Spec 2 SAM stack)
