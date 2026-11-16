@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal, Self, TypedDict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from pydantic import Field, model_validator
+from pydantic import StringConstraints, model_validator
 
 from spendguard.api.dependencies import ApiDependencies, api_dependencies, authenticated_approver
 from spendguard.graph.config import thread_config
@@ -61,7 +61,7 @@ async def read_submission(
 class DispositionRequest(StrictModel):
     finding_id: str
     verdict: DispositionVerdict
-    reason: str = Field(min_length=1)
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class DecisionRequest(StrictModel):

@@ -924,6 +924,7 @@ async def test_a_decision_the_approver_may_not_make_returns_403_and_changes_noth
         [{'finding_id': 'MISSING_RECEIPT', 'verdict': 'dismissed', 'reason': None}],
         [{'finding_id': 'MISSING_RECEIPT', 'verdict': 'upheld', 'reason': None}],
         [{'finding_id': 'MISSING_RECEIPT', 'verdict': 'upheld', 'reason': ''}],
+        [{'finding_id': 'MISSING_RECEIPT', 'verdict': 'dismissed', 'reason': ' \n\t '}],
     ],
     ids=[
         'no dispositions',
@@ -932,6 +933,7 @@ async def test_a_decision_the_approver_may_not_make_returns_403_and_changes_noth
         'a dismissal without a reason',
         'an upheld finding without a reason',
         'an upheld finding with an empty reason',
+        'a dismissal whose reason is only whitespace',
     ],
 )
 async def test_a_decision_without_one_disposition_per_finding_returns_422_and_changes_nothing(
