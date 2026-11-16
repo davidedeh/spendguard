@@ -61,11 +61,13 @@ Globals:
         CHAT_MODELS__PRIMARY__PROVIDER: bedrock
         CHAT_MODELS__PRIMARY__MODEL_ID: !Ref PrimaryModelId
         CHAT_MODELS__PRIMARY__STRUCTURED_OUTPUT_METHOD: !Ref PrimaryStructuredOutputMethod
+        CHAT_MODELS__PRIMARY__TEMPERATURE: '0'
         PRIMARY_MODEL_KEY: primary
         DRAFTING_MODEL_KEYS: '["primary"]'
         EMBEDDING_MODEL__PROVIDER: bedrock
         EMBEDDING_MODEL__MODEL_ID: !Ref EmbeddingModelId
         MODEL_PRICES: '{}'
+        EVAL_ROWS: '[]'
         GOOGLE_API_KEY: ''
         LANGFUSE_PUBLIC_KEY: ''
         LANGFUSE_SECRET_KEY: ''

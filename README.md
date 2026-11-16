@@ -62,6 +62,18 @@ Read from the bootstrap template that SAM CLI 1.172.1 ships (`samcli/lib/pipelin
 - **CloudFormation execution role**, assumed only by the CloudFormation service. Permissions: `Action: *` on `Resource: *`, full administrator. This is broad: anyone who can push to main can deploy a template that does anything in the account. It is accepted for a single-owner demo account; narrowing it means passing your own role to `sam pipeline bootstrap --cloudformation-execution-role` with the IAM, Lambda, SQS, SNS, CloudWatch, ECR, EventBridge Scheduler and SSM actions this template uses.
 - **Artifacts bucket** and its logging bucket, both retained when the bootstrap stack is deleted.
 
+## Eval results
+
+`make eval` runs every configured row against the frozen `eval-v1` dataset and refuses to report if the dataset no longer matches its lock file. Each row runs once, at temperature 0 where the provider supports it, and writes a dated results file in `evals/results/` with the exact parameters, prices and per-code counts. The table below is filled by that run and names the exact model IDs measured. GPT OSS 120B is OpenAI's open-weight model, not frontier GPT.
+
+Overlapping 95% intervals are never claimed as a win.
+
+Production default: Haiku unless the eval shows it worse. With 16 positives the eval can only detect large gaps, so this is a cost-led default, not a demonstrated equivalence.
+
+<!-- eval-results:start -->
+No results yet: the eval has not been run against real models.
+<!-- eval-results:end -->
+
 ## Tests
 
 - `make test` runs every test, including database and queue tests. Database and queue fixtures raise when compose is down; they never skip.

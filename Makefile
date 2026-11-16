@@ -62,8 +62,8 @@ freeze: ## Validate the eval dataset and write the lock file
 issue-token: ## Issue an approver bearer token and print it once (APPROVER=employee reference)
 	uv run python -m spendguard.security.approver_tokens $(APPROVER)
 
-eval: ## Run the eval against the frozen dataset
-	$(call not_built_yet,Spec 2 eval runner)
+eval: ## Run every eval row against the frozen dataset (calls the real models; not in CI)
+	uv run python -m spendguard.eval.runner
 
 bootstrap: ## Set up the GitHub OIDC pipeline role for this repository's main branch
 	scripts/bootstrap.sh

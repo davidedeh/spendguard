@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 from spendguard.settings import MissingEnvFileError, Settings
 from spendguard.settings import load_settings as load_settings_from_files
@@ -69,3 +70,11 @@ def test_a_missing_env_file_is_named_instead_of_listing_every_missing_setting(
 
     assert str(missing_env_file) in str(raised.value)
     assert '.env.example' in str(raised.value)
+
+
+def test_the_eval_workflow_runs_only_when_dispatched_by_hand() -> None:
+    workflow = yaml.load(
+        (REPOSITORY_ROOT / '.github' / 'workflows' / 'eval.yml').read_text(), Loader=yaml.BaseLoader
+    )
+
+    assert workflow['on'] == {'workflow_dispatch': ''}

@@ -28,6 +28,14 @@ class ModelSettings(BaseModel):
 
 class ChatModelSettings(ModelSettings):
     structured_output_method: StructuredOutputMethod
+    temperature: float | None
+
+
+class EvalRow(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    model_key: str
+    label: str
 
 
 class ModelPrice(BaseModel):
@@ -70,6 +78,7 @@ class Settings(BaseSettings):
     drafting_model_keys: tuple[str, ...]
     embedding_model: ModelSettings
     model_prices: dict[str, ModelPrice]
+    eval_rows: tuple[EvalRow, ...]
     google_api_key: SecretStr | None
 
     langfuse_public_key: SecretStr | None
@@ -107,6 +116,16 @@ class Settings(BaseSettings):
                 f'The embedding model uses provider {self.embedding_model.provider!r}, '
                 f'which is not in ALLOWED_PROVIDERS {list(self.allowed_providers)}'
             )
+        return self
+
+    @model_validator(mode='after')
+    def _every_eval_row_uses_a_configured_chat_model(self) -> Self:
+        for row in self.eval_rows:
+            if row.model_key not in self.chat_models:
+                raise ValueError(
+                    f'Eval row {row.label!r} uses chat model {row.model_key!r},'
+                    f' which is not in CHAT_MODELS {sorted(self.chat_models)}'
+                )
         return self
 
     @model_validator(mode='after')

@@ -445,6 +445,7 @@ def drafting_settings(json_schema_keys: tuple[str, ...] = ()) -> Settings:
                 structured_output_method=(
                     'json_schema' if key in json_schema_keys else 'function_calling'
                 ),
+                temperature=0.0,
             )
             for key, model_id in DRAFTER_MODEL_IDS.items()
         },
