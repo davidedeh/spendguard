@@ -40,7 +40,7 @@ class ReviewPayload(TypedDict):
 def review_payload(state: ReviewState, policy: Policy) -> ReviewPayload:
     clauses = {clause.reference: clause for clause in policy.clauses}
     precedents = {
-        precedent['precedent_id']: precedent for precedent in state.get('supplied_precedents', [])
+        precedent['precedent_id']: precedent for precedent in state.get('current_precedents', [])
     }
     return {
         'submission_id': state['submission_id'],
