@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import psycopg
 import pytest
+import yaml
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
@@ -32,7 +33,7 @@ from spendguard.graph.nodes.plan import RetrievalPlan
 from spendguard.graph.nodes.run_judgement_checks import CheckVerdict, JudgementReport, QuotedText
 from spendguard.models.factory import build_embedder
 from spendguard.models.fake import FakeChatModel, structured_response
-from spendguard.policy.loader import POLICY_PATH, FindingCode, load_policy
+from spendguard.policy.loader import POLICY_PATH, FindingCode, Policy, load_policy
 from spendguard.queue.memory import InMemoryQueue
 from spendguard.queue.messages import QueueMessage
 from spendguard.queue.sqs import SqsQueue, sqs_client
@@ -42,6 +43,7 @@ from spendguard.security.signatures import sign
 from spendguard.seed.loader import load_seed_data, read_seed_directory
 from spendguard.settings import Settings
 from spendguard.store import decision_events, precedents, submissions
+from spendguard.store.precedents import NewPrecedent
 from spendguard.submission import SupplierInvoiceDelivery
 from spendguard.worker import WorkerRuntime, handle_sqs_event, process_message
 
@@ -238,9 +240,31 @@ def application_settings() -> Settings:
     return SETTINGS
 
 
+def policy_with_revised_clause(directory: Path, clause_id: str) -> Policy:
+    policy_source = yaml.safe_load(POLICY_PATH.read_text())
+    for section in policy_source['sections']:
+        for clause in section['clauses']:
+            if clause['id'] == clause_id:
+                clause['text'] = f'{clause["text"]} This clause was revised.'
+    revised_path = directory / 'policy.yaml'
+    revised_path.write_text(yaml.safe_dump(policy_source, sort_keys=False, allow_unicode=True))
+    return load_policy(revised_path)
+
+
+@pytest.fixture
+def application_policy(request: pytest.FixtureRequest, tmp_path: Path) -> Policy:
+    revised_clause_id: str | None = getattr(request, 'param', None)
+    if revised_clause_id is None:
+        return POLICY
+    return policy_with_revised_clause(tmp_path, revised_clause_id)
+
+
 @pytest.fixture
 async def application(
-    connection_pool: ConnectionPool, branch_database: str, application_settings: Settings
+    connection_pool: ConnectionPool,
+    branch_database: str,
+    application_settings: Settings,
+    application_policy: Policy,
 ) -> AsyncIterator[Application]:
     with psycopg.connect(branch_database) as connection:
         load_seed_data(connection, SEED_DATA)
@@ -251,7 +275,7 @@ async def application(
     app = create_app(
         ApiDependencies(
             settings=application_settings,
-            policy=POLICY,
+            policy=application_policy,
             seed_data=SEED_DATA,
             connection_pool=connection_pool,
             queue=queue,
@@ -270,11 +294,11 @@ async def application(
         embedder = build_embedder(application_settings)
         chat_model = PlanningChatModel(model_id='fake-chat')
         async with connection_pool.connection() as connection:
-            await index_policy(connection, POLICY, embedder)
+            await index_policy(connection, application_policy, embedder)
         graph = build_graph(
             GraphConfig(
                 settings=application_settings,
-                policy=POLICY,
+                policy=application_policy,
                 seed_data=SEED_DATA,
                 chat_model=chat_model,
                 embedder=embedder,
@@ -1328,9 +1352,7 @@ async def test_dismissing_a_finding_whose_code_is_instance_only_writes_no_preced
     )
 
 
-async def purpose_unclear_claim_waiting_for_review(
-    application: Application, claimant: str
-) -> str:
+async def purpose_unclear_claim_waiting_for_review(application: Application, claimant: str) -> str:
     application.chat_model.retrieval_queries = ['business purpose of the spend', 'Halden business']
     application.chat_model.verdicts = [
         flagged('PURPOSE_UNCLEAR', 'business_purpose', [PURPOSE_QUOTE])
@@ -1409,3 +1431,79 @@ async def test_a_judgement_check_cleared_by_precedent_is_audited_shown_and_sent_
         'event': 'cleared_by_precedent',
         'detail': {'code': 'PURPOSE_UNCLEAR', 'precedent_id': precedent['precedent_id']},
     } in (await application.review_state(submission_id))['audit']
+
+
+@pytest.mark.parametrize('application_policy', ['approved_suppliers'], indirect=True)
+async def test_a_precedent_stops_annotating_once_the_text_of_its_clause_changes(
+    application: Application, application_policy: Policy
+) -> None:
+    reference = clause_reference('approved_suppliers')
+    written_under = {
+        'the earlier text': POLICY,
+        'the current text': application_policy,
+    }
+    for reason, policy in written_under.items():
+        submission_id = await unapproved_supplier_invoice_waiting_for_review(application)
+        await precedents.record_precedent(
+            application.connection_pool,
+            NewPrecedent(
+                subject='SUP-002',
+                code='NON_APPROVED_SUPPLIER',
+                clause_reference=reference,
+                clause_hash=next(
+                    clause.hash for clause in policy.clauses if clause.reference == reference
+                ),
+                reason=f'Written under {reason}',
+                approver='EMP-001',
+                submission_id=uuid.UUID(submission_id),
+            ),
+        )
+
+    later = await unapproved_supplier_invoice_waiting_for_review(application)
+
+    [finding] = [
+        finding
+        for finding in (await review_of(application, later))['findings']
+        if finding['code'] == 'NON_APPROVED_SUPPLIER'
+    ]
+    assert [precedent['reason'] for precedent in finding['precedents']] == [
+        'Written under the current text'
+    ]
+
+
+async def test_only_the_three_most_recent_precedents_for_the_subject_are_returned(
+    application: Application,
+) -> None:
+    reference = clause_reference('approved_suppliers')
+    for subject, reason in [
+        ('SUP-002', 'First'),
+        ('SUP-002', 'Second'),
+        ('SUP-002', 'Third'),
+        ('SUP-009', 'Another supplier'),
+        ('SUP-002', 'Fourth'),
+    ]:
+        recording = await submissions.record_submission(
+            application.connection_pool,
+            idempotency_key=unique_invoice_number(),
+            submission_type='supplier_invoice',
+            payload={},
+            payload_hash='unused',
+        )
+        await precedents.record_precedent(
+            application.connection_pool,
+            NewPrecedent(
+                subject=subject,
+                code='NON_APPROVED_SUPPLIER',
+                clause_reference=reference,
+                clause_hash=POLICY.finding_codes['NON_APPROVED_SUPPLIER'].clause.hash,
+                reason=reason,
+                approver='EMP-001',
+                submission_id=recording.submission_id,
+            ),
+        )
+
+    found = await precedents.recent_precedents(
+        application.connection_pool, 'SUP-002', 'NON_APPROVED_SUPPLIER', POLICY
+    )
+
+    assert [precedent['reason'] for precedent in found] == ['Fourth', 'Third', 'Second']
