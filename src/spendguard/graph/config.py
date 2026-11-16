@@ -8,7 +8,7 @@ from spendguard.db.database import ConnectionPool
 from spendguard.graph.nodes.execute import DecisionEventSender
 from spendguard.policy.loader import Policy
 from spendguard.seed.schema import SeedData
-from spendguard.settings import Settings
+from spendguard.settings import PolicyContext, Settings
 
 
 @dataclass(frozen=True)
@@ -21,3 +21,4 @@ class GraphConfig:
     connection_pool: ConnectionPool
     checkpointer: BaseCheckpointSaver[str]
     decision_event_sender: DecisionEventSender
+    policy_context: PolicyContext

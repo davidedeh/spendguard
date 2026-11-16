@@ -69,6 +69,7 @@ def eval_graph(row: EvalRow, chat_model: BaseChatModel, resources: EvalResources
             connection_pool=resources.connection_pool,
             checkpointer=AsyncPostgresSaver(resources.connection_pool),
             decision_event_sender=_DiscardedDecisionEvents(),
+            policy_context=row.policy_context,
         )
     )
 
@@ -136,12 +137,12 @@ async def run_eval(
     run_identifier = uuid.uuid4().hex
     row_results: list[RowResult] = []
     first_row_outcomes: list[CaseOutcome] = []
-    for row in settings.eval_rows:
+    for row_number, row in enumerate(settings.eval_rows, start=1):
         await precedents.clear_precedents(resources.connection_pool)
         graph = eval_graph(row, chat_model_for(row), resources)
         outcomes = [
             await run_case(
-                case, graph, resources.connection_pool, f'{run_identifier}:{row.model_key}'
+                case, graph, resources.connection_pool, f'{run_identifier}:row-{row_number}'
             )
             for case in cases
         ]

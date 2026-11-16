@@ -130,6 +130,7 @@ def build_worker_runtime(loaded_settings: Settings) -> WorkerRuntime:
                 url=loaded_settings.decision_event_url,
                 key=loaded_settings.decision_event_signing_key.get_secret_value().encode(),
             ),
+            policy_context='retrieved_clauses',
         )
     )
     return WorkerRuntime(

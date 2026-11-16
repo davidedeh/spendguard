@@ -5,6 +5,7 @@ from typing import Any
 
 import yaml
 from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.embeddings import Embeddings
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import Field
@@ -100,7 +101,7 @@ async def test_a_case_run_through_the_graph_records_what_the_row_found_and_spent
         ],
     )
     graph = eval_graph(
-        EvalRow(model_key='fake_primary', label='Fake primary'),
+        EvalRow(model_key='fake_primary', label='Fake primary', policy_context='retrieved_clauses'),
         chat_model,
         EvalResources(settings, POLICY, SEED_DATA, connection_pool, embedder),
     )
@@ -113,6 +114,7 @@ async def test_a_case_run_through_the_graph_records_what_the_row_found_and_spent
     assert (outcome.route, outcome.recommendation) == ('human_review', 'none')
     assert (outcome.proposed_judgement_results, outcome.dropped_judgement_results) == (2, 1)
     assert '§2.4' in outcome.retrieved_clause_references
+    assert POLICY.rendered_text not in judgement_prompt(chat_model)
     model_calls = len(chat_model.received)
     assert model_calls == 3
     assert (outcome.input_tokens, outcome.output_tokens) == (
@@ -120,6 +122,47 @@ async def test_a_case_run_through_the_graph_records_what_the_row_found_and_spent
         model_calls * OUTPUT_TOKENS_PER_CALL,
     )
     assert outcome.latency_seconds > 0
+
+
+class RefusingEmbedder(Embeddings):
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        raise AssertionError('the whole-policy row never embeds')
+
+    def embed_query(self, text: str) -> list[float]:
+        raise AssertionError('the whole-policy row never retrieves')
+
+
+def judgement_prompt(chat_model: ScriptedEvalModel) -> str:
+    judgement_call = chat_model.received[1]
+    return str(judgement_call[0].content)
+
+
+async def test_the_whole_policy_row_gives_judgement_the_rendered_policy_and_retrieves_nothing(
+    connection_pool: ConnectionPool,
+) -> None:
+    await precedents.clear_precedents(connection_pool)
+    settings = make_test_settings()
+    chat_model = ScriptedEvalModel(
+        model_id='fake-chat',
+        retrieval_queries=['weekend stationery', 'receipts for stationery'],
+        verdicts=[weekend_verdict()],
+    )
+    graph = eval_graph(
+        EvalRow(model_key='fake_primary', label='Full context', policy_context='whole_policy'),
+        chat_model,
+        EvalResources(settings, POLICY, SEED_DATA, connection_pool, RefusingEmbedder()),
+    )
+
+    outcome = await run_case(
+        dataset_case('dev-judgement-positive-01'),
+        graph,
+        connection_pool,
+        run_identifier=uuid.uuid4().hex,
+    )
+
+    assert POLICY.rendered_text in judgement_prompt(chat_model)
+    assert outcome.judgement_codes == {'WEEKEND_SPEND_UNJUSTIFIED'}
+    assert outcome.dropped_judgement_results == 0
 
 
 def counts(proportion: Proportion) -> tuple[int, int]:
@@ -179,8 +222,12 @@ async def test_an_eval_run_reports_each_configured_row_in_order_with_memory_clea
             ),
         },
         eval_rows=[
-            {'model_key': 'fake_primary', 'label': 'Primary'},
-            {'model_key': 'fake_second', 'label': 'Second'},
+            {
+                'model_key': 'fake_primary',
+                'label': 'Primary',
+                'policy_context': 'retrieved_clauses',
+            },
+            {'model_key': 'fake_second', 'label': 'Second', 'policy_context': 'retrieved_clauses'},
         ],
         model_prices={
             'fake_primary': {
@@ -224,3 +271,60 @@ async def test_an_eval_run_reports_each_configured_row_in_order_with_memory_clea
         )
         == []
     )
+
+
+async def test_a_whole_policy_row_sharing_the_primary_model_runs_every_case_afresh(
+    connection_pool: ConnectionPool,
+) -> None:
+    settings = make_test_settings(
+        eval_rows=[
+            {
+                'model_key': 'fake_primary',
+                'label': 'Primary',
+                'policy_context': 'retrieved_clauses',
+            },
+            {
+                'model_key': 'fake_primary',
+                'label': 'Whole policy',
+                'policy_context': 'whole_policy',
+            },
+        ]
+    )
+    embedder = build_embedder(settings)
+    async with connection_pool.connection() as connection:
+        await index_policy(connection, POLICY, embedder)
+    queries = ['receipts for stationery', 'travel booking']
+    models = {
+        'Primary': ScriptedEvalModel(
+            model_id='fake-chat',
+            retrieval_queries=queries,
+            verdicts=[
+                CheckVerdict(
+                    code='PURPOSE_UNCLEAR',
+                    outcome='flagged',
+                    clause_reference='§2.4',
+                    quotes=[QuotedText(field='business_purpose', text='words nobody wrote')],
+                    cited_precedent_ids=[],
+                    precedent_id=None,
+                )
+            ],
+        ),
+        'Whole policy': ScriptedEvalModel(
+            model_id='fake-chat', retrieval_queries=queries, verdicts=[weekend_verdict()]
+        ),
+    }
+
+    results = await run_eval(
+        (dataset_case('dev-judgement-positive-01'),),
+        EvalResources(settings, POLICY, SEED_DATA, connection_pool, embedder),
+        lambda row: models[row.label],
+        measured_on=datetime.date(2026, 11, 20),
+        dataset_hash='a-dataset-hash',
+    )
+
+    primary, whole_policy = results.rows
+    assert counts(primary.metrics.judgement_recall) == (0, 1)
+    assert counts(whole_policy.metrics.judgement_recall) == (1, 1)
+    assert counts(primary.metrics.verify_drop_rate) == (1, 1)
+    assert counts(whole_policy.metrics.verify_drop_rate) == (0, 1)
+    assert POLICY.rendered_text in judgement_prompt(models['Whole policy'])

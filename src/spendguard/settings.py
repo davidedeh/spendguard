@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 Provider = Literal['bedrock', 'google_genai', 'fake']
 AppEnvironment = Literal['local', 'test', 'deployed']
 StructuredOutputMethod = Literal['function_calling', 'json_schema']
+PolicyContext = Literal['retrieved_clauses', 'whole_policy']
 VISIBILITY_TIMEOUTS_PER_WORKER_TIMEOUT = 6
 
 
@@ -36,6 +37,7 @@ class EvalRow(BaseModel):
 
     model_key: str
     label: str
+    policy_context: PolicyContext
 
 
 class ModelPrice(BaseModel):

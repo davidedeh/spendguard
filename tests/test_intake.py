@@ -34,6 +34,7 @@ def graph_config(connection_pool: ConnectionPool, **setting_overrides: Any) -> G
         connection_pool=connection_pool,
         checkpointer=AsyncPostgresSaver(connection_pool),
         decision_event_sender=UnusedSender(),
+        policy_context='retrieved_clauses',
     )
 
 

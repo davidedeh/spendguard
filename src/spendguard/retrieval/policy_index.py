@@ -83,11 +83,8 @@ async def retrieve_clauses(
         ):
             if reference not in retrieved_references:
                 retrieved_references.append(reference)
-    return [
-        {
-            'clause_reference': reference,
-            'clause_hash': clauses_by_reference[reference].hash,
-            'text': clauses_by_reference[reference].text,
-        }
-        for reference in retrieved_references
-    ]
+    return [supplied_clause(clauses_by_reference[reference]) for reference in retrieved_references]
+
+
+def supplied_clause(clause: Clause) -> RetrievedClause:
+    return {'clause_reference': clause.reference, 'clause_hash': clause.hash, 'text': clause.text}

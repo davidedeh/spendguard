@@ -315,6 +315,7 @@ async def application(
                 connection_pool=connection_pool,
                 checkpointer=AsyncPostgresSaver(connection_pool),
                 decision_event_sender=sender,
+                policy_context='retrieved_clauses',
             )
         )
         yield Application(
