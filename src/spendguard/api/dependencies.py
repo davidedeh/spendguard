@@ -11,6 +11,7 @@ from spendguard.policy.loader import Policy
 from spendguard.queue.messages import MessageQueue
 from spendguard.security.approver_tokens import token_hash
 from spendguard.security.signatures import SIGNATURE_HEADER, verify_signature
+from spendguard.seed.schema import SeedData
 from spendguard.settings import Settings
 from spendguard.store import approvers
 from spendguard.store.approvers import AuthenticatedApprover
@@ -22,6 +23,7 @@ _BEARER = HTTPBearer(auto_error=False)
 class ApiDependencies:
     settings: Settings
     policy: Policy
+    seed_data: SeedData
     connection_pool: ConnectionPool
     queue: MessageQueue
 

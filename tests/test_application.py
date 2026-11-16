@@ -31,6 +31,7 @@ from spendguard.security.signatures import sign
 from spendguard.seed.loader import load_seed_data, read_seed_directory
 from spendguard.settings import Settings
 from spendguard.store import decision_events, submissions
+from spendguard.submission import SupplierInvoiceDelivery
 from spendguard.worker import WorkerRuntime, process_message
 
 SETTINGS = make_test_settings()
@@ -61,6 +62,28 @@ def expense_claim_delivery(claim_id: str, **claim_overrides: Any) -> dict[str, A
             'receipt_text': 'Harbour Kitchen\n1 x Soup 6.50\n1 x Sandwich 8.00\nTOTAL 14.50',
         }
         | claim_overrides,
+    }
+
+
+def unique_invoice_number() -> str:
+    return f'INV-{uuid.uuid4().hex}'
+
+
+def supplier_invoice_delivery(invoice_number: str, **invoice_overrides: Any) -> dict[str, Any]:
+    return {
+        'invoice': {
+            'type': 'supplier_invoice',
+            'supplier': 'SUP-001',
+            'supplier_invoice_number': invoice_number,
+            'purchase_order': 'PO-0001',
+            'cost_centre': None,
+            'issued_on': '2026-10-21',
+            'amount': '85.00',
+            'currency': 'GBP',
+            'claimed_exchange_rate': None,
+            'description': 'Printer toner cartridges for the Leeds office',
+        }
+        | invoice_overrides,
     }
 
 
@@ -102,11 +125,17 @@ class Application:
     async def post_claim(
         self, delivery: dict[str, Any], key: bytes = WEBHOOK_KEY, signed_at: int | None = None
     ) -> httpx.Response:
+        return await self.post_signed('/webhooks/expense-claims', delivery, key, signed_at)
+
+    async def post_invoice(self, delivery: dict[str, Any]) -> httpx.Response:
+        return await self.post_signed('/webhooks/supplier-invoices', delivery, WEBHOOK_KEY, None)
+
+    async def post_signed(
+        self, path: str, delivery: dict[str, Any], key: bytes, signed_at: int | None
+    ) -> httpx.Response:
         raw_body = json.dumps(delivery).encode()
         return await self.client.post(
-            '/webhooks/expense-claims',
-            content=raw_body,
-            headers=signed_headers(key, raw_body, signed_at),
+            path, content=raw_body, headers=signed_headers(key, raw_body, signed_at)
         )
 
     async def run_worker(self) -> None:
@@ -117,6 +146,12 @@ class Application:
         record = await submissions.find_submission(self.connection_pool, uuid.UUID(submission_id))
         assert record is not None
         return record.status
+
+    async def requester_of(self, delivery: SupplierInvoiceDelivery) -> str:
+        snapshot = await self.worker.graph.aget_state(
+            {'configurable': {'thread_id': delivery.idempotency_key}}
+        )
+        return str(snapshot.values['requester'])
 
     async def recorded_events(self, submission_id: str) -> list[dict[str, Any]]:
         return await decision_events.events_for(self.connection_pool, submission_id)
@@ -138,6 +173,7 @@ async def application(
         ApiDependencies(
             settings=application_settings,
             policy=POLICY,
+            seed_data=SEED_DATA,
             connection_pool=connection_pool,
             queue=queue,
         )
@@ -286,6 +322,130 @@ async def test_the_same_claim_id_with_a_changed_body_returns_409(
     assert changed.status_code == 409
 
 
+async def test_a_clean_invoice_under_the_threshold_against_a_po_ends_complete_with_one_erp_event(
+    application: Application,
+) -> None:
+    response = await application.post_invoice(supplier_invoice_delivery(unique_invoice_number()))
+    assert response.status_code == 202
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    assert await application.status_of(submission_id) == 'complete'
+    events = await application.recorded_events(submission_id)
+    assert [(event['idempotency_key'], event['outcome']) for event in events] == [
+        (submission_id, 'approved')
+    ]
+
+
+async def test_an_invoice_from_a_supplier_not_approved_waits_for_review_and_sends_no_event(
+    application: Application,
+) -> None:
+    response = await application.post_invoice(
+        supplier_invoice_delivery(
+            unique_invoice_number(), supplier='SUP-002', purchase_order=None, cost_centre='CC-200'
+        )
+    )
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    assert await application.status_of(submission_id) == 'pending_review'
+    assert await application.recorded_events(submission_id) == []
+
+
+async def test_an_invoice_against_a_po_has_the_po_raiser_as_its_requester(
+    application: Application,
+) -> None:
+    delivery = supplier_invoice_delivery(unique_invoice_number())
+    await application.post_invoice(delivery)
+
+    await application.run_worker()
+
+    assert (
+        await application.requester_of(SupplierInvoiceDelivery.model_validate(delivery))
+        == 'EMP-003'
+    )
+
+
+async def test_an_invoice_without_a_po_has_the_cost_centre_owner_as_its_requester(
+    application: Application,
+) -> None:
+    delivery = supplier_invoice_delivery(
+        unique_invoice_number(), purchase_order=None, cost_centre='CC-200'
+    )
+    await application.post_invoice(delivery)
+
+    await application.run_worker()
+
+    assert (
+        await application.requester_of(SupplierInvoiceDelivery.model_validate(delivery))
+        == 'EMP-002'
+    )
+
+
+@pytest.mark.parametrize(
+    'invoice_overrides',
+    [
+        {'purchase_order': 'PO-9999'},
+        {'purchase_order': None, 'cost_centre': 'CC-300'},
+        {'purchase_order': None, 'cost_centre': None},
+    ],
+    ids=['unknown purchase order', 'cost centre without an owner', 'neither'],
+)
+async def test_an_invoice_with_no_derivable_requester_is_rejected_with_422(
+    application: Application, invoice_overrides: dict[str, Any]
+) -> None:
+    response = await application.post_invoice(
+        supplier_invoice_delivery(unique_invoice_number(), **invoice_overrides)
+    )
+
+    assert response.status_code == 422
+    [error] = response.json()['detail']
+    assert error['type'] == 'no_requester'
+    assert application.queue.receive() == []
+
+
+async def test_an_identical_invoice_retry_returns_202_with_the_same_id_and_enqueues_nothing_more(
+    application: Application,
+) -> None:
+    delivery = supplier_invoice_delivery(unique_invoice_number())
+    first = await application.post_invoice(delivery)
+
+    retry = await application.post_invoice(delivery)
+
+    assert retry.status_code == 202
+    assert retry.json()['submission_id'] == first.json()['submission_id']
+    assert [message.type for message in application.queue.receive()] == ['start']
+
+
+async def test_the_same_supplier_invoice_number_with_a_changed_body_returns_409(
+    application: Application,
+) -> None:
+    invoice_number = unique_invoice_number()
+    await application.post_invoice(supplier_invoice_delivery(invoice_number, amount='85.00'))
+
+    changed = await application.post_invoice(
+        supplier_invoice_delivery(invoice_number, amount='58.00')
+    )
+
+    assert changed.status_code == 409
+
+
+async def test_the_same_invoice_number_from_another_supplier_is_a_separate_submission(
+    application: Application,
+) -> None:
+    invoice_number = unique_invoice_number()
+    first = await application.post_invoice(supplier_invoice_delivery(invoice_number))
+
+    other = await application.post_invoice(
+        supplier_invoice_delivery(invoice_number, supplier='SUP-002')
+    )
+
+    assert other.status_code == 202
+    assert other.json()['submission_id'] != first.json()['submission_id']
+
+
 async def test_a_duplicate_start_message_is_a_no_op(application: Application) -> None:
     response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
     [start] = application.queue.receive()
@@ -343,7 +503,6 @@ async def test_the_mock_erp_rejects_an_event_signed_with_the_webhook_key(
 @pytest.mark.parametrize(
     ('method', 'path'),
     [
-        ('POST', '/webhooks/supplier-invoices'),
         ('POST', '/submissions/00000000-0000-0000-0000-000000000001/decision'),
     ],
 )
