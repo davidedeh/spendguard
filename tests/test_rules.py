@@ -422,7 +422,7 @@ def test_only_the_codes_the_applicability_table_lists_for_invoices_run() -> None
 
 
 def test_judgement_checks_run_only_where_the_applicability_table_lists_them() -> None:
-    policy_judging_alcohol_on_invoices = dataclasses.replace(
+    policy_judging_purpose_on_claims_and_alcohol_on_invoices = dataclasses.replace(
         POLICY,
         applicability={
             'expense_claim': (*POLICY.applicability['expense_claim'], 'PURPOSE_UNCLEAR'),
@@ -434,10 +434,12 @@ def test_judgement_checks_run_only_where_the_applicability_table_lists_them() ->
     )
     saturday_claim = claim(spent_on='2026-10-10')
 
-    assert judgement_checks(invoice(), seed_data(), policy_judging_alcohol_on_invoices) == [
-        'ALCOHOL_NOT_PERMITTED'
-    ]
-    assert judgement_checks(saturday_claim, seed_data(), policy_judging_alcohol_on_invoices) == [
+    assert judgement_checks(
+        invoice(), seed_data(), policy_judging_purpose_on_claims_and_alcohol_on_invoices
+    ) == ['ALCOHOL_NOT_PERMITTED']
+    assert judgement_checks(
+        saturday_claim, seed_data(), policy_judging_purpose_on_claims_and_alcohol_on_invoices
+    ) == [
         'WEEKEND_SPEND_UNJUSTIFIED',
         'PURPOSE_UNCLEAR',
     ]
