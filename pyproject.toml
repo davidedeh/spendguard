@@ -5,7 +5,6 @@ description = "Reviews expense claims and supplier invoices for the fictional Ha
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "awslambdaric>=4.2.3",
     "boto3>=1.44.3",
     "fastapi>=0.162.7",
     "httpx>=0.28.1",
