@@ -20,6 +20,7 @@ from settings_factory import make_test_settings
 from spendguard.api.app import create_app
 from spendguard.api.dependencies import ApiDependencies
 from spendguard.db.database import ConnectionPool
+from spendguard.deployment.smoke import smoke_failures
 from spendguard.graph.build import build_graph
 from spendguard.graph.config import GraphConfig
 from spendguard.graph.nodes.execute import (
@@ -273,6 +274,12 @@ async def test_health_returns_200(application: Application) -> None:
     response = await application.client.get('/health')
 
     assert response.status_code == 200
+
+
+async def test_the_deployment_smoke_check_passes_against_the_application(
+    application: Application,
+) -> None:
+    assert await smoke_failures(application.client) == []
 
 
 async def test_a_claim_signed_with_the_wrong_key_is_rejected_with_401(
