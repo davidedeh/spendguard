@@ -18,10 +18,10 @@ submission:
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Client entertainment dinner with four guests from Acme Corp to
-    discuss a potential partnership.
+  business_purpose: Client entertainment dinner with three guests from Acme Corp and
+    1 Halden attendee, to discuss a potential partnership.
   receipt_text: "The Gourmet Bistro\n2026-04-21\n\nSteak and ale pie\t\t\t20\nSalad\t\
-    \t\t\t10\nPint of lager\t\t\t6\nSparkling water\t\t\t4\n\nTOTAL\t\t\t\t40"
+    \t\t\t10\nGinger beer\t\t\t6\nSparkling water\t\t\t4\n\nTOTAL\t\t\t\t40"
 expected_findings:
 - id: RECEIPT_MISMATCH
   code: RECEIPT_MISMATCH

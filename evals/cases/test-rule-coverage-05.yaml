@@ -18,7 +18,7 @@ submission:
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: Software license renewal for internal analytics platform.
+  description: Software licence renewal for the CC-100 team's analytics platform.
 expected_findings:
 - id: rule-non-approved-supplier
   code: NON_APPROVED_SUPPLIER

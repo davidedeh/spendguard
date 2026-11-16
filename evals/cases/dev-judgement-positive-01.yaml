@@ -13,14 +13,14 @@ submission:
   spent_on: '2026-09-05'
   category: office_supplies
   quantity: 1
-  merchant: Ryman
+  merchant: Penhall Stationers
   amount: '18.99'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Purchased a pack of heavy-duty document folders for the CC-200
-    contract files needed on Monday morning.
-  receipt_text: 'Ryman
+  business_purpose: Purchased a pack of heavy-duty document folders for the Calloway
+    Retail contract files held by the CC-200 team, needed on Monday morning.
+  receipt_text: 'Penhall Stationers
 
     2026-09-05
 

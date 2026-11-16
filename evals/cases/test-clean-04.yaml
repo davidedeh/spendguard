@@ -17,7 +17,7 @@ submission:
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: Delivery of office supplies
+  description: Delivery of office supplies for the CC-200 team's offices under PO-0008.
 expected_findings: []
 expected_route: human_review
 expected_recommendation: approve

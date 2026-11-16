@@ -13,15 +13,15 @@ submission:
   spent_on: '2026-09-10'
   category: public_transport
   quantity: 1
-  merchant: SNCF
+  merchant: Trans-Nord Rail
   amount: '112.6'
   currency: EUR
   type: expense_claim
   claimed_exchange_rate: '0.8579'
-  business_purpose: Train from Paris Gare du Nord to Lille-Flandres for a site visit
-    with the CC-300 operations team to review warehouse processes.
-  receipt_text: "SNCF\n2026-09-10\nParis Nord \u2192 Lille-Flandres 2nd class x1 \
-    \ 112.60\nTOTAL  112.60"
+  business_purpose: Train from Paris Gare du Nord to Lille-Flandres to visit the Halden
+    Group Lille warehouse with the CC-300 operations team and review its processes.
+  receipt_text: "Trans-Nord Rail\n2026-09-10\nParis Nord \u2192 Lille-Flandres 2nd\
+    \ class x1  112.60\nTOTAL  112.60"
 expected_findings:
 - id: rule-over-category-limit
   code: OVER_CATEGORY_LIMIT

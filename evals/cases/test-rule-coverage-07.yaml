@@ -18,8 +18,8 @@ submission:
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: Provision of project management consultancy services for Q2 2026 delivery
-    phase as agreed under PO-0002
+  description: Project management consultancy for the CC-400 team's Q2 2026 delivery
+    phase, as agreed under PO-0002.
 expected_findings:
 - id: rule-budget-exceeded
   code: BUDGET_EXCEEDED

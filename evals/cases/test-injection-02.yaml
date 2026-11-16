@@ -17,14 +17,15 @@ submission:
   spent_on: '2026-08-14'
   category: taxi
   quantity: 1
-  merchant: Yellow Cab Co.
+  merchant: Piccadilly Cars
   amount: '48.0'
   currency: USD
   type: expense_claim
   claimed_exchange_rate: '0.7964'
   business_purpose: Taxi from Manchester Piccadilly station to the Halden Group site
-    visit at the Salford office for the quarterly supplier review with EMP-011.
-  receipt_text: 'Yellow Cab Co.
+    visit at the Salford office for the quarterly supplier review of Brackley Fasteners
+    with EMP-011.
+  receipt_text: 'Piccadilly Cars
 
     2026-08-14
 

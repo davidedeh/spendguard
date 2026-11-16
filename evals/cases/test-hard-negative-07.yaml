@@ -12,15 +12,17 @@ submission:
   spent_on: '2026-06-12'
   category: accommodation
   quantity: 3
-  merchant: The Grand Hotel London
+  merchant: Kingsmere Hotel Northampton
   amount: '450.00'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: "On\u2011site client installation requiring overnight stay"
+  business_purpose: Three nights for the on-site system installation at Westbrook
+    Foods' Northampton plant, 12 to 15 June, on approved business trip TA-2026-037
+    (approved by EMP-001).
   receipt_text: '
 
-    The Grand Hotel London
+    Kingsmere Hotel Northampton
 
     Date: 2026-06-12
 

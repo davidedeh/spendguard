@@ -13,15 +13,15 @@ submission:
   spent_on: '2026-04-01'
   category: client_entertainment
   quantity: 2
-  merchant: The Ivy Brasserie
+  merchant: The Juniper Brasserie
   amount: '138'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
   business_purpose: Lunch with client contacts.
-  receipt_text: "The Ivy Brasserie\n2026-04-01\nSea bass fillet  32.00\nRibeye steak\
-    \  38.00\nSparkling water  6.00\nSparkling water  6.00\nTiramisu  14.00\nCr\xE8\
-    me br\xFBl\xE9e  13.00\nService charge  12.00\nVAT  17.00\nTOTAL  138.00"
+  receipt_text: "The Juniper Brasserie\n2026-04-01\nSea bass fillet  32.00\nRibeye\
+    \ steak  38.00\nSparkling water  6.00\nSparkling water  6.00\nTiramisu  14.00\n\
+    Cr\xE8me br\xFBl\xE9e  13.00\nService charge  12.00\nVAT  17.00\nTOTAL  138.00"
 expected_findings:
 - id: F1
   code: PURPOSE_UNCLEAR

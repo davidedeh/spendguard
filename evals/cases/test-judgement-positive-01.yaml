@@ -18,8 +18,8 @@ submission:
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Working lunch while reviewing quarterly board papers on Saturday
-    ahead of Monday board meeting.
+  business_purpose: Working lunch on Good Friday while reviewing the Halden Group
+    quarterly board papers ahead of Tuesday's board meeting.
   receipt_text: "The Anchor Kitchen\n2026-04-03\nSandwich platter \xA318.00\nSoup\
     \ of the day \xA38.50\nSparkling water \xA33.50\nCoffee \xA34.50\nCottage pie\
     \ \xA312.00\nOrange juice \xA34.50\nService charge \xA33.50\nTOTAL \xA354.50"

@@ -18,7 +18,8 @@ submission:
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: "Travel to client site \u2013 required for on\u2011site support"
+  business_purpose: Travel to Orchard Medical's Wembley site to give on-site support
+    for its new booking system.
   receipt_text: "Metro Travel Services\n29/04/2026\nJourneys\n   Ticket \u2013 Tube\
     \ line A    25.00\n   Ticket \u2013 Bus route 277  12.00\n   Ticket \u2013 Over\u2011\
     ground    31.00\nTOTAL 68.00\n---\nPayment slip\nCard xxxx1234 68.00"

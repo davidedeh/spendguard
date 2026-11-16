@@ -13,14 +13,14 @@ submission:
   spent_on: '2026-05-13'
   category: client_entertainment
   quantity: 4
-  merchant: The Bistro
+  merchant: The Linden Bistro
   amount: '76.00'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
   business_purpose: Client dinner with representatives of Acme Corp to discuss project
-    progress.
-  receipt_text: 'The Bistro
+    progress (1 Halden attendee and 3 Acme Corp guests).
+  receipt_text: 'The Linden Bistro
 
     13/05/2026
 

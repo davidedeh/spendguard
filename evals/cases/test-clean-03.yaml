@@ -17,7 +17,8 @@ submission:
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: Consulting and related expenses for Q3 2026 project
+  description: Process-mapping consultancy for the CC-200 finance team's month-end
+    close review, 6 to 17 July 2026, including consultant travel to the Halden office.
 expected_findings: []
 expected_route: human_review
 expected_recommendation: approve

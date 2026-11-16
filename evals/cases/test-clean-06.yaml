@@ -17,7 +17,8 @@ submission:
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: overnight stay for client site visit
+  business_purpose: Overnight stay in Bristol for the stock audit at Calloway Retail's
+    Avonmouth warehouse, which started at 8am the next day.
   receipt_text: 'Grand Oak Hotel
 
     Date: 2026-08-06

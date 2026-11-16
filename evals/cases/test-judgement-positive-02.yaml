@@ -13,13 +13,15 @@ submission:
   spent_on: '2026-04-19'
   category: accommodation
   quantity: 3
-  merchant: Hilton London
+  merchant: Larchfield Hotel London
   amount: '180.0'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Business travel requiring overnight stay on a weekend
-  receipt_text: "Hilton London\n2026-04-19\nRoom \u2013 3 nights   180.00\nTOTAL 180.00"
+  business_purpose: Three nights at a London hotel for meetings with Brightwater Energy,
+    arriving on Sunday.
+  receipt_text: "Larchfield Hotel London\n2026-04-19\nRoom \u2013 3 nights   180.00\n\
+    TOTAL 180.00"
 expected_findings:
 - id: WEEKEND_SPEND_UNJUSTIFIED
   code: WEEKEND_SPEND_UNJUSTIFIED

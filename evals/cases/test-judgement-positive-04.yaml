@@ -13,14 +13,14 @@ submission:
   spent_on: '2026-05-31'
   category: public_transport
   quantity: 1
-  merchant: London Buses Ltd
+  merchant: Capital Bus Lines
   amount: '30.0'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: "Travel between client sites required on a Saturday, no alternative\
-    \ public\u2011transport options were available."
-  receipt_text: "London Buses Ltd\n31/05/2026\nSingle bus ticket 2.50\nTravel card\
+  business_purpose: Bus travel between Northgate Logistics' Croydon and Wimbledon
+    depots on a Sunday to finish my stock-check notes.
+  receipt_text: "Capital Bus Lines\n31/05/2026\nSingle bus ticket 2.50\nTravel card\
     \ top\u2011up 27.50\nTOTAL 30.00\nPayment slip: 4532198745"
 expected_findings:
 - id: WEEKEND_SPEND_UNJUSTIFIED

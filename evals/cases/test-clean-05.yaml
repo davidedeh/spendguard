@@ -17,7 +17,8 @@ submission:
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: "Client site visit \u2013 lunch for two staff members"
+  business_purpose: Lunch for EMP-007 and EMP-008 during a full-day visit to Calloway
+    Retail's Reading distribution centre to review its stock controls.
   receipt_text: 'The Green Bistro
 
     2026-08-03

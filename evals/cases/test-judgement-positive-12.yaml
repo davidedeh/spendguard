@@ -13,14 +13,14 @@ submission:
   spent_on: '2026-05-05'
   category: office_supplies
   quantity: 1
-  merchant: Office Supplies Ltd
+  merchant: Kestrel Office Supplies
   amount: '45'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Purchase of office supplies for team use.
-  receipt_text: "Office Supplies Ltd\n2026-05-05\n\nItem\t\tPrice\nPaper\t\t20\nPens\t\
-    \t15\n\nTOTAL\t\t35"
+  business_purpose: Paper and pens for the CC-200 team's office.
+  receipt_text: "Kestrel Office Supplies\n2026-05-05\n\nItem\t\tPrice\nPaper\t\t20\n\
+    Pens\t\t15\n\nTOTAL\t\t35"
 expected_findings:
 - id: RECEIPT_MISMATCH
   code: RECEIPT_MISMATCH

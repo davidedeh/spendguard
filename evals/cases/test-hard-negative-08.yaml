@@ -17,8 +17,8 @@ submission:
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: "Lunch during client site visit \u2013 discussion of project requirements\
-    \ with onsite team."
+  business_purpose: Lunch during a site visit to Pellow Engineering to discuss project
+    requirements with its on-site team.
   receipt_text: 'The Royal Bistro
 
     Date: 2026-06-17

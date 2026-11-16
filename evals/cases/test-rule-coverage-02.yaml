@@ -13,12 +13,13 @@ submission:
   spent_on: '2026-06-25'
   category: office_supplies
   quantity: 1
-  merchant: ''
+  merchant: Papeterie Dumas
   amount: '45.0'
   currency: EUR
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: ''
+  business_purpose: Flip-chart pads and markers for the planning workshop with Duroc
+    Industries in Paris on 25 June. I lost the receipt.
   receipt_text: null
 expected_findings:
 - id: rule-missing-receipt

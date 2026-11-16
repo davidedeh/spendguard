@@ -17,8 +17,8 @@ submission:
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: Printed marketing brochures and folded leaflets for the Q3 product
-    launch campaign
+  description: Printed marketing brochures and folded leaflets for the CC-500 team's
+    Q3 product launch campaign.
 expected_findings: []
 expected_route: human_review
 expected_recommendation: approve

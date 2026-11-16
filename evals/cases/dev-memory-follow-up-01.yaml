@@ -12,14 +12,14 @@ submission:
   spent_on: '2026-09-12'
   category: office_supplies
   quantity: 1
-  merchant: Ryman
+  merchant: Penhall Stationers
   amount: '24.5'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Purchased a set of presentation binders for CC-200 client report
-    packs required for Monday's review meeting.
-  receipt_text: 'Ryman
+  business_purpose: Purchased a set of presentation binders for the Calloway Retail
+    report packs required for the CC-200 team's Monday review meeting.
+  receipt_text: 'Penhall Stationers
 
     2026-09-12
 

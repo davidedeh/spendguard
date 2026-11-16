@@ -13,19 +13,19 @@ submission:
   spent_on: '2026-06-22'
   category: public_transport
   quantity: 1
-  merchant: New York MTA
+  merchant: Hudson City Transit
   amount: '130.0'
   currency: USD
   type: expense_claim
   claimed_exchange_rate: '0.7839'
-  business_purpose: Metro card top-up for travel between client site in Midtown and
-    JFK airport on 22 June 2026, travelling to meet Orion Partners for contract review
-    sessions.
-  receipt_text: 'New York MTA
+  business_purpose: 30-day unlimited transit pass for daily travel between my hotel
+    and Orion Partners' Midtown office during the four-week contract review, cheaper
+    than single fares.
+  receipt_text: 'Hudson City Transit
 
     2026-06-22
 
-    Single journey fare 130.00
+    30-Day Unlimited Pass 130.00
 
     TOTAL 130.00'
 expected_findings:

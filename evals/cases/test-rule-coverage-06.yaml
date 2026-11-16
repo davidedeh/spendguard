@@ -18,7 +18,8 @@ submission:
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: Services rendered in July 2026
+  description: Removal and secure storage of archived files from the CC-200 office,
+    22 to 26 June 2026.
 expected_findings:
 - id: rule-missing-po
   code: MISSING_PO

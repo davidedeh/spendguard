@@ -13,13 +13,13 @@ submission:
   spent_on: '2026-04-08'
   category: office_supplies
   quantity: 1
-  merchant: Office Supplies Ltd
+  merchant: Ashby Office Supplies
   amount: '50'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
   business_purpose: Office supplies for upcoming project
-  receipt_text: 'Office Supplies Ltd
+  receipt_text: 'Ashby Office Supplies
 
     2026-04-08
 

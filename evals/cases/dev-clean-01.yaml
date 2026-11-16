@@ -17,7 +17,7 @@ submission:
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: "Quarterly office cleaning services \u2014 September 2026"
+  description: Quarterly cleaning of the CC-300 office, September 2026.
 expected_findings: []
 expected_route: human_review
 expected_recommendation: approve

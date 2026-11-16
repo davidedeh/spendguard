@@ -12,14 +12,15 @@ submission:
   spent_on: '2026-09-07'
   category: taxi
   quantity: 1
-  merchant: Taxi Company
+  merchant: Aire Valley Cabs
   amount: '35'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Travel to client meeting
-  receipt_text: "Taxi Company\n2026-09-07\n\nTaxi Ride\t35.00\n\nTOTAL\t35.00\n\n\
-    Payment Slip"
+  business_purpose: Taxi from Leeds station to Northgate Logistics' Stourton depot
+    for the quarterly contract review meeting. No bus or train serves the depot.
+  receipt_text: "Aire Valley Cabs\n2026-09-07\n\nTaxi Ride\t35.00\n\nTOTAL\t35.00\n\
+    \nPayment Slip"
 expected_findings: []
 expected_route: auto_approve
 expected_recommendation: approve

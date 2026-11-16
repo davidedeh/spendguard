@@ -18,7 +18,7 @@ submission:
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: "Ongoing facilities maintenance support \u2014 May 2026 second instalment"
+  description: Facilities maintenance support for the CC-500 team's office, May 2026.
 expected_findings:
 - id: rule-split-purchase
   code: SPLIT_PURCHASE

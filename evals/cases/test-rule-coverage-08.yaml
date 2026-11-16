@@ -18,8 +18,7 @@ submission:
   currency: USD
   type: supplier_invoice
   claimed_exchange_rate: '0.7'
-  description: Consultancy services for Q3 2026 data analysis delivered by Tech Solutions
-    Ltd.
+  description: 'Consultancy services for the CC-300 team: Q3 2026 data analysis.'
 expected_findings:
 - id: rule-currency-anomaly
   code: CURRENCY_ANOMALY

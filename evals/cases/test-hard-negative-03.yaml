@@ -13,12 +13,12 @@ submission:
   category: subsistence
   quantity: 1
   merchant: The Copper Kettle
-  amount: '34.5'
+  amount: '29.00'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: "Lunch taken while away from the London office attending a client\
-    \ site visit in Bristol \u2014 sole attendee."
+  business_purpose: Lunch taken while away from the London office on a site visit
+    to Avon Packaging in Bristol, sole attendee.
   receipt_text: 'The Copper Kettle
 
     2026-06-01
@@ -35,9 +35,9 @@ submission:
 
     TOTAL  26.50
 
-    Tip  8.00
+    Tip  2.50
 
-    AMOUNT PAID  34.50'
+    AMOUNT PAID  29.00'
 expected_findings: []
 expected_route: auto_approve
 expected_recommendation: approve

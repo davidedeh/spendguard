@@ -18,7 +18,7 @@ submission:
   currency: GBP
   type: supplier_invoice
   claimed_exchange_rate: null
-  description: Duplicate submission for the same purchase order and amount.
+  description: Stage payment 1 of 2 for CRM data migration consultancy under PO-0003.
 expected_findings:
 - id: rule-duplicate-submission
   code: DUPLICATE_SUBMISSION

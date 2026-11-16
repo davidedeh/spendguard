@@ -13,14 +13,14 @@ submission:
   spent_on: '2026-05-10'
   category: taxi
   quantity: 1
-  merchant: City Cabs
+  merchant: Rivergate Cabs
   amount: '32'
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
   business_purpose: Taxi to Halden Group office to catch up on project documentation
     ahead of the Monday deadline.
-  receipt_text: "City Cabs\n2026-05-10\nJourney: Central Station to Halden Group,\
+  receipt_text: "Rivergate Cabs\n2026-05-10\nJourney: Central Station to Halden Group,\
     \ Riverside House \xA332.00\nTOTAL \xA332.00"
 expected_findings:
 - id: F-001

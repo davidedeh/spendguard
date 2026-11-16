@@ -18,8 +18,8 @@ submission:
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Lunch away from the office during a supplier site visit in Birmingham
-    on 8 May 2026.
+  business_purpose: Lunch away from the office during a site visit to the supplier
+    Corvel Components in Birmingham on 8 May 2026.
   receipt_text: 'The Anchor Kitchen
 
     2026-05-08

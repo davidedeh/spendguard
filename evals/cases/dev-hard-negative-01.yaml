@@ -17,15 +17,17 @@ submission:
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: "Client meeting with Acme Corp to discuss contract renewal \u2013\
-    \ catering provided for two attendees."
+  business_purpose: Client meeting with Acme Corp to agree the contract renewal, with
+    catering for two attendees (1 Halden attendee and 1 Acme Corp guest). Acme Corp
+    fixed Sunday 27 September as the only date its contracts manager could attend
+    before the 30 September renewal deadline.
   receipt_text: 'Brightside Conference Centre
 
     27/09/2026
 
-    Lunch for client - catering 60.00
+    Catered lunch, attendee 1 60.00
 
-    Dinner for client - catering 60.00
+    Catered lunch, attendee 2 60.00
 
     TOTAL 120.00
 
