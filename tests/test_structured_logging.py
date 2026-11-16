@@ -53,3 +53,16 @@ def test_a_library_log_record_is_json_without_its_message_text(log_stream: io.St
         'logger': 'uvicorn.error',
         'exception_type': 'KeyError',
     }
+
+
+def test_library_records_below_warning_are_left_out_while_events_stay(
+    log_stream: io.StringIO,
+) -> None:
+    logging.getLogger('httpx').info('HTTP Request: POST %s', 'http://localhost:8000')
+    logging.getLogger('botocore.credentials').warning('Refreshing temporary credentials')
+    log_event('submission_recorded', submission_id='S-1')
+
+    assert [json.loads(line)['event'] for line in log_stream.getvalue().splitlines()] == [
+        'library_record',
+        'submission_recorded',
+    ]

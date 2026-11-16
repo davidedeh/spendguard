@@ -20,6 +20,11 @@ class DatabaseUnreachableError(RuntimeError):
     pass
 
 
+class NotALocalDatabaseError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__('dropping only removes a local branch database: DATABASE_URL is set')
+
+
 def _local_postgres(settings: Settings) -> LocalPostgres:
     local_postgres = settings.local_postgres()
     if local_postgres is None:
@@ -65,6 +70,19 @@ def _create_branch_database_if_missing(settings: Settings) -> None:
                 maintenance_connection.execute(
                     sql.SQL('create database {}').format(sql.Identifier(database_name))
                 )
+
+
+def drop_branch_database(settings: Settings) -> None:
+    if settings.database_url is not None:
+        raise NotALocalDatabaseError
+    with psycopg.connect(
+        _connection_info(settings, MAINTENANCE_DATABASE), autocommit=True
+    ) as maintenance_connection:
+        maintenance_connection.execute(
+            sql.SQL('drop database if exists {} with (force)').format(
+                sql.Identifier(database_name_for_branch(settings.branch_name))
+            )
+        )
 
 
 def ensure_branch_database(settings: Settings) -> str:

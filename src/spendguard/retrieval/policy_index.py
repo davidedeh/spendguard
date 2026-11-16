@@ -5,7 +5,7 @@ from psycopg.rows import DictRow
 from spendguard.graph.state import RetrievedClause
 from spendguard.policy.loader import Clause, Policy
 from spendguard.store import policy_chunks
-from spendguard.store.policy_chunks import PolicyChunk
+from spendguard.store.policy_chunks import PolicyChunk, StoredClause
 
 CHUNK_CHARACTER_CAP = 1000
 PARAGRAPH_SEPARATOR = '\n\n'
@@ -42,11 +42,17 @@ def embedded_text(chunk: PolicyChunk) -> str:
 
 
 async def index_policy(
-    connection: AsyncConnection[DictRow], policy: Policy, embedder: Embeddings
+    connection: AsyncConnection[DictRow],
+    policy: Policy,
+    embedder: Embeddings,
+    embedding_model_id: str,
 ) -> None:
-    stored_hashes = await policy_chunks.stored_clause_hashes(connection)
+    stored = await policy_chunks.stored_clauses(connection)
     changed_clauses = [
-        clause for clause in policy.clauses if stored_hashes.get(clause.reference) != clause.hash
+        clause
+        for clause in policy.clauses
+        if stored.get(clause.reference)
+        != StoredClause(clause_hash=clause.hash, embedding_model_id=embedding_model_id)
     ]
     current_references = {clause.reference for clause in policy.clauses}
     chunks = [
@@ -61,9 +67,9 @@ async def index_policy(
         await policy_chunks.delete_clauses(
             connection,
             [clause.reference for clause in changed_clauses]
-            + [reference for reference in stored_hashes if reference not in current_references],
+            + [reference for reference in stored if reference not in current_references],
         )
-        await policy_chunks.insert_chunks(connection, chunks, embeddings)
+        await policy_chunks.insert_chunks(connection, chunks, embeddings, embedding_model_id)
         await policy_chunks.set_policy_version(connection, policy.version)
 
 

@@ -34,6 +34,8 @@ from spendguard.privacy.redaction import redact
 from spendguard.settings import Settings
 from spendguard.structured_logging import log_event
 
+LOGGED_AUDIT_DETAIL_KEYS = ('code', 'reason')
+
 
 def _attributes_changed_by_redaction(
     attributes: Mapping[str, object],
@@ -200,5 +202,13 @@ async def traced_advance(
                     metadata={'node': entry['node'], **entry['detail']},
                 )
         log_event(
-            entry['event'], submission_id=submission_id, node=entry['node'], **trace_identifiers
+            entry['event'],
+            submission_id=submission_id,
+            node=entry['node'],
+            **trace_identifiers,
+            **{
+                key: entry['detail'][key]
+                for key in LOGGED_AUDIT_DETAIL_KEYS
+                if isinstance(entry['detail'].get(key), str)
+            },
         )

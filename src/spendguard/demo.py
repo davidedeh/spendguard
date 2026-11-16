@@ -7,6 +7,7 @@ import textwrap
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -125,14 +126,20 @@ async def run_demo(
         '/submissions', params={'status': 'pending_review'}, headers=authorization
     )
     listed.raise_for_status()
-    pending = listed.json()['submissions']
-    print(f'Pending reviews: {len(pending)}', file=output)
-    for review in pending:
+    pending_by_id = {review['submission_id']: review for review in listed.json()['submissions']}
+    pending = [
+        (entry.sample.label, pending_by_id[entry.submission_id])
+        for entry in posted
+        if entry.submission_id in pending_by_id
+    ]
+    print(f'Pending reviews from this demo: {len(pending)}', file=output)
+    for label, review in pending:
         codes = ', '.join(finding['code'] for finding in review['findings']) or 'no findings'
+        amount = Decimal(review['base_currency_amount']).quantize(Decimal('0.01'))
         print(
-            f'  {review["submission_id"]}: requester {review["requester"]},'
-            f' {review["base_currency_amount"]} in base currency,'
-            f' recommendation {review["recommendation"]}, findings {codes}',
+            f'  {label}: {review["submission_id"]}, requester {review["requester"]},'
+            f' {amount} in base currency, recommendation {review["recommendation"]},'
+            f' findings {codes}',
             file=output,
         )
 

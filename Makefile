@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down migrate lint format typecheck test check build-wheel build-image validate-template smoke run-api run-worker purge-queue index-policy demo seed smoke-providers draft-cases freeze issue-token eval bootstrap secrets deploy destroy destroy-bootstrap
+.PHONY: help install up down migrate lint format typecheck test check build-wheel build-image validate-template smoke run-api run-worker purge-queue reset-local index-policy demo seed smoke-providers draft-cases freeze issue-token eval bootstrap secrets deploy destroy destroy-bootstrap
 
 not_built_yet = @echo "make $@ is not built yet ($(1))" >&2; exit 1
 
@@ -48,6 +48,10 @@ run-worker: ## Advance submissions from the local queue (calls the configured mo
 
 purge-queue: ## Empty this branch's local queue and its dead-letter queue (ElasticMQ only)
 	uv run python -m spendguard.queue.sqs
+
+reset-local: ## Drop and rebuild this branch's local database, seed it and empty its local queue; then run make index-policy
+	uv run python -m spendguard.db --drop-first
+	$(MAKE) seed purge-queue
 
 index-policy: ## Embed changed policy clauses into this branch's index (calls the configured embedding model)
 	uv run python -m spendguard.deployment.preparation

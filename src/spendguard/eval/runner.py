@@ -55,7 +55,7 @@ async def _measure(
     try:
         embedder = build_embedder(settings)
         async with connection_pool.connection() as connection:
-            await index_policy(connection, policy, embedder)
+            await index_policy(connection, policy, embedder, settings.embedding_model.model_id)
         results = await run_eval(
             cases,
             EvalResources(

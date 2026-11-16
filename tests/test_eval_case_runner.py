@@ -47,6 +47,8 @@ from spendguard.seed.loader import SEED_DIRECTORY, read_seed_directory
 from spendguard.settings import ChatModelSettings, EvalRow, Settings
 from spendguard.store import precedents, submissions
 
+EMBEDDING_MODEL_ID = make_test_settings().embedding_model.model_id
+
 POLICY = load_policy(POLICY_PATH)
 SEED_DATA = read_seed_directory(SEED_DIRECTORY)
 CASE_DIRECTORY = Path(__file__).parent.parent / 'evals' / 'cases'
@@ -99,7 +101,7 @@ async def test_a_case_run_through_the_graph_records_what_the_row_found_and_spent
     settings = make_test_settings()
     embedder = build_embedder(settings)
     async with connection_pool.connection() as connection:
-        await index_policy(connection, POLICY, embedder)
+        await index_policy(connection, POLICY, embedder, EMBEDDING_MODEL_ID)
     chat_model = ScriptedEvalModel(
         model_id='fake-chat',
         retrieval_queries=[clause_text('§2.4'), 'receipts for stationery'],
@@ -263,7 +265,7 @@ async def test_an_eval_run_reports_each_configured_row_in_order_with_memory_clea
     )
     embedder = build_embedder(settings)
     async with connection_pool.connection() as connection:
-        await index_policy(connection, POLICY, embedder)
+        await index_policy(connection, POLICY, embedder, EMBEDDING_MODEL_ID)
     await leftover_precedent(connection_pool, 'EMP-015')
     queries = [clause_text('§2.4'), 'receipts for stationery']
     models = {
@@ -368,7 +370,7 @@ async def indexed_resources(connection_pool: ConnectionPool) -> EvalResources:
     settings = make_test_settings()
     embedder = build_embedder(settings)
     async with connection_pool.connection() as connection:
-        await index_policy(connection, POLICY, embedder)
+        await index_policy(connection, POLICY, embedder, EMBEDDING_MODEL_ID)
     return EvalResources(settings, POLICY, SEED_DATA, connection_pool, embedder, None)
 
 
@@ -447,7 +449,7 @@ async def test_a_whole_policy_row_sharing_the_primary_model_runs_every_case_afre
     )
     embedder = build_embedder(settings)
     async with connection_pool.connection() as connection:
-        await index_policy(connection, POLICY, embedder)
+        await index_policy(connection, POLICY, embedder, EMBEDDING_MODEL_ID)
     queries = ['receipts for stationery', 'travel booking']
     models = {
         'Primary': ScriptedEvalModel(
@@ -707,7 +709,7 @@ async def test_each_row_becomes_a_langfuse_dataset_run_with_one_traced_item_per_
     tracing = tracing_into(exporter, langfuse_api, settings)
     embedder = build_embedder(settings)
     async with connection_pool.connection() as connection:
-        await index_policy(connection, POLICY, embedder)
+        await index_policy(connection, POLICY, embedder, EMBEDDING_MODEL_ID)
     queries = [clause_text('§2.4'), 'receipts for stationery']
     built_models: list[ScriptedEvalModel] = []
 

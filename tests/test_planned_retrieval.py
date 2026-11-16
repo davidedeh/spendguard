@@ -23,6 +23,8 @@ from spendguard.retrieval.policy_index import index_policy, retrieve_clauses
 from spendguard.seed.loader import read_seed_directory
 from spendguard.settings import ChatModelSettings, Settings
 
+EMBEDDING_MODEL_ID = make_test_settings().embedding_model.model_id
+
 FIXTURES = Path(__file__).parent / 'fixtures'
 FIXTURE_POLICY = load_policy(FIXTURES / 'policy' / 'valid_policy.yaml')
 SEED_DATA = read_seed_directory(FIXTURES / 'seed')
@@ -192,7 +194,7 @@ async def test_the_planned_queries_retrieve_the_fixture_clauses_they_describe(
         ],
     )
     config = graph_config(model, connection_pool, settings)
-    await index_policy(connection, FIXTURE_POLICY, config.embedder)
+    await index_policy(connection, FIXTURE_POLICY, config.embedder, EMBEDDING_MODEL_ID)
     queries = plan(claim_state(), config)['retrieval_queries']
 
     retrieved = await retrieve_clauses(
@@ -213,7 +215,7 @@ async def test_each_query_takes_its_top_k_clauses_and_the_union_holds_each_claus
     connection: AsyncConnection[DictRow],
 ) -> None:
     embedder = build_embedder(make_test_settings())
-    await index_policy(connection, FIXTURE_POLICY, embedder)
+    await index_policy(connection, FIXTURE_POLICY, embedder, EMBEDDING_MODEL_ID)
 
     single = await retrieve_clauses(
         connection, FIXTURE_POLICY, embedder, ['is alcohol reimbursed'], 3

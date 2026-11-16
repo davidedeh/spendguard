@@ -19,7 +19,7 @@ async def prepare_database(loaded_settings: Settings, policy: Policy, embedder: 
     async with await AsyncConnection.connect(
         connection_info, autocommit=True, prepare_threshold=None, row_factory=dict_row
     ) as connection:
-        await index_policy(connection, policy, embedder)
+        await index_policy(connection, policy, embedder, loaded_settings.embedding_model.model_id)
 
 
 def create_production_preparation_app() -> FastAPI:

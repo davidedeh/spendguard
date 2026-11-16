@@ -359,7 +359,12 @@ async def application(
             model_id='fake-chat', checks_asked_in_thread=checks_asked_in_thread
         )
         async with connection_pool.connection() as connection:
-            await index_policy(connection, application_policy, embedder)
+            await index_policy(
+                connection,
+                application_policy,
+                embedder,
+                application_settings.embedding_model.model_id,
+            )
         graph = build_graph(
             GraphConfig(
                 settings=application_settings,
@@ -1285,7 +1290,7 @@ PURPOSE_QUOTE = QuotedText(field='business_purpose', text='visiting the Leeds of
     ids=['an unretrieved clause', 'a quote not in the submission', 'an unsupplied precedent'],
 )
 async def test_a_judgement_finding_failing_verification_is_dropped_and_audited(
-    application: Application, verdict: CheckVerdict, reason: str
+    application: Application, verdict: CheckVerdict, reason: str, log_stream: io.StringIO
 ) -> None:
     application.chat_model.verdicts = [verdict]
     response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
@@ -1310,6 +1315,11 @@ async def test_a_judgement_finding_failing_verification_is_dropped_and_audited(
         },
     } in state['audit']
     assert await application.status_of(submission_id) == 'complete'
+    assert [
+        (line['submission_id'], line['code'], line['reason'])
+        for line in map(json.loads, log_stream.getvalue().splitlines())
+        if line['event'] == 'finding_dropped'
+    ] == [(submission_id, verdict.code, reason)]
 
 
 async def test_rule_and_judgement_findings_reach_review_as_one_verified_set(
@@ -1876,7 +1886,7 @@ async def test_the_demo_posts_its_samples_and_shows_a_pending_finding_with_its_q
             label='claim with injected instructions',
             webhook_path='/webhooks/expense-claims',
             delivery=expense_claim_delivery(
-                injection_claim_id, amount='21.75', business_purpose=injected_purpose
+                injection_claim_id, amount='21.7', business_purpose=injected_purpose
             ),
         ),
     ]
@@ -1892,6 +1902,10 @@ async def test_the_demo_posts_its_samples_and_shows_a_pending_finding_with_its_q
             await process_message(delivery.message, application.worker)
             application.queue.acknowledge(delivery.receipt_handle)
 
+    other_pending = await application.post_claim(
+        expense_claim_delivery(unique_claim_id(), amount='30.00', receipt_text=None)
+    )
+    await process_queued_messages(0)
     output = io.StringIO()
     succeeded = await run_demo(
         application.client,
@@ -1903,6 +1917,13 @@ async def test_the_demo_posts_its_samples_and_shows_a_pending_finding_with_its_q
 
     lines = output.getvalue().splitlines()
     assert succeeded
+    assert other_pending.json()['submission_id'] not in output.getvalue()
+    listed = lines[lines.index('Pending reviews from this demo: 2') + 1 :][:2]
+    assert [line.split(': ', 1)[0] for line in listed] == [
+        '  claim with an unclear purpose',
+        '  claim with injected instructions',
+    ]
+    assert '21.70 in base currency' in listed[1]
     assert '  clean small claim: complete' in lines
     assert '  claim with an unclear purpose: pending_review' in lines
     assert '  claim with injected instructions: pending_review' in lines

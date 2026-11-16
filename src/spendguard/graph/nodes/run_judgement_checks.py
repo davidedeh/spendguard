@@ -1,6 +1,7 @@
 import asyncio
+import copy
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, assert_never
 
 from langchain_core.messages import (
@@ -56,6 +57,26 @@ class JudgementReport(StrictModel):
 JUDGEMENT_REPORT_SCHEMA: dict[str, Any] = output_schema(JudgementReport)
 
 
+def quotable_fields(redacted_submission: Mapping[str, Any]) -> list[str]:
+    return [field for field, value in redacted_submission.items() if isinstance(value, str)]
+
+
+def judgement_report_schema(
+    checks: Sequence[FindingCode],
+    retrieved_references: Sequence[str],
+    fields: Sequence[str],
+) -> dict[str, Any]:
+    schema = copy.deepcopy(JUDGEMENT_REPORT_SCHEMA)
+    verdict_properties = schema['properties']['verdicts']['items']['properties']
+    verdict_properties['code']['enum'] = list(checks)
+    verdict_properties['clause_reference']['anyOf'] = [
+        *([{'type': 'string', 'enum': list(retrieved_references)}] if retrieved_references else []),
+        {'type': 'null'},
+    ]
+    verdict_properties['quotes']['items']['properties']['field']['enum'] = list(fields)
+    return schema
+
+
 def _outcome(verdict: CheckVerdict) -> JudgementOutcome | None:
     match verdict.outcome:
         case 'flagged':
@@ -97,11 +118,11 @@ def judgement_instructions(
     checks: Sequence[FindingCode],
     guidance: Sequence[CheckGuidance],
     policy_text: str,
+    fields: Sequence[str],
 ) -> str:
     look_for = {item['code']: item['look_for'] for item in guidance}
     check_lines = '\n'.join(
-        f'- {code} ({policy.finding_codes[code].clause.reference}'
-        f' {" > ".join(policy.finding_codes[code].clause.heading_path)})'
+        f'- {code} ({" > ".join(policy.finding_codes[code].clause.heading_path)})'
         + (f': look for {look_for[code]}' if look_for.get(code) else '')
         for code in checks
     )
@@ -114,7 +135,8 @@ def judgement_instructions(
         ' precedents for a finding code. Tool calls are limited, so call only what you need.\n\n'
         'For a flagged check, give the clause_reference of the policy clause it breaks, chosen'
         ' from the clauses below, and quote the evidence: each quote names the submission'
-        ' field and copies text from that field exactly, character for character. Cite by'
+        ' field and copies text from that field exactly, character for character.'
+        f' Quote only from these fields: {", ".join(fields)}. Cite by'
         ' precedent_id any precedent you rely on.\n\n'
         f'Policy clauses:\n\n{policy_text}\n\n'
         f'{DATA_TAG_INSTRUCTION}'
@@ -158,6 +180,7 @@ def _judged(
 ) -> ReviewState:
     model_settings = graph_config.settings.chat_models[graph_config.settings.primary_model_key]
     checks = judgement_checks(submission, graph_config.seed_data, graph_config.policy)
+    fields = quotable_fields(state['redacted_submission'])
     messages: list[BaseMessage] = [
         SystemMessage(
             content=judgement_instructions(
@@ -165,6 +188,7 @@ def _judged(
                 checks,
                 state['check_guidance'],
                 _policy_text(state, graph_config),
+                fields,
             )
         ),
         HumanMessage(content=untrusted_data(prompt_fields(state['redacted_submission']))),
@@ -209,7 +233,11 @@ def _judged(
     output = structured_reply(
         graph_config.chat_model,
         model_settings.structured_output_method,
-        JUDGEMENT_REPORT_SCHEMA,
+        judgement_report_schema(
+            checks,
+            [clause['clause_reference'] for clause in state['retrieved_clauses']],
+            fields,
+        ),
         messages,
     )
     judgement_report = JudgementReport.model_validate(output)

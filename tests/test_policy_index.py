@@ -13,6 +13,7 @@ from spendguard.models.factory import build_embedder
 from spendguard.policy.loader import Policy, load_policy
 from spendguard.retrieval.policy_index import CHUNK_CHARACTER_CAP, index_policy
 
+EMBEDDING_MODEL_ID = 'fake-embedding-model'
 FIXTURE_POLICY = load_policy(Path(__file__).parent / 'fixtures' / 'policy' / 'valid_policy.yaml')
 
 
@@ -42,10 +43,10 @@ async def test_re_indexing_an_unchanged_policy_embeds_nothing(
     connection: AsyncConnection[DictRow],
 ) -> None:
     embedder = CountingEmbedder()
-    await index_policy(connection, FIXTURE_POLICY, embedder)
+    await index_policy(connection, FIXTURE_POLICY, embedder, EMBEDDING_MODEL_ID)
     first_run_embeddings = len(embedder.embedded)
 
-    await index_policy(connection, FIXTURE_POLICY, embedder)
+    await index_policy(connection, FIXTURE_POLICY, embedder, EMBEDDING_MODEL_ID)
 
     assert first_run_embeddings == len(FIXTURE_POLICY.clauses)
     assert len(embedder.embedded) == first_run_embeddings
@@ -62,11 +63,11 @@ def with_clause_text(policy: Policy, clause_index: int, text: str) -> Policy:
 async def test_changing_one_clause_re_embeds_only_that_clause(
     connection: AsyncConnection[DictRow],
 ) -> None:
-    await index_policy(connection, FIXTURE_POLICY, CountingEmbedder())
+    await index_policy(connection, FIXTURE_POLICY, CountingEmbedder(), EMBEDDING_MODEL_ID)
     embedder = CountingEmbedder()
     changed_policy = with_clause_text(FIXTURE_POLICY, 4, 'Alcohol is never reimbursed.')
 
-    await index_policy(connection, changed_policy, embedder)
+    await index_policy(connection, changed_policy, embedder, EMBEDDING_MODEL_ID)
 
     assert embedder.embedded == ['Meals\n\nAlcohol is never reimbursed.']
 
@@ -82,9 +83,21 @@ async def test_a_clause_longer_than_the_cap_is_embedded_one_paragraph_group_per_
     )
     embedder = CountingEmbedder()
 
-    await index_policy(connection, long_policy, embedder)
+    await index_policy(connection, long_policy, embedder, EMBEDDING_MODEL_ID)
 
     assert [text for text in embedder.embedded if text.startswith('Meals\n\n')] == [
         f'Meals\n\n{first_paragraph}',
         f'Meals\n\n{second_paragraph}\n\n{third_paragraph}',
     ]
+
+
+async def test_indexing_with_another_embedding_model_re_embeds_every_clause(
+    connection: AsyncConnection[DictRow],
+) -> None:
+    await index_policy(connection, FIXTURE_POLICY, CountingEmbedder(), EMBEDDING_MODEL_ID)
+    embedder = CountingEmbedder()
+
+    await index_policy(connection, FIXTURE_POLICY, embedder, 'another-embedding-model')
+    await index_policy(connection, FIXTURE_POLICY, embedder, 'another-embedding-model')
+
+    assert len(embedder.embedded) == len(FIXTURE_POLICY.clauses)

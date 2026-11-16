@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -521,3 +522,61 @@ async def test_the_tool_supplies_the_requester_precedents_for_the_requested_code
 
     assert tool_results(model.received[1]) == {'call-0': [purpose_precedent], 'call-1': []}
     assert update['supplied_precedents'] == [purpose_precedent]
+
+
+async def test_the_report_schema_offers_only_the_asked_checks_retrieved_clauses_and_text_fields(
+    connection_pool: ConnectionPool,
+) -> None:
+    model = FakeChatModel(
+        model_id='fake-judge', responses=[AIMessage(content='Nothing to look up.'), report()]
+    )
+
+    update = await run_judgement_checks(claim_state(), graph_config(model, connection_pool))
+
+    [(_, schema)] = model.structured_output_calls
+    verdict_properties = schema['properties']['verdicts']['items']['properties']
+    assert verdict_properties['code']['enum'] == update['judgement_checks']
+    assert verdict_properties['clause_reference']['anyOf'] == [
+        {'type': 'string', 'enum': [ALCOHOL_CLAUSE]},
+        {'type': 'null'},
+    ]
+    assert verdict_properties['quotes']['items']['properties']['field']['enum'] == [
+        'type',
+        'claimant',
+        'spent_on',
+        'category',
+        'merchant',
+        'amount',
+        'currency',
+        'business_purpose',
+        'receipt_text',
+    ]
+
+
+async def test_the_judge_is_pointed_at_no_clause_reference_it_was_not_given(
+    connection_pool: ConnectionPool,
+) -> None:
+    model = FakeChatModel(
+        model_id='fake-judge', responses=[AIMessage(content='Nothing to look up.'), report()]
+    )
+
+    update = await run_judgement_checks(claim_state(), graph_config(model, connection_pool))
+
+    system_prompt = model.received[0][0].text
+    assert len(update['judgement_checks']) > 1
+    assert set(re.findall(r'§\d+\.\d+', system_prompt)) == {ALCOHOL_CLAUSE}
+
+
+async def test_the_judge_is_told_which_fields_it_may_quote(
+    connection_pool: ConnectionPool,
+) -> None:
+    model = FakeChatModel(
+        model_id='fake-judge', responses=[AIMessage(content='Nothing to look up.'), report()]
+    )
+
+    await run_judgement_checks(claim_state(), graph_config(model, connection_pool))
+
+    assert (
+        'Quote only from these fields: type, claimant, spent_on, category, merchant, amount,'
+        ' currency, business_purpose, receipt_text.'
+    ) in model.received[0][0].text

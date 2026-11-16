@@ -17,11 +17,24 @@ class PolicyChunk:
     policy_version: str
 
 
-async def stored_clause_hashes(connection: AsyncConnection[DictRow]) -> dict[str, str]:
+@dataclass(frozen=True)
+class StoredClause:
+    clause_hash: str
+    embedding_model_id: str
+
+
+async def stored_clauses(connection: AsyncConnection[DictRow]) -> dict[str, StoredClause]:
     rows = await (
-        await connection.execute('select distinct clause_reference, clause_hash from policy_chunks')
+        await connection.execute(
+            'select distinct clause_reference, clause_hash, embedding_model_id from policy_chunks'
+        )
     ).fetchall()
-    return {row['clause_reference']: row['clause_hash'] for row in rows}
+    return {
+        row['clause_reference']: StoredClause(
+            clause_hash=row['clause_hash'], embedding_model_id=row['embedding_model_id']
+        )
+        for row in rows
+    }
 
 
 async def delete_clauses(
@@ -36,11 +49,13 @@ async def insert_chunks(
     connection: AsyncConnection[DictRow],
     chunks: Sequence[PolicyChunk],
     embeddings: Sequence[Sequence[float]],
+    embedding_model_id: str,
 ) -> None:
     async with connection.cursor() as cursor:
         await cursor.executemany(
             'insert into policy_chunks (clause_reference, chunk_index, heading_path, text,'
-            ' clause_hash, policy_version, embedding) values (%s, %s, %s, %s, %s, %s, %s::vector)',
+            ' clause_hash, policy_version, embedding, embedding_model_id)'
+            ' values (%s, %s, %s, %s, %s, %s, %s::vector, %s)',
             [
                 (
                     chunk.clause_reference,
@@ -50,6 +65,7 @@ async def insert_chunks(
                     chunk.clause_hash,
                     chunk.policy_version,
                     _vector_literal(embedding),
+                    embedding_model_id,
                 )
                 for chunk, embedding in zip(chunks, embeddings, strict=True)
             ],
