@@ -11,6 +11,7 @@ from spendguard.branch_names import current_branch_name
 Provider = Literal['bedrock', 'google_genai', 'fake']
 AppEnvironment = Literal['local', 'test', 'deployed']
 StructuredOutputMethod = Literal['function_calling', 'json_schema']
+VISIBILITY_TIMEOUTS_PER_WORKER_TIMEOUT = 6
 
 
 class ModelSettings(BaseModel):
@@ -91,6 +92,18 @@ class Settings(BaseSettings):
             raise ValueError(
                 f'The embedding model uses provider {self.embedding_model.provider!r}, '
                 f'which is not in ALLOWED_PROVIDERS {list(self.allowed_providers)}'
+            )
+        return self
+
+    @model_validator(mode='after')
+    def _visibility_timeout_outlasts_the_worker(self) -> Self:
+        minimum = VISIBILITY_TIMEOUTS_PER_WORKER_TIMEOUT * self.worker_timeout_seconds
+        if self.queue_visibility_timeout_seconds < minimum:
+            raise ValueError(
+                'QUEUE_VISIBILITY_TIMEOUT_SECONDS must be at least'
+                f' {VISIBILITY_TIMEOUTS_PER_WORKER_TIMEOUT} times'
+                f' WORKER_TIMEOUT_SECONDS ({minimum}),'
+                f' but is {self.queue_visibility_timeout_seconds}'
             )
         return self
 
