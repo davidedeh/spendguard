@@ -43,3 +43,16 @@ jobs:
       - run: uv run pytest
       - run: uv build --wheel
       - run: docker build -t spendguard:ci .
+
+  template:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: 0.13.7
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+      - run: uv sync --frozen
+      - run: make validate-template
