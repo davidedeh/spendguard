@@ -113,7 +113,7 @@ make run-worker                     # terminal 2; advances submissions with the 
 make demo TOKEN=<token>             # terminal 3; URL=<base URL> if the API is not on http://localhost:8000
 ```
 
-The samples keep their eval case IDs as claim IDs, so running the demo again returns the same submissions rather than creating new ones. A message the worker fails on stays queued and is retried, and after three failures it moves to the dead-letter queue.
+The samples keep their eval case IDs as claim IDs, so running the demo again returns the same submissions rather than creating new ones. A message the worker fails on, or cannot read, stays queued and is retried, and after three receives it moves to the dead-letter queue. `make purge-queue` empties this branch's local queue and its dead-letter queue; it refuses to run unless `SQS_ENDPOINT_URL` points at ElasticMQ.
 
 One compose stack serves every worktree. The database and queue names derive from the sanitised git branch name, so branches share services without sharing state.
 

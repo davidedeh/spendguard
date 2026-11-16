@@ -1,4 +1,5 @@
 import json
+import sys
 import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -6,10 +7,12 @@ from typing import TYPE_CHECKING
 import boto3
 from botocore.config import Config
 from botocore.exceptions import EndpointConnectionError
+from pydantic import ValidationError
 
 from spendguard.branch_names import dead_letter_queue_name_for, queue_name_for_branch
 from spendguard.queue.messages import MAX_RECEIVE_COUNT, QueueMessage, ReceivedMessage
-from spendguard.settings import Settings
+from spendguard.settings import Settings, load_settings
+from spendguard.structured_logging import log_event
 
 if TYPE_CHECKING:
     from mypy_boto3_sqs import SQSClient
@@ -87,6 +90,24 @@ def ensure_branch_queue(settings: Settings) -> str:
     return queue_urls.queue_url
 
 
+class NotALocalQueueError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__('purging only clears a local queue: set SQS_ENDPOINT_URL to ElasticMQ')
+
+
+def purge_branch_queues(settings: Settings) -> None:
+    if settings.sqs_endpoint_url is None:
+        raise NotALocalQueueError
+    client = sqs_client(settings)
+    queue_urls = ensure_queue(
+        client,
+        queue_name_for_branch(settings.branch_name),
+        settings.queue_visibility_timeout_seconds,
+    )
+    client.purge_queue(QueueUrl=queue_urls.queue_url)
+    client.purge_queue(QueueUrl=queue_urls.dead_letter_queue_url)
+
+
 @dataclass(frozen=True)
 class SqsQueue:
     client: 'SQSClient'
@@ -104,13 +125,30 @@ class SqsQueue:
         response = self.client.receive_message(
             QueueUrl=self.queue_url, MaxNumberOfMessages=MAX_MESSAGES_PER_RECEIVE
         )
-        return [
-            ReceivedMessage(
-                message=QueueMessage.model_validate_json(received['Body']),
-                receipt_handle=received['ReceiptHandle'],
+        deliveries: list[ReceivedMessage] = []
+        for received in response.get('Messages', []):
+            try:
+                message = QueueMessage.model_validate_json(received['Body'])
+            except ValidationError:
+                log_event('unreadable_message_skipped', message_id=received['MessageId'])
+                continue
+            deliveries.append(
+                ReceivedMessage(message=message, receipt_handle=received['ReceiptHandle'])
             )
-            for received in response.get('Messages', [])
-        ]
+        return deliveries
 
     def acknowledge(self, receipt_handle: str) -> None:
         self.client.delete_message(QueueUrl=self.queue_url, ReceiptHandle=receipt_handle)
+
+
+def main() -> None:
+    loaded_settings = load_settings()
+    try:
+        purge_branch_queues(loaded_settings)
+    except NotALocalQueueError as error:
+        sys.exit(str(error))
+    print(f'purged the local queue and dead-letter queue for {loaded_settings.branch_name}')
+
+
+if __name__ == '__main__':
+    main()

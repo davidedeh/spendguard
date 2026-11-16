@@ -1193,7 +1193,7 @@ def lambda_record(message_id: str, body: str) -> dict[str, Any]:
 
 
 async def test_a_failing_record_and_every_record_after_it_are_reported_as_batch_failures(
-    application: Application,
+    application: Application, log_stream: io.StringIO
 ) -> None:
     first = await application.post_claim(expense_claim_delivery(unique_claim_id()))
     last = await application.post_claim(expense_claim_delivery(unique_claim_id()))
@@ -1213,6 +1213,11 @@ async def test_a_failing_record_and_every_record_after_it_are_reported_as_batch_
     }
     assert await application.status_of(first.json()['submission_id']) == 'complete'
     assert await application.status_of(last.json()['submission_id']) == 'received'
+    assert [
+        (line['message_id'], line['error_type'])
+        for line in map(json.loads, log_stream.getvalue().splitlines())
+        if line['event'] == 'message_failed'
+    ] == [('message-2', 'ValidationError')]
 
 
 async def test_the_worker_app_answers_a_queue_event_posted_to_it_with_the_batch_failures(
