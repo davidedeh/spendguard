@@ -9,7 +9,12 @@ from spendguard.api.dependencies import ApiDependencies, api_dependencies, signe
 from spendguard.queue.messages import QueueMessage
 from spendguard.store import submissions
 from spendguard.strict_model import StrictModel
-from spendguard.submission import ExpenseClaimDelivery
+from spendguard.submission import (
+    ExpenseClaim,
+    ExpenseClaimDelivery,
+    SupplierInvoice,
+    SupplierInvoiceDelivery,
+)
 
 router = APIRouter()
 
@@ -22,16 +27,7 @@ class Accepted(StrictModel):
 async def receive_expense_claim(
     request: Request, dependencies: Annotated[ApiDependencies, Depends(api_dependencies)]
 ) -> Accepted:
-    settings = dependencies.settings
-    raw_body = await signed_body(
-        request, settings.webhook_signing_key, settings.signature_tolerance_seconds
-    )
-    try:
-        delivery = ExpenseClaimDelivery.model_validate_json(raw_body)
-    except ValidationError as error:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, json.loads(error.json(include_url=False))
-        ) from error
+    delivery = await _signed_delivery(request, dependencies, ExpenseClaimDelivery)
     category = delivery.claim.category
     if category not in dependencies.policy.expense_categories:
         raise HTTPException(
@@ -48,12 +44,72 @@ async def receive_expense_claim(
                 }
             ],
         )
-    canonical_body = delivery.model_dump_json()
+    return await _accept(
+        dependencies,
+        idempotency_key=delivery.idempotency_key,
+        submission=delivery.claim,
+        canonical_body=delivery.model_dump_json(),
+    )
+
+
+@router.post('/webhooks/supplier-invoices', status_code=status.HTTP_202_ACCEPTED)
+async def receive_supplier_invoice(
+    request: Request, dependencies: Annotated[ApiDependencies, Depends(api_dependencies)]
+) -> Accepted:
+    delivery = await _signed_delivery(request, dependencies, SupplierInvoiceDelivery)
+    if dependencies.seed_data.invoice_requester(delivery.invoice) is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            [
+                {
+                    'type': 'no_requester',
+                    'loc': ['invoice'],
+                    'msg': (
+                        'Give a known purchase_order, or a cost_centre with an owner,'
+                        ' so the invoice has a requester'
+                    ),
+                    'input': {
+                        'purchase_order': delivery.invoice.purchase_order,
+                        'cost_centre': delivery.invoice.cost_centre,
+                    },
+                }
+            ],
+        )
+    return await _accept(
+        dependencies,
+        idempotency_key=delivery.idempotency_key,
+        submission=delivery.invoice,
+        canonical_body=delivery.model_dump_json(),
+    )
+
+
+async def _signed_delivery[Delivery: StrictModel](
+    request: Request, dependencies: ApiDependencies, delivery_model: type[Delivery]
+) -> Delivery:
+    settings = dependencies.settings
+    raw_body = await signed_body(
+        request, settings.webhook_signing_key, settings.signature_tolerance_seconds
+    )
+    try:
+        return delivery_model.model_validate_json(raw_body)
+    except ValidationError as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, json.loads(error.json(include_url=False))
+        ) from error
+
+
+async def _accept(
+    dependencies: ApiDependencies,
+    *,
+    idempotency_key: str,
+    submission: ExpenseClaim | SupplierInvoice,
+    canonical_body: str,
+) -> Accepted:
     recording = await submissions.record_submission(
         dependencies.connection_pool,
-        idempotency_key=delivery.idempotency_key,
-        submission_type='expense_claim',
-        payload=delivery.claim.model_dump(mode='json'),
+        idempotency_key=idempotency_key,
+        submission_type=submission.type,
+        payload=submission.model_dump(mode='json'),
         payload_hash=hashlib.sha256(canonical_body.encode()).hexdigest(),
     )
     if recording.outcome == 'conflicting':
@@ -65,12 +121,7 @@ async def receive_expense_claim(
             QueueMessage(
                 type='start',
                 submission_id=recording.submission_id,
-                thread_id=delivery.idempotency_key,
+                thread_id=idempotency_key,
             )
         )
     return Accepted(submission_id=str(recording.submission_id))
-
-
-@router.post('/webhooks/supplier-invoices')
-async def receive_supplier_invoice() -> None:
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, 'not implemented')

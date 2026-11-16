@@ -41,3 +41,14 @@ def test_a_model_price_records_the_date_it_was_taken() -> None:
 
     assert settings.model_prices['fake_primary'].priced_on == datetime.date(2026, 11, 16)
     assert settings.model_prices['fake_primary'].output_per_million_tokens_usd == Decimal('5.00')
+
+
+def test_a_visibility_timeout_under_six_worker_timeouts_is_rejected() -> None:
+    with pytest.raises(ValueError, match=r'at least 6 times WORKER_TIMEOUT_SECONDS \(720\)'):
+        make_test_settings(worker_timeout_seconds=120, queue_visibility_timeout_seconds=719)
+
+
+def test_a_visibility_timeout_of_exactly_six_worker_timeouts_is_accepted() -> None:
+    settings = make_test_settings(worker_timeout_seconds=50, queue_visibility_timeout_seconds=300)
+
+    assert settings.queue_visibility_timeout_seconds == 300

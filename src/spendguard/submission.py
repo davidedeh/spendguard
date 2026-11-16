@@ -48,3 +48,11 @@ class ExpenseClaimDelivery(StrictModel):
     @property
     def idempotency_key(self) -> str:
         return f'expense_claim:{self.source}:{self.claim_id}'
+
+
+class SupplierInvoiceDelivery(StrictModel):
+    invoice: SupplierInvoice
+
+    @property
+    def idempotency_key(self) -> str:
+        return f'supplier_invoice:{self.invoice.supplier}:{self.invoice.supplier_invoice_number}'
