@@ -2,10 +2,9 @@ import asyncio
 import dataclasses
 import datetime
 import json
-import re
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,6 +36,7 @@ from spendguard.graph.nodes.execute import (
     DecisionEventSender,
     SignedDecisionEventSender,
 )
+from spendguard.graph.nodes.intake import SUBMISSION_ADAPTER
 from spendguard.graph.nodes.plan import RetrievalPlan
 from spendguard.graph.nodes.run_judgement_checks import CheckVerdict, JudgementReport, QuotedText
 from spendguard.models.factory import build_embedder
@@ -47,6 +47,7 @@ from spendguard.queue.memory import InMemoryQueue
 from spendguard.queue.messages import QueueMessage
 from spendguard.queue.sqs import SqsQueue, sqs_client
 from spendguard.retrieval.policy_index import index_policy
+from spendguard.rules.checks import judgement_checks
 from spendguard.security.approver_tokens import issue_token
 from spendguard.security.signatures import sign
 from spendguard.seed.loader import read_seed_directory
@@ -210,14 +211,10 @@ def clause_reference(clause_id: str) -> str:
     return next(clause.reference for clause in POLICY.clauses if clause.id == clause_id)
 
 
-ASKED_CHECK_PATTERN = re.compile(r'^- ([A-Z_]+) \(', re.MULTILINE)
-
-
 def unscripted_checks_cleared(
-    messages: list[BaseMessage], scripted: list[CheckVerdict], unanswered: list[FindingCode]
+    asked_codes: list[FindingCode], scripted: list[CheckVerdict], unanswered: list[FindingCode]
 ) -> list[CheckVerdict]:
     scripted_codes = {verdict.code for verdict in scripted}
-    asked_codes = ASKED_CHECK_PATTERN.findall(messages[0].text)
     return scripted + [
         CheckVerdict(
             code=code,
@@ -232,7 +229,14 @@ def unscripted_checks_cleared(
     ]
 
 
+def thread_id_of(run_manager: CallbackManagerForLLMRun | None) -> str:
+    assert run_manager is not None
+    thread_id: str = run_manager.metadata['thread_id']
+    return thread_id
+
+
 class PlanningChatModel(FakeChatModel):
+    checks_asked_in_thread: Callable[[str], list[FindingCode]]
     verdicts: list[CheckVerdict] = Field(default_factory=list)
     unanswered: list[FindingCode] = Field(default_factory=list)
     retrieval_queries: list[str] = Field(
@@ -256,7 +260,11 @@ class PlanningChatModel(FakeChatModel):
         elif bound_tool_names == [JudgementReport.__name__]:
             reply = structured_response(
                 JudgementReport(
-                    verdicts=unscripted_checks_cleared(messages, self.verdicts, self.unanswered)
+                    verdicts=unscripted_checks_cleared(
+                        self.checks_asked_in_thread(thread_id_of(run_manager)),
+                        self.verdicts,
+                        self.unanswered,
+                    )
                 )
             )
         elif self.precedent_lookups and not any(
@@ -305,8 +313,8 @@ async def application(
     application_settings: Settings,
     application_policy: Policy,
 ) -> AsyncIterator[Application]:
-    with psycopg.connect(branch_database) as connection:
-        replace_seed_data(connection, SEED_DATA)
+    with psycopg.connect(branch_database) as seed_connection:
+        replace_seed_data(seed_connection, SEED_DATA)
     await precedents.clear_precedents(connection_pool)
     queue = InMemoryQueue(
         visibility_timeout_seconds=application_settings.queue_visibility_timeout_seconds
@@ -332,7 +340,15 @@ async def application(
             )
         )
         embedder = build_embedder(application_settings)
-        chat_model = PlanningChatModel(model_id='fake-chat')
+
+        def checks_asked_in_thread(thread_id: str) -> list[FindingCode]:
+            snapshot = graph.get_state(thread_config(thread_id))
+            submission = SUBMISSION_ADAPTER.validate_python(snapshot.values['submission'])
+            return judgement_checks(submission, SEED_DATA, application_policy)
+
+        chat_model = PlanningChatModel(
+            model_id='fake-chat', checks_asked_in_thread=checks_asked_in_thread
+        )
         async with connection_pool.connection() as connection:
             await index_policy(connection, application_policy, embedder)
         graph = build_graph(
