@@ -58,8 +58,8 @@ draft-cases: ## Draft eval cases with provider rotation (calls the real drafting
 freeze: ## Validate the eval dataset and write the lock file
 	uv run python -m spendguard.eval.freeze
 
-issue-token: ## Issue an approver bearer token and print it once
-	$(call not_built_yet,Spec 2 approver auth)
+issue-token: ## Issue an approver bearer token and print it once (APPROVER=employee reference)
+	uv run python -m spendguard.security.approver_tokens $(APPROVER)
 
 eval: ## Run the eval against the frozen dataset
 	$(call not_built_yet,Spec 2 eval runner)
