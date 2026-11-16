@@ -31,6 +31,7 @@ from spendguard.graph.nodes.execute import DecisionEvent
 from spendguard.graph.state import (
     Decision,
     Disposition,
+    DispositionVerdict,
     RecordedFinding,
     ReviewState,
     precedent_clearances,
@@ -161,14 +162,20 @@ def _scripted_dispositions(
     dispositions: list[Disposition] = []
     for finding in findings:
         scripted = scripted_by_code.get(finding['code'])
-        dispositions.append(
-            {
-                'finding_id': finding['finding_id'],
-                'verdict': 'upheld' if scripted is None else scripted.disposition,
-                'reason': UPHELD_WITHOUT_A_SCRIPTED_REASON
+        if scripted is None or scripted.disposition == 'upheld':
+            verdict: DispositionVerdict = 'upheld'
+            reason = (
+                UPHELD_WITHOUT_A_SCRIPTED_REASON
                 if scripted is None or scripted.reason is None
-                else scripted.reason,
-            }
+                else scripted.reason
+            )
+        elif scripted.reason is not None:
+            verdict = 'dismissed'
+            reason = scripted.reason
+        else:
+            raise ValueError(f'dismissing {scripted.code} needs a reason')
+        dispositions.append(
+            {'finding_id': finding['finding_id'], 'verdict': verdict, 'reason': reason}
         )
     return dispositions
 
