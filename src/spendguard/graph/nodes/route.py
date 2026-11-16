@@ -30,7 +30,8 @@ async def route(state: ReviewState, graph_config: GraphConfig) -> ReviewState:
         ),
         base_amount=Decimal(state['base_currency_amount']),
         policy=graph_config.policy,
-        force_human_review=graph_config.settings.force_human_review,
+        force_human_review=graph_config.settings.force_human_review
+        or bool(state['unanswered_checks']),
     )
     recommendation = decisions.recommend(reviewed_findings)
     await submissions.record_review(

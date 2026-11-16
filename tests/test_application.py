@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import json
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -207,8 +208,31 @@ def clause_reference(clause_id: str) -> str:
     return next(clause.reference for clause in POLICY.clauses if clause.id == clause_id)
 
 
+ASKED_CHECK_PATTERN = re.compile(r'^- ([A-Z_]+) \(', re.MULTILINE)
+
+
+def unscripted_checks_cleared(
+    messages: list[BaseMessage], scripted: list[CheckVerdict], unanswered: list[FindingCode]
+) -> list[CheckVerdict]:
+    scripted_codes = {verdict.code for verdict in scripted}
+    asked_codes = ASKED_CHECK_PATTERN.findall(messages[0].text)
+    return scripted + [
+        CheckVerdict(
+            code=code,
+            outcome='not_flagged',
+            clause_reference=None,
+            quotes=[],
+            cited_precedent_ids=[],
+            precedent_id=None,
+        )
+        for code in asked_codes
+        if code not in scripted_codes and code not in unanswered
+    ]
+
+
 class PlanningChatModel(FakeChatModel):
     verdicts: list[CheckVerdict] = Field(default_factory=list)
+    unanswered: list[FindingCode] = Field(default_factory=list)
     retrieval_queries: list[str] = Field(
         default_factory=lambda: ['is alcohol reimbursed with a meal', 'receipts for a lunch']
     )
@@ -228,7 +252,11 @@ class PlanningChatModel(FakeChatModel):
                 RetrievalPlan(retrieval_queries=self.retrieval_queries, check_guidance=[])
             )
         elif bound_tool_names == [JudgementReport.__name__]:
-            reply = structured_response(JudgementReport(verdicts=self.verdicts))
+            reply = structured_response(
+                JudgementReport(
+                    verdicts=unscripted_checks_cleared(messages, self.verdicts, self.unanswered)
+                )
+            )
         elif self.precedent_lookups and not any(
             isinstance(message, ToolMessage) for message in messages
         ):
@@ -375,6 +403,27 @@ async def test_a_signed_claim_with_a_receipt_under_the_threshold_ends_complete_w
     events = await application.recorded_events(submission_id)
     assert [(event['idempotency_key'], event['outcome']) for event in events] == [
         (submission_id, 'approved')
+    ]
+
+
+async def test_a_clean_claim_whose_judgement_left_a_check_unanswered_waits_for_review(
+    application: Application,
+) -> None:
+    application.chat_model.unanswered = ['RECEIPT_MISMATCH']
+    response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    assert await application.status_of(submission_id) == 'pending_review'
+    assert await application.recorded_events(submission_id) == []
+    state = await application.review_state(submission_id)
+    assert [entry for entry in state['audit'] if entry['event'] == 'judgement_verdict_missing'] == [
+        {
+            'node': 'run_judgement_checks',
+            'event': 'judgement_verdict_missing',
+            'detail': {'code': 'RECEIPT_MISMATCH'},
+        }
     ]
 
 

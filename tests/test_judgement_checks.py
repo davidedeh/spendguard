@@ -180,6 +180,36 @@ async def test_a_flagged_check_becomes_a_candidate_finding_and_a_clear_one_an_ou
     ]
 
 
+async def test_every_asked_check_the_model_gives_no_verdict_for_is_audited_as_missing(
+    connection_pool: ConnectionPool,
+) -> None:
+    model = FakeChatModel(
+        model_id='fake-judge',
+        responses=[
+            AIMessage(content='I have what I need.'),
+            report(
+                verdict('PURPOSE_UNCLEAR', 'not_flagged'),
+                verdict('ALCOHOL_NOT_PERMITTED', 'not_flagged'),
+            ),
+        ],
+    )
+
+    update = await run_judgement_checks(claim_state(), graph_config(model, connection_pool))
+
+    assert update['audit'] == [
+        {
+            'node': 'run_judgement_checks',
+            'event': 'judgement_verdict_missing',
+            'detail': {'code': 'WEEKEND_SPEND_UNJUSTIFIED'},
+        },
+        {
+            'node': 'run_judgement_checks',
+            'event': 'judgement_verdict_missing',
+            'detail': {'code': 'RECEIPT_MISMATCH'},
+        },
+    ]
+
+
 def tool_calls(*calls: tuple[str, dict[str, Any]]) -> AIMessage:
     return AIMessage(
         content='',
@@ -315,13 +345,11 @@ async def test_the_step_cap_stops_a_model_that_keeps_calling_tools_and_asks_for_
         True,
     ]
     assert [outcome['code'] for outcome in update['judgement_outcomes']] == ['PURPOSE_UNCLEAR']
-    assert update['audit'] == [
-        {
-            'node': 'run_judgement_checks',
-            'event': 'tool_call_limit_reached',
-            'detail': {'tool_calls': 3},
-        }
-    ]
+    assert update['audit'][0] == {
+        'node': 'run_judgement_checks',
+        'event': 'tool_call_limit_reached',
+        'detail': {'tool_calls': 3},
+    }
 
 
 @pytest.mark.parametrize(

@@ -193,8 +193,19 @@ def _judged(
         messages,
     )
     judgement_report = JudgementReport.model_validate(output)
+    answered_codes = {verdict.code for verdict in judgement_report.verdicts}
+    unanswered_checks = [code for code in checks if code not in answered_codes]
+    audit.extend(
+        {
+            'node': 'run_judgement_checks',
+            'event': 'judgement_verdict_missing',
+            'detail': {'code': code},
+        }
+        for code in unanswered_checks
+    )
     return {
         'judgement_checks': checks,
+        'unanswered_checks': unanswered_checks,
         'supplied_precedents': bound.supplied_precedents,
         'judgement_outcomes': [_outcome(verdict) for verdict in judgement_report.verdicts],
         'audit': audit,
