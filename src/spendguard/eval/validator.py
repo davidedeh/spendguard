@@ -15,6 +15,7 @@ from spendguard.eval.cases import (
     HISTORY_CODES,
     SINGLE_FINDING_SLICES,
     EvalCase,
+    ExpectedClearance,
     ExpectedFinding,
     InjectionField,
     InjectionPlan,
@@ -24,7 +25,7 @@ from spendguard.eval.cases import (
     Split,
 )
 from spendguard.eval.receipts import TIP_LABEL_TEXT, read_receipt
-from spendguard.policy.loader import CheckKind, FindingCode, Policy
+from spendguard.policy.loader import CheckKind, FindingCode, Policy, PrecedentScope
 from spendguard.rules.checks import (
     WEEKEND_CODE,
     base_currency_amount,
@@ -81,6 +82,7 @@ def validate_dataset(
     if len(parsed_cases) == len(cases):
         problems.extend(_judgement_and_memory_problems(list(parsed_cases.values()), policy, plan))
         problems.extend(_rule_coverage_problems(list(parsed_cases.values()), policy, plan))
+        problems.extend(_memory_pair_problems(parsed_cases, policy, seed_data))
     if problems:
         return DatasetReport(problems=tuple(problems), dataset_hash=None)
     return DatasetReport(problems=(), dataset_hash=_dataset_hash(list(parsed_cases.values())))
@@ -125,11 +127,11 @@ def case_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iterat
     yield from _injection_plan_problems(case)
     if case.scripted_review is not None:
         references.append(('approver', case.scripted_review.approver))
-        finding_ids = {finding.id for finding in case.expected_findings}
+        expected_codes = {finding.code for finding in case.expected_findings}
         for disposition in case.scripted_review.dispositions:
-            if disposition.finding_id not in finding_ids:
+            if disposition.code not in expected_codes:
                 yield (
-                    f'a scripted disposition names finding {disposition.finding_id},'
+                    f'a scripted disposition names {disposition.code},'
                     ' which the case does not expect'
                 )
     known_references = {
@@ -311,33 +313,43 @@ def _label_problems(case: EvalCase, policy: Policy, seed_data: SeedData) -> Iter
         )
     yield from _history_copy_problems(case, seed_data)
     expected_route, expected_recommendation = computed_route_and_recommendation(
-        case.expected_findings, submission, seed_data, policy
+        case.expected_findings, case.expected_clearance, submission, seed_data, policy
     )
     if case.expected_route != expected_route:
         yield f'the route rule gives {expected_route}, not {case.expected_route}'
     if case.expected_recommendation != expected_recommendation:
+        precedents = (
+            'no precedents'
+            if case.expected_clearance is None
+            else f'{case.expected_clearance.code} cleared by precedent'
+        )
         yield (
-            f'the recommendation rule gives {expected_recommendation} with no precedents,'
+            f'the recommendation rule gives {expected_recommendation} with {precedents},'
             f' not {case.expected_recommendation}'
         )
 
 
 def computed_route_and_recommendation(
     expected_findings: Sequence[ExpectedFinding],
+    clearance: ExpectedClearance | None,
     submission: Submission,
     seed_data: SeedData,
     policy: Policy,
 ) -> tuple[Route, Recommendation]:
     findings = [finding_for(finding.code, policy) for finding in expected_findings]
+    cleared_code = None if clearance is None else clearance.code
     expected_route = route(
         findings=findings,
-        cleared_by_precedent=False,
+        cleared_by_precedent=clearance is not None,
         base_amount=base_currency_amount(submission, seed_data, policy),
         policy=policy,
         force_human_review=False,
     )
     expected_recommendation = recommend(
-        [ReviewedFinding(finding, has_precedent=False) for finding in findings]
+        [
+            ReviewedFinding(finding, has_precedent=finding.code == cleared_code)
+            for finding in findings
+        ]
     )
     return expected_route, expected_recommendation
 
@@ -464,6 +476,141 @@ def _judgement_and_memory_problems(
                 f'the {split} split has {memory_pair_count} memory pairs,'
                 f' the plan says {split_plan.memory_pairs}'
             )
+
+
+def _memory_pair_problems(
+    cases: Mapping[str, EvalCase], policy: Policy, seed_data: SeedData
+) -> Iterator[str]:
+    pairs = {
+        (case.split, case.id): case for case in cases.values() if case.scripted_review is not None
+    }
+    for source, follow_up in cases.items():
+        clearance = follow_up.expected_clearance
+        if clearance is None:
+            continue
+        pair = pairs.get((follow_up.split, clearance.precedent_from))
+        if pair is None:
+            yield (
+                f'{source}: its expected clearance names {clearance.precedent_from}, which is not'
+                f' a memory pair in the {follow_up.split} split'
+            )
+        else:
+            yield from (
+                f'{source}: {problem}'
+                for problem in follow_up_problems(pair, follow_up, policy, seed_data)
+            )
+    for source, pair in cases.items():
+        if pair.scripted_review is None:
+            continue
+        follow_up_count = sum(
+            case.split == pair.split and _follows_up(case, pair) for case in cases.values()
+        )
+        if follow_up_count == 0:
+            yield f'{source}: memory pair has no follow-up'
+        elif follow_up_count > 1:
+            yield f'{source}: memory pair has {follow_up_count} follow-ups, it needs one'
+    yield from _reservation_problems(cases, list(pairs.values()), policy)
+
+
+def _reservation_problems(
+    cases: Mapping[str, EvalCase], pairs: list[EvalCase], policy: Policy
+) -> Iterator[str]:
+    for source, case in cases.items():
+        for pair in pairs:
+            if case.split != pair.split or case.id == pair.id or _follows_up(case, pair):
+                continue
+            for code in sorted(dismissed_codes(pair) & case.intent.codes):
+                scope = policy.finding_codes[code].precedent_scope
+                if scope is None:
+                    continue
+                subject = precedent_subject(pair.submission, scope)
+                if subject is not None and precedent_subject(case.submission, scope) == subject:
+                    yield (
+                        f'{source}: shares {subject} and {code} with memory pair {pair.id},'
+                        f' which reserves them in the {pair.split} split'
+                    )
+
+
+def _follows_up(case: EvalCase, pair: EvalCase) -> bool:
+    return case.expected_clearance is not None and case.expected_clearance.precedent_from == pair.id
+
+
+def follow_up_problems(
+    pair: EvalCase, follow_up: EvalCase, policy: Policy, seed_data: SeedData
+) -> Iterator[str]:
+    clearance = follow_up.expected_clearance
+    if clearance is None:
+        return
+    yield from paired_draft_problems(pair, follow_up)
+    scope = policy.finding_codes[clearance.code].precedent_scope
+    if scope is not None:
+        subject = precedent_subject(follow_up.submission, scope)
+        pair_subject = precedent_subject(pair.submission, scope)
+        if subject != pair_subject:
+            yield (
+                f'its {scope} is {subject}, the {scope} of memory pair {pair.id} is {pair_subject}'
+            )
+    dated_on = follow_up.submission.dated_on
+    if dated_on <= pair.submission.dated_on:
+        yield (
+            f'its date {dated_on.isoformat()} is not after'
+            f' {pair.submission.dated_on.isoformat()}, the date of memory pair {pair.id}'
+        )
+    on_weekend_or_holiday = falls_on_weekend_or_holiday(dated_on, seed_data)
+    if clearance.code == WEEKEND_CODE and not on_weekend_or_holiday:
+        yield (
+            f'a follow-up cleared of {WEEKEND_CODE} needs a weekend or public holiday, and'
+            f' {dated_on.isoformat()} is a working day'
+        )
+    if clearance.code != WEEKEND_CODE and on_weekend_or_holiday:
+        yield (
+            f'a follow-up cleared of {clearance.code} needs a working day, and'
+            f' {dated_on.isoformat()} is a weekend or public holiday'
+        )
+    if follow_up.intent.codes:
+        intended_codes = ', '.join(sorted(follow_up.intent.codes))
+        yield f'a follow-up targets no findings, its intent names {intended_codes}'
+    submission = follow_up.submission
+    if seed_data.company_rate_problem(submission.currency, dated_on, policy.base_currency):
+        return
+    base_amount = base_currency_amount(submission, seed_data, policy)
+    if base_amount > policy.auto_approve_threshold:
+        yield (
+            f'its base-currency amount {base_amount} is over the auto-approve threshold of'
+            f' {policy.auto_approve_threshold}'
+        )
+
+
+def paired_draft_problems(pair: EvalCase, follow_up: EvalCase) -> Iterator[str]:
+    clearance = follow_up.expected_clearance
+    if clearance is None:
+        return
+    if pair.scripted_review is not None and clearance.code not in dismissed_codes(pair):
+        yield (
+            f'its clearance is for {clearance.code}, which memory pair {pair.id} does not dismiss'
+        )
+    if follow_up.submission.amount == pair.submission.amount:
+        yield f'its amount {follow_up.submission.amount} is the amount of memory pair {pair.id}'
+
+
+def precedent_subject(submission: Submission, scope: PrecedentScope) -> str | None:
+    match scope:
+        case 'employee':
+            return submission.claimant if isinstance(submission, ExpenseClaim) else None
+        case 'supplier':
+            return submission.supplier if isinstance(submission, SupplierInvoice) else None
+        case _:
+            assert_never(scope)
+
+
+def dismissed_codes(case: EvalCase) -> frozenset[FindingCode]:
+    if case.scripted_review is None:
+        return frozenset()
+    return frozenset(
+        disposition.code
+        for disposition in case.scripted_review.dispositions
+        if disposition.disposition == 'dismissed'
+    )
 
 
 def _rule_coverage_problems(

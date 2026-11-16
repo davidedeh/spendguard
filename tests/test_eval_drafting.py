@@ -16,7 +16,13 @@ from pydantic import Field
 from settings_factory import make_test_settings
 from spendguard.eval.briefs import CaseBrief, generate_briefs
 from spendguard.eval.cases import DraftedBy, EvalCase, SlicePlan, read_case_directory
-from spendguard.eval.drafting import DRAFTED_CASE_SCHEMA, assign_drafters, run
+from spendguard.eval.drafting import (
+    DRAFTED_CASE_SCHEMA,
+    DRAFTED_PAIR_SCHEMA,
+    assign_drafters,
+    drafting_units,
+    run,
+)
 from spendguard.models.fake import FakeChatModel
 from spendguard.policy.loader import FindingCode, load_policy
 from spendguard.rules.checks import base_currency_amount, finding_for, rule_findings
@@ -43,6 +49,7 @@ DRAFTING_PLAN: dict[str, dict[str, Any]] = {
             'rule_coverage': 4,
             'clean': 2,
             'injection': 1,
+            'memory_follow_up': 2,
         },
         'judgement_positives_per_code': 2,
         'memory_pairs': 2,
@@ -56,6 +63,7 @@ DRAFTING_PLAN: dict[str, dict[str, Any]] = {
             'rule_coverage': 1,
             'clean': 1,
             'injection': 0,
+            'memory_follow_up': 1,
         },
         'judgement_positives_per_code': 1,
         'memory_pairs': 1,
@@ -72,7 +80,10 @@ ASSIGNED = dict(
         strict=True,
     )
 )
+UNITS = drafting_units(BRIEFS)
+ASSIGNED_CALLS = Counter(ASSIGNED[unit[0].case_id] for unit in UNITS)
 BRIEF_PATTERN = re.compile(r'## Brief\n\n```yaml\n(.*?)```', re.DOTALL)
+FOLLOW_UP_BRIEF_PATTERN = re.compile(r'## Follow-up brief\n\n```yaml\n(.*?)```', re.DOTALL)
 REJECTION_PATTERN = re.compile(r'was rejected: (.*)\. Draft the case again', re.DOTALL)
 
 FailureKind = Literal[
@@ -94,21 +105,29 @@ FailureKind = Literal[
     'decorated_json',
     'omitted_nulls',
     'empty_nulls',
+    'upheld_review',
+    'same_amount',
 ]
 REPLY_FAILURES = ('decorated_json', 'omitted_nulls', 'empty_nulls')
+PAIR_FAILURES = ('upheld_review', 'same_amount')
 
 
 def brief_in(messages: list[BaseMessage]) -> dict[str, Any]:
-    match = BRIEF_PATTERN.search(str(messages[1].content))
-    assert match is not None
-    brief: dict[str, Any] = yaml.safe_load(match.group(1))
-    return brief
+    return briefs_in(messages)[0]
+
+
+def briefs_in(messages: list[BaseMessage]) -> list[dict[str, Any]]:
+    text = str(messages[1].content)
+    matches = [pattern.search(text) for pattern in (BRIEF_PATTERN, FOLLOW_UP_BRIEF_PATTERN)]
+    return [yaml.safe_load(match.group(1)) for match in matches if match is not None]
 
 
 def satisfying_draft(brief: dict[str, Any], marker: str) -> dict[str, Any]:
     bounds = brief['amount']
     if 'exactly' in bounds:
         amount = Decimal(str(bounds['exactly']))
+    elif brief['slice'] == 'memory_follow_up':
+        amount = Decimal(str(bounds['at_most'])) - 1
     elif 'at_most' in bounds:
         amount = Decimal(str(bounds['at_most']))
     else:
@@ -166,7 +185,7 @@ def satisfying_draft(brief: dict[str, Any], marker: str) -> dict[str, Any]:
             'approver': 'EMP-002' if brief['party'] == 'EMP-001' else 'EMP-001',
             'dispositions': [
                 {
-                    'finding_id': 'finding-1',
+                    'code': brief['intent']['judgement_codes'][0],
                     'disposition': 'dismissed',
                     'reason': 'A standing arrangement agreed with the manager.',
                 }
@@ -235,8 +254,25 @@ def with_failure(draft: dict[str, Any], brief: dict[str, Any], failure: FailureK
             | 'unexplained_removal'
         ):
             _break_receipt(submission, failure)
-        case 'decorated_json' | 'omitted_nulls' | 'empty_nulls':
+        case 'decorated_json' | 'omitted_nulls' | 'empty_nulls' | 'upheld_review' | 'same_amount':
             pass
+
+
+def with_pair_failure(
+    first_draft: dict[str, Any], follow_up_draft: dict[str, Any], failure: FailureKind
+) -> None:
+    match failure:
+        case 'upheld_review':
+            for disposition in first_draft['scripted_review']['dispositions']:
+                disposition.update({'disposition': 'upheld', 'reason': None})
+        case 'same_amount':
+            first_submission = first_draft['submission']
+            first_submission['amount'] = follow_up_draft['submission']['amount']
+            first_submission['receipt_text'] = satisfying_receipt(
+                Decimal(first_submission['amount']), None
+            )
+        case _:
+            raise ValueError(f'{failure} does not break a memory pair')
 
 
 def _break_free_text(
@@ -313,26 +349,43 @@ class DraftingFake(FakeChatModel):
     ) -> ChatResult:
         self.received.append(list(messages))
         self.tool_schemas.append(kwargs.get('tools'))
-        brief = brief_in(messages)
-        draft = satisfying_draft(brief, f'{self.model_id} call {len(self.received)}')
-        if self.reviews_every_case and draft['judgement_findings'] and not brief['memory_pair']:
-            draft['scripted_review'] = satisfying_draft({**brief, 'memory_pair': True}, '')[
-                'scripted_review'
-            ]
-        failing = len(self.received) <= self.failing_calls or brief['slice'] == self.failing_slice
-        if failing and self.failure not in REPLY_FAILURES:
-            with_failure(draft, brief, self.failure)
+        briefs = briefs_in(messages)
+        marker = f'{self.model_id} call {len(self.received)}'
+        markers = [marker, f'{marker} follow-up']
+        drafts = [
+            satisfying_draft(brief, marker) for brief, marker in zip(briefs, markers, strict=False)
+        ]
+        first_brief, first_draft = briefs[0], drafts[0]
+        if (
+            self.reviews_every_case
+            and first_draft['judgement_findings']
+            and not first_brief['memory_pair']
+        ):
+            first_draft['scripted_review'] = satisfying_draft(
+                {**first_brief, 'memory_pair': True}, ''
+            )['scripted_review']
+        failing_calls = len(self.received) <= self.failing_calls
+        failing = failing_calls or any(brief['slice'] == self.failing_slice for brief in briefs)
+        for brief, draft in zip(briefs, drafts, strict=True):
+            if (failing_calls or brief['slice'] == self.failing_slice) and (
+                self.failure not in REPLY_FAILURES
+            ):
+                with_failure(draft, brief, self.failure)
+        if failing and len(drafts) == 2 and self.failure in PAIR_FAILURES:
+            with_pair_failure(drafts[0], drafts[1], self.failure)
+        reply = drafts[0] if len(drafts) == 1 else {'first_case': drafts[0], 'follow_up': drafts[1]}
         if failing and self.failure == 'omitted_nulls':
-            draft = _without_nulls(draft)
+            reply = _without_nulls(reply)
         if failing and self.failure == 'empty_nulls':
-            draft = _nulls_as_empty_text(draft)
-        if self.structured_output_calls[-1][0] == 'json_schema':
+            reply = _nulls_as_empty_text(reply)
+        method, schema = self.structured_output_calls[-1]
+        if method == 'json_schema':
             decoration = '**' if failing and self.failure == 'decorated_json' else ''
-            message = AIMessage(content=decoration + json.dumps(draft))
+            message = AIMessage(content=decoration + json.dumps(reply))
         else:
             message = AIMessage(
                 content='',
-                tool_calls=[{'name': 'DraftedCase', 'args': draft, 'id': 'call_DraftedCase'}],
+                tool_calls=[{'name': schema['title'], 'args': reply, 'id': 'call_draft'}],
             )
         return ChatResult(generations=[ChatGeneration(message=message)])
 
@@ -359,16 +412,18 @@ class DrafterPool:
         failures: dict[str, tuple[FailureKind, int]] | None = None,
         failing_slice: tuple[FailureKind, str] | None = None,
         reviews_every_case: bool = False,
+        failing_slice_models: tuple[str, ...] = tuple(DRAFTER_MODEL_IDS),
     ) -> None:
         self.failures = failures or {}
         self.failing_slice = failing_slice
+        self.failing_slice_models = failing_slice_models
         self.reviews_every_case = reviews_every_case
         self.models: dict[str, DraftingFake] = {}
 
     def build(self, settings: Settings, model_key: str) -> BaseChatModel:
         failure, failing_calls = self.failures.get(model_key, ('malformed', 0))
         failing_slice = None
-        if self.failing_slice is not None:
+        if self.failing_slice is not None and model_key in self.failing_slice_models:
             failure, failing_slice = self.failing_slice
         model = DraftingFake(
             model_id=settings.chat_models[model_key].model_id,
@@ -433,7 +488,7 @@ def marker_of(case: EvalCase) -> str:
 
 def rejections_for(drafters: DrafterPool, brief: CaseBrief) -> list[str]:
     brief_text = yaml.safe_dump(
-        brief.model_dump(mode='json', exclude={'case_id', 'split'}, exclude_none=True),
+        brief.model_dump(mode='json', exclude={'case_id', 'split', 'clearance'}, exclude_none=True),
         sort_keys=False,
         allow_unicode=True,
     )
@@ -463,6 +518,12 @@ RECEIPTED_HARD_NEGATIVE = _first_brief(
     )
 )
 MEMORY_PAIR_BRIEF = _first_brief(lambda brief: brief.memory_pair)
+FOLLOW_UP_BRIEF = _first_brief(
+    lambda brief: (
+        brief.clearance is not None and brief.clearance.precedent_from == MEMORY_PAIR_BRIEF.case_id
+    )
+)
+FOLLOW_UP_AMOUNT = (FOLLOW_UP_BRIEF.amount.at_most or Decimal(0)) - 1
 INJECTION_BRIEF = _first_brief(lambda brief: brief.slice == 'injection')
 INJECTION_FIELD = INJECTION_BRIEF.intent.injection.field if INJECTION_BRIEF.intent.injection else ''
 DIFFERING_RECEIPT_BRIEF = _first_brief(
@@ -478,12 +539,13 @@ ALCOHOL_REMOVED_BRIEF = _first_brief(
 DIFFERING_REASON = DIFFERING_RECEIPT_BRIEF.intent.receipt_total_differs_because or ''
 
 
-def test_the_drafters_output_schema_holds_no_rule_findings_route_or_recommendation() -> None:
-    assert set(DRAFTED_CASE_SCHEMA['properties']) == {
-        'submission',
-        'judgement_findings',
-        'scripted_review',
-    }
+def test_the_drafters_output_schemas_hold_no_rule_findings_route_or_recommendation() -> None:
+    drafted_case_fields = {'submission', 'judgement_findings', 'scripted_review'}
+
+    assert set(DRAFTED_CASE_SCHEMA['properties']) == drafted_case_fields
+    assert set(DRAFTED_PAIR_SCHEMA['properties']) == {'first_case', 'follow_up'}
+    for drafted_case in DRAFTED_PAIR_SCHEMA['properties'].values():
+        assert set(drafted_case['properties']) == drafted_case_fields
 
 
 def test_every_slice_is_split_across_the_drafters_with_none_more_than_one_off_a_third(
@@ -532,17 +594,42 @@ def test_rule_findings_route_and_recommendation_are_computed_by_code(tmp_path: P
         assert labelled_rules == [finding.code for finding in computed]
         assert sorted(labelled_rules) == sorted(BRIEFS_BY_ID[case.id].intent.rule_codes)
         findings = [finding_for(finding.code, FIXTURE_POLICY) for finding in case.expected_findings]
+        cleared_code = None if case.expected_clearance is None else case.expected_clearance.code
         assert case.expected_route == route(
             findings=findings,
-            cleared_by_precedent=False,
+            cleared_by_precedent=cleared_code is not None,
             base_amount=base_currency_amount(case.submission, DRAFTING_SEED, FIXTURE_POLICY),
             policy=FIXTURE_POLICY,
             force_human_review=False,
         )
         assert case.expected_recommendation == recommend(
-            [ReviewedFinding(finding, has_precedent=False) for finding in findings]
+            [
+                ReviewedFinding(finding, has_precedent=finding.code == cleared_code)
+                for finding in findings
+            ]
         )
         assert case.intent.judgement_codes == BRIEFS_BY_ID[case.id].intent.judgement_codes
+
+
+def test_a_memory_pair_and_its_follow_up_are_drafted_in_one_call_by_one_drafter(
+    tmp_path: Path,
+) -> None:
+    exit_code = run(drafting_arguments(tmp_path), drafting_settings(), DrafterPool().build)
+
+    assert exit_code == 0
+    cases = {case.id: case for case in read_drafted_cases(tmp_path)}
+    follow_ups = [case for case in cases.values() if case.slice == 'memory_follow_up']
+    assert len(follow_ups) == sum(brief.memory_pair for brief in BRIEFS)
+    for follow_up in follow_ups:
+        assert follow_up.expected_clearance is not None
+        pair = cases[follow_up.expected_clearance.precedent_from]
+        assert follow_up.drafted_by == pair.drafted_by
+        assert marker_of(follow_up) == f'{marker_of(pair)} follow-up'
+        assert follow_up.expected_findings == ()
+        assert (follow_up.expected_route, follow_up.expected_recommendation) == (
+            'human_review',
+            'approve',
+        )
 
 
 def test_a_case_its_drafter_cannot_draft_falls_back_and_is_counted_in_the_summary(
@@ -564,6 +651,32 @@ def test_a_case_its_drafter_cannot_draft_falls_back_and_is_counted_in_the_summar
     summary = capsys.readouterr().out
     assert f'Fallbacks: {len(nova_case_ids)} (' in summary
     assert 'fake_nova 0' in summary
+
+
+def test_a_memory_pair_whose_drafter_cannot_draft_its_follow_up_falls_back_as_a_pair(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assigned_key = ASSIGNED[MEMORY_PAIR_BRIEF.case_id]
+    drafters = DrafterPool(
+        failing_slice=('off_brief', 'memory_follow_up'), failing_slice_models=(assigned_key,)
+    )
+
+    exit_code = run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    assert exit_code == 0
+    cases = {case.id: case for case in read_drafted_cases(tmp_path)}
+    pair = cases[MEMORY_PAIR_BRIEF.case_id]
+    (follow_up,) = [
+        case
+        for case in cases.values()
+        if case.expected_clearance is not None and case.expected_clearance.precedent_from == pair.id
+    ]
+    assert pair.drafted_by.model_id != DRAFTER_MODEL_IDS[assigned_key]
+    assert follow_up.drafted_by == pair.drafted_by
+    assert marker_of(follow_up) == f'{marker_of(pair)} follow-up'
+    summary = capsys.readouterr().out
+    assert f'{pair.id} ({assigned_key} to ' in summary
+    assert f'{follow_up.id} ({assigned_key} to ' in summary
 
 
 def test_drafts_that_fail_validation_are_not_written_and_the_problems_are_reported(
@@ -649,7 +762,31 @@ def test_drafts_that_fail_validation_are_not_written_and_the_problems_are_report
         (
             'no_review',
             MEMORY_PAIR_BRIEF,
-            'the brief asks for a scripted review and the draft has none',
+            'the first case: the brief asks for a scripted review and the draft has none',
+        ),
+        (
+            'upheld_review',
+            FOLLOW_UP_BRIEF,
+            f'the follow-up: its clearance is for {MEMORY_PAIR_BRIEF.intent.judgement_codes[0]},'
+            f' which memory pair {MEMORY_PAIR_BRIEF.case_id} does not dismiss',
+        ),
+        (
+            'same_amount',
+            FOLLOW_UP_BRIEF,
+            f'the follow-up: its amount {FOLLOW_UP_AMOUNT} is the amount of memory pair'
+            f' {MEMORY_PAIR_BRIEF.case_id}',
+        ),
+        (
+            'receipt_total',
+            FOLLOW_UP_BRIEF,
+            f'the follow-up: the receipt total {FOLLOW_UP_AMOUNT + 1} differs from the claimed'
+            f' amount {FOLLOW_UP_AMOUNT}',
+        ),
+        (
+            'placeholder',
+            FOLLOW_UP_BRIEF,
+            "the follow-up: merchant holds the placeholder 'Merchant Name': write what a real"
+            ' submission would say instead',
         ),
         (
             'missing_injection',
@@ -722,7 +859,7 @@ def test_prompts_hold_the_policy_and_the_brief_and_nothing_from_other_cases(
 
     cases = read_drafted_cases(tmp_path)
     prompts = [prompt for model in drafters.models.values() for prompt in model.received]
-    assert len(prompts) == len(BRIEFS)
+    assert len(prompts) == len(UNITS)
     contexts = set()
     for prompt in prompts:
         assert [message.type for message in prompt] == ['system', 'human']
@@ -767,9 +904,8 @@ def test_a_draft_that_fails_once_is_retried_with_the_reason_and_written(
 
     assert exit_code == 0
     assert len(read_drafted_cases(tmp_path)) == len(BRIEFS)
-    gpt_briefs = sum(key == 'fake_gpt' for key in ASSIGNED.values())
     first_prompt, retry_prompt = drafters.models['fake_gpt'].received[:2]
-    assert len(drafters.models['fake_gpt'].received) == gpt_briefs + 1
+    assert len(drafters.models['fake_gpt'].received) == ASSIGNED_CALLS['fake_gpt'] + 1
     assert str(retry_prompt[1].content).startswith(str(first_prompt[1].content))
     assert 'was rejected: ' in str(retry_prompt[1].content)
 
@@ -836,7 +972,7 @@ def test_a_drafter_set_to_json_schema_gets_a_schema_bedrock_can_lock_its_output_
     assert exit_code == 0
     gpt_calls = drafters.models['fake_gpt'].structured_output_calls
     assert {method for method, _ in gpt_calls} == {'json_schema'}
-    locked_schema = gpt_calls[0][1]
+    locked_schema = next(schema for _, schema in gpt_calls if schema['title'] == 'DraftedCase')
     assert {'minimum', 'exclusiveMinimum', 'minLength', 'const', 'oneOf', '$ref'}.isdisjoint(
         _schema_keys(locked_schema)
     )
@@ -853,8 +989,8 @@ def test_a_drafter_set_to_json_schema_gets_a_schema_bedrock_can_lock_its_output_
 
 
 def test_a_json_reply_with_text_around_the_object_is_still_read(tmp_path: Path) -> None:
-    gpt_briefs = sum(key == 'fake_gpt' for key in ASSIGNED.values())
-    drafters = DrafterPool(failures={'fake_gpt': ('decorated_json', gpt_briefs)})
+    gpt_calls = ASSIGNED_CALLS['fake_gpt']
+    drafters = DrafterPool(failures={'fake_gpt': ('decorated_json', gpt_calls)})
 
     exit_code = run(
         drafting_arguments(tmp_path),
@@ -863,20 +999,20 @@ def test_a_json_reply_with_text_around_the_object_is_still_read(tmp_path: Path) 
     )
 
     assert exit_code == 0
-    assert len(drafters.models['fake_gpt'].received) == gpt_briefs
+    assert len(drafters.models['fake_gpt'].received) == gpt_calls
 
 
 @pytest.mark.parametrize('failure', ['omitted_nulls', 'empty_nulls'])
 def test_a_draft_that_leaves_out_or_empties_its_null_fields_is_read_with_them_as_null(
     tmp_path: Path, failure: FailureKind
 ) -> None:
-    nova_briefs = sum(key == 'fake_nova' for key in ASSIGNED.values())
-    drafters = DrafterPool(failures={'fake_nova': (failure, nova_briefs)})
+    nova_calls = ASSIGNED_CALLS['fake_nova']
+    drafters = DrafterPool(failures={'fake_nova': (failure, nova_calls)})
 
     exit_code = run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
 
     assert exit_code == 0
-    assert len(drafters.models['fake_nova'].received) == nova_briefs
+    assert len(drafters.models['fake_nova'].received) == nova_calls
 
 
 def test_drafters_are_told_to_leave_out_fields_that_do_not_apply(tmp_path: Path) -> None:
@@ -992,7 +1128,7 @@ def test_a_brief_whose_claim_differs_from_the_receipt_tells_the_drafter_which_li
     run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
 
     brief_text = yaml.safe_dump(
-        brief.model_dump(mode='json', exclude={'case_id', 'split'}, exclude_none=True),
+        brief.model_dump(mode='json', exclude={'case_id', 'split', 'clearance'}, exclude_none=True),
         sort_keys=False,
         allow_unicode=True,
     )
@@ -1004,3 +1140,40 @@ def test_a_brief_whose_claim_differs_from_the_receipt_tells_the_drafter_which_li
     ]
     assert len(prompts) == 1
     assert note in prompts[0]
+
+
+def test_a_memory_pair_prompt_asks_for_a_standing_reason_that_covers_the_follow_up(
+    tmp_path: Path,
+) -> None:
+    drafters = DrafterPool()
+
+    run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
+
+    code = MEMORY_PAIR_BRIEF.intent.judgement_codes[0]
+    pair_prompts = [
+        str(prompt[1].content)
+        for model in drafters.models.values()
+        for prompt in model.received
+        if len(briefs_in(prompt)) == 2
+    ]
+    assert len(pair_prompts) == sum(brief.memory_pair for brief in BRIEFS)
+    pair_prompt = next(
+        prompt
+        for prompt in pair_prompts
+        if yaml.safe_dump(
+            MEMORY_PAIR_BRIEF.model_dump(
+                mode='json', exclude={'case_id', 'split', 'clearance'}, exclude_none=True
+            ),
+            sort_keys=False,
+            allow_unicode=True,
+        )
+        in prompt
+    )
+    assert (
+        f'dismisses the {code} finding. Its reason states a standing fact about the employee'
+        ' that also covers the follow-up.'
+    ) in pair_prompt
+    assert (
+        f'A later submission from the same employee that raises the same {code} concern as the'
+        ' first case, in a way its dismissal reason covers'
+    ) in pair_prompt

@@ -1,0 +1,34 @@
+id: test-memory-follow-up
+split: test
+slice: memory_follow_up
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  type: expense_claim
+  claimant: EMP-003
+  spent_on: 2026-10-14
+  category: subsistence
+  quantity: 1
+  merchant: Harbour Kitchen
+  amount: 27.60
+  currency: GBP
+  claimed_exchange_rate: null
+  business_purpose: Catch-up.
+  receipt_text: |-
+    Harbour Kitchen
+    2026-10-14
+    2 x Soup and sandwich  27.60
+    TOTAL  27.60
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+expected_clearance:
+  code: PURPOSE_UNCLEAR
+  precedent_from: test-purpose-unclear
+drafted_by:
+  provider: fake
+  model_id: fake-drafter-b

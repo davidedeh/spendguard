@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from spendguard.eval.cases import SlicePlan, load_slice_plan, read_case_directory
 from spendguard.eval.validator import DatasetReport, validate_dataset
@@ -663,17 +664,192 @@ def test_memory_pairs_off_the_plan_are_reported() -> None:
 
     report = validate(cases)
 
-    assert report.problems == ('the test split has 0 memory pairs, the plan says 1',)
+    assert report.problems == (
+        'the test split has 0 memory pairs, the plan says 1',
+        'test-memory-follow-up.yaml: its expected clearance names test-purpose-unclear, which is'
+        ' not a memory pair in the test split',
+    )
 
 
-def test_a_disposition_for_a_finding_the_case_does_not_expect_is_reported() -> None:
+def plan_with_test_memory_pairs(count: int) -> SlicePlan:
+    test_plan = FIXTURE_SLICE_PLAN.test
+    slices = test_plan.slices.model_copy(update={'memory_follow_up': count})
+    return FIXTURE_SLICE_PLAN.model_copy(
+        update={'test': test_plan.model_copy(update={'slices': slices, 'memory_pairs': count})}
+    )
+
+
+def second_follow_up(cases: dict[str, Any]) -> dict[str, Any]:
+    follow_up: dict[str, Any] = copy.deepcopy(cases['test-memory-follow-up.yaml'])
+    follow_up['id'] = 'test-memory-follow-up-2'
+    follow_up['submission']['spent_on'] = '2026-10-15'
+    return follow_up
+
+
+WEEKEND_REVIEW = {
+    'approver': 'EMP-001',
+    'dispositions': [
+        {
+            'code': 'WEEKEND_SPEND_UNJUSTIFIED',
+            'disposition': 'dismissed',
+            'reason': 'Covers the Saturday station run for the weekend on-call rota.',
+        }
+    ],
+}
+
+
+def test_a_memory_pair_without_exactly_one_follow_up_is_reported() -> None:
     cases = fixture_cases()
-    cases['test-purpose-unclear.yaml']['scripted_review']['dispositions'][0]['finding_id'] = 'gone'
+    cases['test-weekend.yaml']['scripted_review'] = WEEKEND_REVIEW
+    cases['test-memory-follow-up-2.yaml'] = second_follow_up(cases)
+
+    report = validate_dataset(
+        cases, FIXTURE_POLICY, FIXTURE_SEED_DATA, plan_with_test_memory_pairs(2)
+    )
+
+    assert report.problems == (
+        'test-purpose-unclear.yaml: memory pair has 2 follow-ups, it needs one',
+        'test-weekend.yaml: memory pair has no follow-up',
+    )
+
+
+def test_a_follow_up_whose_clearance_names_no_memory_pair_in_its_split_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-memory-follow-up.yaml']['expected_clearance']['precedent_from'] = 'test-weekend'
 
     report = validate(cases)
 
     assert report.problems == (
-        'test-purpose-unclear.yaml: a scripted disposition names finding gone,'
+        'test-memory-follow-up.yaml: its expected clearance names test-weekend, which is not a'
+        ' memory pair in the test split',
+        'test-purpose-unclear.yaml: memory pair has no follow-up',
+    )
+
+
+def test_a_follow_up_from_another_subject_than_its_memory_pair_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-memory-follow-up.yaml']['submission']['claimant'] = 'EMP-002'
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-memory-follow-up.yaml: its employee is EMP-002, the employee of memory pair'
+        ' test-purpose-unclear is EMP-003',
+    )
+
+
+def test_a_follow_up_dated_on_or_before_its_memory_pair_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-memory-follow-up.yaml']['submission']['spent_on'] = '2026-10-07'
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-memory-follow-up.yaml: its date 2026-10-07 is not after 2026-10-07, the date of'
+        ' memory pair test-purpose-unclear',
+    )
+
+
+def test_a_follow_up_off_the_kind_of_day_its_cleared_code_needs_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-memory-follow-up.yaml']['submission']['spent_on'] = '2026-10-17'
+    cases['test-weekend.yaml']['scripted_review'] = WEEKEND_REVIEW
+    weekend_follow_up = second_follow_up(cases)
+    weekend_follow_up['submission'].update({'claimant': 'EMP-002', 'spent_on': '2026-10-16'})
+    weekend_follow_up['expected_clearance'] = {
+        'code': 'WEEKEND_SPEND_UNJUSTIFIED',
+        'precedent_from': 'test-weekend',
+    }
+    cases['test-memory-follow-up-2.yaml'] = weekend_follow_up
+
+    report = validate_dataset(
+        cases, FIXTURE_POLICY, FIXTURE_SEED_DATA, plan_with_test_memory_pairs(2)
+    )
+
+    assert report.problems == (
+        'test-memory-follow-up.yaml: a follow-up cleared of PURPOSE_UNCLEAR needs a working day,'
+        ' and 2026-10-17 is a weekend or public holiday',
+        'test-memory-follow-up-2.yaml: a follow-up cleared of WEEKEND_SPEND_UNJUSTIFIED needs a'
+        ' weekend or public holiday, and 2026-10-16 is a working day',
+    )
+
+
+def test_a_follow_up_for_the_same_amount_as_its_memory_pair_is_reported() -> None:
+    cases = fixture_cases()
+    with_claimed_amount(cases['test-memory-follow-up.yaml'], '31.20')
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-memory-follow-up.yaml: its amount 31.20 is the amount of memory pair'
+        ' test-purpose-unclear',
+    )
+
+
+def test_a_follow_up_whose_intent_names_a_finding_is_reported() -> None:
+    cases = fixture_cases()
+    follow_up = cases['test-memory-follow-up.yaml']
+    follow_up['intent']['judgement_codes'] = ['PURPOSE_UNCLEAR']
+    follow_up['expected_findings'] = [
+        {'id': 'purpose', 'code': 'PURPOSE_UNCLEAR', 'gold_clauses': ['§1.1']}
+    ]
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-memory-follow-up.yaml: a follow-up targets no findings, its intent names'
+        ' PURPOSE_UNCLEAR',
+    )
+
+
+def test_a_follow_up_over_the_auto_approve_threshold_is_reported() -> None:
+    cases = fixture_cases()
+    follow_up = cases['test-memory-follow-up.yaml']
+    follow_up['submission'].update({'category': 'accommodation', 'quantity': 3})
+    with_claimed_amount(follow_up, '250.01')
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-memory-follow-up.yaml: its base-currency amount 250.01 is over the auto-approve'
+        ' threshold of 250',
+    )
+
+
+def test_a_case_sharing_a_memory_pairs_subject_and_code_in_its_split_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-hard-negative.yaml']['intent']['lookalike_code'] = 'PURPOSE_UNCLEAR'
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-hard-negative.yaml: shares EMP-003 and PURPOSE_UNCLEAR with memory pair'
+        ' test-purpose-unclear, which reserves them in the test split',
+    )
+
+
+def test_a_case_sharing_a_memory_pairs_subject_and_code_in_the_other_split_is_not_reported() -> (
+    None
+):
+    cases = fixture_cases()
+    cases['dev-clean.yaml']['submission']['claimant'] = 'EMP-003'
+    cases['dev-clean.yaml']['intent']['lookalike_code'] = 'PURPOSE_UNCLEAR'
+
+    report = validate(cases)
+
+    assert report.problems == ()
+
+
+def test_a_disposition_for_a_code_the_case_does_not_expect_is_reported() -> None:
+    cases = fixture_cases()
+    cases['test-purpose-unclear.yaml']['scripted_review']['dispositions'].append(
+        {'code': 'ALCOHOL_NOT_PERMITTED', 'disposition': 'upheld', 'reason': None}
+    )
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-purpose-unclear.yaml: a scripted disposition names ALCOHOL_NOT_PERMITTED,'
         ' which the case does not expect',
     )
 
@@ -694,13 +870,13 @@ def test_a_dismissed_disposition_without_a_reason_is_reported_alongside_other_pr
 
     assert report.problems == (
         'test-purpose-unclear.yaml: scripted_review:'
-        ' Value error, dismissing finding purpose needs a reason',
+        ' Value error, dismissing PURPOSE_UNCLEAR needs a reason',
         'test-alcohol.yaml: unknown employee EMP-999',
     )
     assert report.dataset_hash is None
 
 
-def test_an_upheld_disposition_needs_no_reason() -> None:
+def test_an_upheld_disposition_needs_no_reason_but_gives_its_follow_up_no_precedent() -> None:
     cases = fixture_cases()
     disposition = cases['test-purpose-unclear.yaml']['scripted_review']['dispositions'][0]
     disposition['disposition'] = 'upheld'
@@ -708,7 +884,10 @@ def test_an_upheld_disposition_needs_no_reason() -> None:
 
     report = validate(cases)
 
-    assert report.problems == ()
+    assert report.problems == (
+        'test-memory-follow-up.yaml: its clearance is for PURPOSE_UNCLEAR, which memory pair'
+        ' test-purpose-unclear does not dismiss',
+    )
 
 
 def test_several_faults_are_all_reported_in_one_run() -> None:
@@ -762,8 +941,8 @@ def _set(content: dict[str, Any], path: tuple[str | int, ...], value: object) ->
         ('test-alcohol.yaml', ('expected_findings', 0, 'gold_clauses'), ['§2.2', '§2.1']),
         (
             'test-purpose-unclear.yaml',
-            ('scripted_review', 'dispositions', 0, 'disposition'),
-            'upheld',
+            ('scripted_review', 'dispositions', 0, 'reason'),
+            'Standing fortnightly client catch-up agreed with the manager.',
         ),
         ('test-weekend.yaml', ('drafted_by', 'model_id'), 'fake-drafter-b'),
         ('test-clean.yaml', ('submission', 'amount'), 240.01),
@@ -793,11 +972,24 @@ def test_the_committed_slice_plan_is_the_one_in_the_spec() -> None:
         'rule_coverage': 8,
         'clean': 6,
         'injection': 4,
+        'memory_follow_up': 3,
     }
     assert (plan.test.judgement_positives_per_code, plan.test.memory_pairs) == (4, 3)
-    dev_counts = plan.dev.slices.model_dump().values()
-    assert sum(dev_counts) == 10
-    assert min(dev_counts) >= 1
+    dev_counts = plan.dev.slices.model_dump()
+    assert dev_counts['memory_follow_up'] == plan.dev.memory_pairs == 1
+    assert sum(dev_counts.values()) - dev_counts['memory_follow_up'] == 10
+    assert min(dev_counts.values()) >= 1
+
+
+def test_a_slice_plan_whose_memory_follow_ups_differ_from_its_memory_pairs_is_refused() -> None:
+    plan = FIXTURE_SLICE_PLAN.model_dump()
+    plan['test']['memory_pairs'] = 2
+
+    with pytest.raises(
+        ValidationError,
+        match='memory_follow_up is 1 and memory_pairs is 2: each memory pair has one follow-up',
+    ):
+        SlicePlan.model_validate(plan)
 
 
 def test_a_receipt_total_off_the_claimed_amount_without_a_planned_difference_is_reported() -> None:

@@ -29,6 +29,7 @@ expected_findings:
     gold_clauses: ['§1.2']
 expected_route: human_review
 expected_recommendation: reject
+expected_clearance: null
 drafted_by:
   provider: fake
   model_id: fake-drafter-b

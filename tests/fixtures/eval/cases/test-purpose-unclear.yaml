@@ -32,9 +32,10 @@ expected_recommendation: none
 scripted_review:
   approver: EMP-001
   dispositions:
-    - finding_id: purpose
+    - code: PURPOSE_UNCLEAR
       disposition: dismissed
       reason: Standing weekly client catch-up agreed with the manager.
+expected_clearance: null
 drafted_by:
   provider: fake
   model_id: fake-drafter-a

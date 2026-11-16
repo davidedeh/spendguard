@@ -5,6 +5,7 @@ test:
     rule_coverage: 8
     clean: 6
     injection: 4
+    memory_follow_up: 3
   judgement_positives_per_code: 4
   memory_pairs: 3
   supplier_invoices: 10 # gut pick
@@ -16,6 +17,7 @@ dev:
     rule_coverage: 2
     clean: 1
     injection: 1
+    memory_follow_up: 1
   judgement_positives_per_code: 1
   memory_pairs: 1
   supplier_invoices: 1 # gut pick

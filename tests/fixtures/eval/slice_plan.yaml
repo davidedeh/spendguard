@@ -5,6 +5,7 @@ test:
     rule_coverage: 1
     clean: 1
     injection: 1
+    memory_follow_up: 1
   judgement_positives_per_code: 1
   memory_pairs: 1
   supplier_invoices: 1
@@ -16,6 +17,7 @@ dev:
     rule_coverage: 0
     clean: 1
     injection: 0
+    memory_follow_up: 0
   judgement_positives_per_code: 0
   memory_pairs: 0
   supplier_invoices: 0

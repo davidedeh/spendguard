@@ -1,6 +1,7 @@
 import datetime
 import itertools
-from collections.abc import Iterator, Sequence
+from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from typing import assert_never, get_args
@@ -8,6 +9,7 @@ from typing import assert_never, get_args
 from spendguard.eval.cases import (
     HISTORY_CODES,
     CaseIntent,
+    ExpectedClearance,
     InjectionField,
     InjectionKind,
     InjectionPlan,
@@ -35,6 +37,7 @@ from spendguard.submission import ExpenseClaim, Submission, SubmissionType, Supp
 CENT = Decimal('0.01')
 OVER_LIMIT_HEADROOM = Decimal('1.5')
 MISSING_PO_HEADROOM = Decimal('3')
+FOLLOW_UP_GAP = datetime.timedelta(days=7)  # gut pick
 MULTI_UNIT_QUANTITIES = {'night': 3, 'person attending': 4, 'person per day': 2}
 SLICES: tuple[Slice, ...] = get_args(Slice)
 SPLITS: tuple[Split, ...] = get_args(Split)
@@ -100,6 +103,7 @@ class CaseBrief(StrictModel):
     claimed_rate_must_deviate: bool
     receipt: ReceiptPlan | None
     memory_pair: bool
+    clearance: ExpectedClearance | None
     history_claims: tuple[HistoricalClaim, ...]
     history_invoices: tuple[HistoricalInvoice, ...]
 
@@ -188,6 +192,8 @@ def _targets(split_plan: SplitPlan, policy: Policy) -> list[_Target]:
                 case 'injection':
                     code = judgement_codes[(index + 1) % len(judgement_codes)]
                     targets.append(_target(slice_name, judgement_codes=(code,)))
+                case 'memory_follow_up':
+                    pass
                 case _:
                     assert_never(slice_name)
     return targets
@@ -265,13 +271,14 @@ class _BriefBuilder:
         self.all_working_days = [
             day for day in days if not falls_on_weekend_or_holiday(day, seed_data)
         ]
+        self.all_weekend_days = [day for day in days if falls_on_weekend_or_holiday(day, seed_data)]
         self.working_days = _spread_days(self.all_working_days, working_day_count)
-        self.weekend_days = _spread_days(
-            [day for day in days if falls_on_weekend_or_holiday(day, seed_data)], weekend_day_count
-        )
+        self.weekend_days = _spread_days(self.all_weekend_days, weekend_day_count)
         self.foreign_currencies = [
             currency for currency in policy.accepted_currencies if currency != policy.base_currency
         ]
+        self.claim_counts: Counter[str] = Counter()
+        self.reservations: set[tuple[Split, str, FindingCode]] = set()
         self.remaining_budgets = {
             centre.reference: centre.budget_gbp - centre.spend_to_date_gbp
             for centre in seed_data.cost_centres
@@ -279,24 +286,24 @@ class _BriefBuilder:
 
     def split_briefs(
         self, split: Split, split_plan: SplitPlan, targets: list[_Target]
-    ) -> Iterator[CaseBrief]:
+    ) -> list[CaseBrief]:
         invoice_indexes = self._invoice_indexes(targets, split_plan.supplier_invoices, split)
         foreign_indexes = self._foreign_indexes(
             targets, invoice_indexes, split_plan.foreign_currency, split
         )
         memory_indexes = self._memory_pair_indexes(targets, split_plan.memory_pairs)
-        slice_positions: dict[Slice, int] = {}
-        for index, target in enumerate(targets):
-            slice_positions[target.slice] = slice_positions.get(target.slice, 0) + 1
-            case_id = (
-                f'{split}-{target.slice.replace("_", "-")}-{slice_positions[target.slice]:02d}'
-            )
+        case_ids = _case_ids(split, [target.slice for target in targets])
+        follow_up_ids = _case_ids(split, ['memory_follow_up'] * len(memory_indexes))
+        briefs: dict[int, CaseBrief] = {}
+        follow_ups: list[CaseBrief] = []
+        for index in sorted(range(len(targets)), key=lambda index: index not in memory_indexes):
+            target = targets[index]
             currency = self.policy.base_currency
             if index in foreign_indexes:
                 currency = self.rotation.take('foreign currency', self.foreign_currencies)
             build = self._invoice_brief if index in invoice_indexes else self._claim_brief
             brief = build(
-                case_id=case_id,
+                case_id=case_ids[index],
                 split=split,
                 target=target,
                 currency=currency,
@@ -305,7 +312,82 @@ class _BriefBuilder:
             if target.slice == 'injection':
                 brief = self._with_injection(brief)
             self._check_examples(brief)
-            yield brief
+            if self._reserved(split, brief.party, brief.intent.codes):
+                raise BriefError(
+                    f'{brief.case_id}: {brief.party} is reserved for a memory pair with one of'
+                    f' {sorted(brief.intent.codes)}'
+                )
+            briefs[index] = brief
+            if brief.memory_pair:
+                self.reservations.add((split, brief.party, brief.intent.judgement_codes[0]))
+                follow_up = self._follow_up_brief(brief, follow_up_ids[len(follow_ups)])
+                self._check_examples(follow_up)
+                follow_ups.append(follow_up)
+                self.claim_counts[follow_up.party] += 1
+            if brief.submission_type == 'expense_claim':
+                self.claim_counts[brief.party] += 1
+        return [briefs[index] for index in range(len(targets))] + follow_ups
+
+    def _reserved(self, split: Split, party: str, codes: frozenset[FindingCode]) -> bool:
+        return any((split, party, code) in self.reservations for code in codes)
+
+    def _follow_up_brief(self, pair: CaseBrief, case_id: str) -> CaseBrief:
+        code = pair.intent.judgement_codes[0]
+        if (
+            self.policy.finding_codes[code].precedent_scope != 'employee'
+            or pair.category is None
+            or pair.quantity is None
+        ):
+            raise BriefError(
+                f'{pair.case_id}: a follow-up is briefed only for an expense claim whose code'
+                ' is matched to precedents by employee'
+            )
+        candidate_days = self.all_weekend_days if code == WEEKEND_CODE else self.all_working_days
+        dated_on = next(
+            (day for day in candidate_days if day >= pair.dated_on + FOLLOW_UP_GAP), None
+        )
+        if dated_on is None:
+            raise BriefError(f'{pair.case_id}: no day for its follow-up after {pair.dated_on}')
+        claimant = next(
+            employee for employee in self.seed_data.employees if employee.reference == pair.party
+        )
+        limit_total = self.policy.expense_categories[pair.category].limits[
+            claimant.grade
+        ] * minimum_quantity(pair.category)
+        at_most = min(
+            self.policy.auto_approve_threshold,
+            limit_total,
+            self.remaining_budgets[claimant.cost_centre],
+        )
+        return CaseBrief(
+            case_id=case_id,
+            split=pair.split,
+            slice='memory_follow_up',
+            submission_type='expense_claim',
+            intent=CaseIntent(
+                rule_codes=(),
+                judgement_codes=(),
+                lookalike_code=None,
+                injection=None,
+                receipt_total_differs_because=None,
+            ),
+            party=pair.party,
+            cost_centre=claimant.cost_centre,
+            purchase_order=None,
+            supplier_invoice_number=None,
+            category=pair.category,
+            quantity=minimum_quantity(pair.category),
+            currency=self.policy.base_currency,
+            dated_on=dated_on,
+            amount=AmountBounds(more_than=None, at_most=at_most, exactly=None),
+            company_rate=None,
+            claimed_rate_must_deviate=False,
+            receipt=ReceiptPlan(present=True),
+            memory_pair=False,
+            clearance=ExpectedClearance(code=code, precedent_from=pair.case_id),
+            history_claims=(),
+            history_invoices=(),
+        )
 
     def _with_injection(self, brief: CaseBrief) -> CaseBrief:
         kinds = [kind for kind in INJECTION_KINDS if _injection_fields(brief, kind)]
@@ -429,9 +511,11 @@ class _BriefBuilder:
             employee
             for employee in self.seed_data.employees
             if (self.remaining_budgets[employee.cost_centre] <= 0) is over_budget
+            and not self._reserved(split, employee.reference, target.intent.codes)
         ]
-        for _ in range(len(claimants)):
-            claimant = self.rotation.take('claimant', claimants)
+        for claimant in sorted(
+            claimants, key=lambda employee: self.claim_counts[employee.reference]
+        ):
             limit_total = self.policy.expense_categories[category].limits[claimant.grade] * quantity
             more_than: Decimal | None = None
             at_most = limit_total
@@ -464,6 +548,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate='CURRENCY_ANOMALY' in target.intent.rule_codes,
             receipt=ReceiptPlan(present='MISSING_RECEIPT' not in target.intent.rule_codes),
             memory_pair=memory_pair,
+            clearance=None,
             history_claims=(),
             history_invoices=(),
         )
@@ -533,6 +618,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate=False,
             receipt=ReceiptPlan(present=True),
             memory_pair=memory_pair,
+            clearance=None,
             history_claims=(prior,),
             history_invoices=(),
         )
@@ -624,6 +710,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate='CURRENCY_ANOMALY' in codes,
             receipt=None,
             memory_pair=memory_pair,
+            clearance=None,
             history_claims=(),
             history_invoices=(),
         )
@@ -687,6 +774,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate=False,
             receipt=None,
             memory_pair=memory_pair,
+            clearance=None,
             history_claims=(),
             history_invoices=window_history,
         )
@@ -724,6 +812,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate=False,
             receipt=None,
             memory_pair=memory_pair,
+            clearance=None,
             history_claims=(),
             history_invoices=(prior,),
         )
@@ -751,6 +840,15 @@ def _injection_fields(brief: CaseBrief, kind: InjectionKind) -> list[InjectionFi
             return ['description']
         case _:
             assert_never(brief.submission_type)
+
+
+def _case_ids(split: Split, slices: list[Slice]) -> list[str]:
+    positions: Counter[Slice] = Counter()
+    case_ids = []
+    for slice_name in slices:
+        positions[slice_name] += 1
+        case_ids.append(f'{split}-{slice_name.replace("_", "-")}-{positions[slice_name]:02d}')
+    return case_ids
 
 
 def _interleaved_by_slice(targets: list[_Target]) -> list[int]:

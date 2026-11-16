@@ -11,7 +11,7 @@ from spendguard.eval.briefs import (
     example_submissions,
     generate_briefs,
 )
-from spendguard.eval.cases import Slice, Split, load_slice_plan
+from spendguard.eval.cases import Slice, SlicePlan, Split, load_slice_plan
 from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.rules.checks import falls_on_weekend_or_holiday, rule_findings
 from spendguard.seed.agreement import CLIENT_ENTERTAINMENT, CLIENT_ENTERTAINMENT_MINIMUM_QUANTITY
@@ -79,11 +79,12 @@ def test_briefs_target_the_planned_codes_for_each_slice(split: Split) -> None:
     )
 
 
-def test_every_brief_not_targeting_the_weekend_code_falls_on_a_working_day() -> None:
+def test_every_brief_not_targeting_or_cleared_of_the_weekend_code_falls_on_a_working_day() -> None:
     for brief in BRIEFS:
         targets_weekend = 'WEEKEND_SPEND_UNJUSTIFIED' in (
             *brief.intent.judgement_codes,
             brief.intent.lookalike_code,
+            None if brief.clearance is None else brief.clearance.code,
         )
         assert falls_on_weekend_or_holiday(brief.dated_on, SEED) is targets_weekend, brief.case_id
 
@@ -169,3 +170,80 @@ def test_no_client_entertainment_brief_has_fewer_people_than_the_claimant_and_a_
         quantity is not None and quantity >= CLIENT_ENTERTAINMENT_MINIMUM_QUANTITY
         for quantity in entertainment_quantities
     ), entertainment_quantities
+
+
+def follow_ups_by_pair() -> dict[str, list[CaseBrief]]:
+    follow_ups: dict[str, list[CaseBrief]] = {
+        brief.case_id: [] for brief in BRIEFS if brief.memory_pair
+    }
+    for brief in BRIEFS:
+        if brief.clearance is not None:
+            follow_ups[brief.clearance.precedent_from].append(brief)
+    return follow_ups
+
+
+def test_each_memory_pair_has_one_follow_up_for_the_same_subject_code_and_split() -> None:
+    briefs_by_id = {brief.case_id: brief for brief in BRIEFS}
+
+    for pair_id, follow_ups in follow_ups_by_pair().items():
+        pair = briefs_by_id[pair_id]
+        assert len(follow_ups) == 1, pair_id
+        follow_up = follow_ups[0]
+        assert follow_up.slice == 'memory_follow_up'
+        assert (follow_up.party, follow_up.split) == (pair.party, pair.split)
+        assert follow_up.clearance is not None
+        assert (follow_up.clearance.code,) == pair.intent.judgement_codes
+        assert follow_up.intent.judgement_codes == ()
+
+
+def test_a_follow_up_comes_later_than_its_pair_in_the_base_currency_within_auto_approval() -> None:
+    briefs_by_id = {brief.case_id: brief for brief in BRIEFS}
+
+    for pair_id, (follow_up,) in follow_ups_by_pair().items():
+        assert follow_up.dated_on > briefs_by_id[pair_id].dated_on, pair_id
+        assert follow_up.currency == POLICY.base_currency
+        assert follow_up.intent.rule_codes == ()
+        assert follow_up.amount.at_most is not None
+        assert follow_up.amount.at_most <= POLICY.auto_approve_threshold
+
+
+FIXTURES = Path(__file__).parent / 'fixtures'
+FEW_CLAIMANT_BRIEFS = generate_briefs(
+    SlicePlan.model_validate(
+        {
+            split: {
+                'slices': {
+                    'judgement_positive': 8,
+                    'hard_negative': 8,
+                    'rule_coverage': 0,
+                    'clean': 0,
+                    'injection': 4,
+                    'memory_follow_up': 2,
+                },
+                'judgement_positives_per_code': 2,
+                'memory_pairs': 2,
+                'supplier_invoices': 0,
+                'foreign_currency': 0,
+            }
+            for split in get_args(Split)
+        }
+    ),
+    load_policy(FIXTURES / 'policy' / 'valid_policy.yaml'),
+    read_seed_directory(FIXTURES / 'drafting_seed'),
+)
+
+
+@pytest.mark.parametrize('briefs', [BRIEFS, FEW_CLAIMANT_BRIEFS])
+def test_no_brief_but_a_memory_pairs_own_shares_its_subject_and_code_in_its_split(
+    briefs: list[CaseBrief],
+) -> None:
+    for pair in [brief for brief in briefs if brief.memory_pair]:
+        sharing = [
+            brief.case_id
+            for brief in briefs
+            if brief.split == pair.split
+            and brief.party == pair.party
+            and pair.intent.judgement_codes[0] in brief.intent.codes
+            and brief.case_id != pair.case_id
+        ]
+        assert sharing == [], pair.case_id
