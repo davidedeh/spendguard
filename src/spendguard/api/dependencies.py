@@ -7,6 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import SecretStr
 
 from spendguard.db.database import ConnectionPool
+from spendguard.policy.loader import Policy
 from spendguard.queue.messages import MessageQueue
 from spendguard.security.approver_tokens import token_hash
 from spendguard.security.signatures import SIGNATURE_HEADER, verify_signature
@@ -20,6 +21,7 @@ _BEARER = HTTPBearer(auto_error=False)
 @dataclass(frozen=True)
 class ApiDependencies:
     settings: Settings
+    policy: Policy
     connection_pool: ConnectionPool
     queue: MessageQueue
 
