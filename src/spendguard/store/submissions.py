@@ -22,6 +22,7 @@ class SubmissionRecord:
     payload: dict[str, Any]
     status: SubmissionStatus
     review: dict[str, Any] | None
+    decision: dict[str, Any] | None
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,7 @@ async def find_submission(
     async with connection_pool.connection() as connection:
         row = await (
             await connection.execute(
-                'select id, idempotency_key, submission_type, payload, status, review'
+                'select id, idempotency_key, submission_type, payload, status, review, decision'
                 ' from submissions where id = %s',
                 (submission_id,),
             )
@@ -84,6 +85,7 @@ async def find_submission(
         payload=row['payload'],
         status=row['status'],
         review=row['review'],
+        decision=row['decision'],
     )
 
 
@@ -123,3 +125,21 @@ async def pending_reviews(connection_pool: ConnectionPool) -> list[dict[str, Any
             )
         ).fetchall()
     return [row['review'] for row in rows]
+
+
+async def record_decision(
+    connection_pool: ConnectionPool,
+    submission_id: uuid.UUID,
+    decision: Mapping[str, Any],
+    decided_by: str,
+) -> bool:
+    async with connection_pool.connection() as connection:
+        decided = await (
+            await connection.execute(
+                "update submissions set status = 'decided', decision = %s, decided_by = %s,"
+                ' status_changed_at = now()'
+                " where id = %s and status = 'pending_review' returning id",
+                (Jsonb(decision), decided_by, submission_id),
+            )
+        ).fetchone()
+    return decided is not None

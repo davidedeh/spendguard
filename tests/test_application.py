@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 import uuid
@@ -107,6 +108,15 @@ class Application:
             '/webhooks/expense-claims',
             content=raw_body,
             headers=signed_headers(key, raw_body, signed_at),
+        )
+
+    async def decide(
+        self, submission_id: str, token: str, decision: dict[str, Any]
+    ) -> httpx.Response:
+        return await self.client.post(
+            f'/submissions/{submission_id}/decision',
+            json=decision,
+            headers={'Authorization': f'Bearer {token}'},
         )
 
     async def run_worker(self) -> None:
@@ -344,7 +354,6 @@ async def test_the_mock_erp_rejects_an_event_signed_with_the_webhook_key(
     ('method', 'path'),
     [
         ('POST', '/webhooks/supplier-invoices'),
-        ('POST', '/submissions/00000000-0000-0000-0000-000000000001/decision'),
     ],
 )
 async def test_every_endpoint_not_built_yet_returns_501(
@@ -453,3 +462,175 @@ async def test_with_the_kill_switch_on_a_clean_small_claim_waits_for_review(
         item for item in listed.json()['submissions'] if item['submission_id'] == submission_id
     ]
     assert (review['recommendation'], review['findings']) == ('approve', [])
+
+
+async def claim_waiting_for_review(application: Application, **claim_overrides: Any) -> str:
+    response = await application.post_claim(
+        expense_claim_delivery(
+            unique_claim_id(), **({'amount': '30.00', 'receipt_text': None} | claim_overrides)
+        )
+    )
+    submission_id: str = response.json()['submission_id']
+    await application.run_worker()
+    assert await application.status_of(submission_id) == 'pending_review'
+    return submission_id
+
+
+def missing_receipt_decision(outcome: str, reason: str | None) -> dict[str, Any]:
+    return {
+        'outcome': outcome,
+        'reason': reason,
+        'dispositions': [
+            {'finding_id': 'MISSING_RECEIPT', 'verdict': 'upheld', 'reason': None},
+        ],
+    }
+
+
+async def test_an_approved_claim_ends_complete_with_one_approved_erp_event(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+
+    decided = await application.decide(
+        submission_id,
+        application.issue_token('EMP-002'),
+        missing_receipt_decision('approve', None),
+    )
+    await application.run_worker()
+
+    assert decided.status_code == 202
+    assert await application.status_of(submission_id) == 'complete'
+    events = await application.recorded_events(submission_id)
+    assert [(event['outcome'], event['decided_by']) for event in events] == [
+        ('approved', 'EMP-002')
+    ]
+
+
+async def test_a_rejected_claim_ends_complete_with_one_erp_event_carrying_the_stored_reason(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+
+    await application.decide(
+        submission_id,
+        application.issue_token('EMP-001'),
+        missing_receipt_decision('reject', 'No receipt for a 30 pound lunch'),
+    )
+    await application.run_worker()
+
+    assert await application.status_of(submission_id) == 'complete'
+    events = await application.recorded_events(submission_id)
+    assert [(event['outcome'], event['decided_by'], event['reason']) for event in events] == [
+        ('rejected', 'EMP-001', 'No receipt for a 30 pound lunch')
+    ]
+
+
+@pytest.mark.parametrize(
+    'claim_overrides',
+    [{'claimant': 'EMP-002'}, {'amount': '5000.01'}],
+    ids=['the approver is the requester', 'the amount is over the approval limit'],
+)
+async def test_a_decision_the_approver_may_not_make_returns_403_and_changes_nothing(
+    application: Application, claim_overrides: dict[str, Any]
+) -> None:
+    submission_id = await claim_waiting_for_review(application, **claim_overrides)
+
+    decided = await application.decide(
+        submission_id,
+        application.issue_token('EMP-002'),
+        missing_receipt_decision('approve', None),
+    )
+
+    assert decided.status_code == 403
+    assert await application.status_of(submission_id) == 'pending_review'
+    assert application.queue.receive() == []
+
+
+@pytest.mark.parametrize(
+    'dispositions',
+    [
+        [],
+        [{'finding_id': 'MISSING_PO', 'verdict': 'upheld', 'reason': None}],
+        [
+            {'finding_id': 'MISSING_RECEIPT', 'verdict': 'upheld', 'reason': None},
+            {'finding_id': 'MISSING_RECEIPT', 'verdict': 'dismissed', 'reason': 'Lost in transit'},
+        ],
+        [{'finding_id': 'MISSING_RECEIPT', 'verdict': 'dismissed', 'reason': None}],
+    ],
+    ids=[
+        'no dispositions',
+        'a disposition for another finding',
+        'two dispositions for one finding',
+        'a dismissal without a reason',
+    ],
+)
+async def test_a_decision_without_one_disposition_per_finding_returns_422_and_changes_nothing(
+    application: Application, dispositions: list[dict[str, Any]]
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+
+    decided = await application.decide(
+        submission_id,
+        application.issue_token('EMP-001'),
+        {'outcome': 'approve', 'reason': None, 'dispositions': dispositions},
+    )
+
+    assert decided.status_code == 422
+    assert await application.status_of(submission_id) == 'pending_review'
+    assert application.queue.receive() == []
+
+
+async def decisions_waiting_on_a_row_lock(branch_database: str) -> int:
+    async with await psycopg.AsyncConnection.connect(branch_database, autocommit=True) as observer:
+        row = await (
+            await observer.execute(
+                "select count(*) from pg_stat_activity where wait_event_type = 'Lock'"
+                " and query like 'update submissions set status = ''decided''%'"
+            )
+        ).fetchone()
+    assert row is not None
+    count: int = row[0]
+    return count
+
+
+async def test_of_two_concurrent_decisions_exactly_one_wins_and_the_other_gets_409(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+    approvers = ['EMP-001', 'EMP-002']
+    tokens = [application.issue_token(approver) for approver in approvers]
+    async with await psycopg.AsyncConnection.connect(application.branch_database) as blocker:
+        async with blocker.transaction():
+            await blocker.execute(
+                'select id from submissions where id = %s for update', (submission_id,)
+            )
+            racing = [
+                asyncio.create_task(
+                    application.decide(
+                        submission_id, token, missing_receipt_decision('approve', None)
+                    )
+                )
+                for token in tokens
+            ]
+            async with asyncio.timeout(5):
+                while (await decisions_waiting_on_a_row_lock(application.branch_database)) < len(
+                    racing
+                ):
+                    await asyncio.sleep(0.01)
+        responses = await asyncio.gather(*racing)
+
+    assert sorted(response.status_code for response in responses) == [202, 409]
+    [winner] = [
+        approver
+        for approver, response in zip(approvers, responses, strict=True)
+        if response.status_code == 202
+    ]
+    record = await submissions.find_submission(
+        application.connection_pool, uuid.UUID(submission_id)
+    )
+    assert record is not None
+    assert (record.status, record.decision and record.decision['decided_by']) == (
+        'decided',
+        winner,
+    )
+    assert [message.type for message in application.queue.receive()] == ['resume']

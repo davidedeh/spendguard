@@ -3,7 +3,7 @@ import uuid
 from langgraph.types import interrupt
 
 from spendguard.graph.config import GraphConfig
-from spendguard.graph.state import ReviewState
+from spendguard.graph.state import Decision, ReviewState
 from spendguard.store import submissions
 
 
@@ -14,5 +14,5 @@ async def human_review(state: ReviewState, graph_config: GraphConfig) -> ReviewS
         from_status='received',
         to_status='pending_review',
     )
-    interrupt({'submission_id': state['submission_id']})
-    raise NotImplementedError('resuming after human review')
+    decision: Decision = interrupt({'submission_id': state['submission_id']})
+    return {'decision': decision}

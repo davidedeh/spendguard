@@ -1,14 +1,18 @@
 import uuid
-from typing import Annotated, Any, Literal, TypedDict
+from decimal import Decimal
+from typing import Annotated, Any, Literal, Self, TypedDict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from pydantic import model_validator
 
 from spendguard.api.dependencies import ApiDependencies, api_dependencies, authenticated_approver
-from spendguard.graph.state import AuditEntry
+from spendguard.graph.state import AuditEntry, Decision, DecisionOutcome, DispositionVerdict
+from spendguard.queue.messages import QueueMessage
 from spendguard.store import submissions
 from spendguard.store.approvers import AuthenticatedApprover
 from spendguard.store.submissions import SubmissionStatus
+from spendguard.strict_model import StrictModel
 
 router = APIRouter()
 
@@ -53,6 +57,69 @@ async def read_submission(
     }
 
 
-@router.post('/submissions/{submission_id}/decision')
-async def decide_submission(submission_id: uuid.UUID) -> None:
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, 'not implemented')
+class DispositionRequest(StrictModel):
+    finding_id: str
+    verdict: DispositionVerdict
+    reason: str | None
+
+    @model_validator(mode='after')
+    def _dismissal_has_a_reason(self) -> Self:
+        if self.verdict == 'dismissed' and not self.reason:
+            raise ValueError('a dismissal needs a reason')
+        return self
+
+
+class DecisionRequest(StrictModel):
+    outcome: DecisionOutcome
+    reason: str | None
+    dispositions: list[DispositionRequest]
+
+
+class DecisionAccepted(TypedDict):
+    submission_id: str
+    status: SubmissionStatus
+
+
+@router.post('/submissions/{submission_id}/decision', status_code=status.HTTP_202_ACCEPTED)
+async def decide_submission(
+    submission_id: uuid.UUID,
+    decision_request: DecisionRequest,
+    approver: Approver,
+    dependencies: Dependencies,
+) -> DecisionAccepted:
+    record = await submissions.find_submission(dependencies.connection_pool, submission_id)
+    if record is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, 'no such submission')
+    if record.review is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, 'submission is not awaiting a decision')
+    if record.review['requester'] == approver.employee:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, 'approvers may not decide their own spend')
+    if Decimal(record.review['base_currency_amount']) > approver.approval_limit_gbp:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, 'amount exceeds your approval limit')
+    if sorted(disposition.finding_id for disposition in decision_request.dispositions) != sorted(
+        finding['finding_id'] for finding in record.review['findings']
+    ):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, 'give exactly one disposition per finding'
+        )
+    decision: Decision = {
+        'outcome': decision_request.outcome,
+        'decided_by': approver.employee,
+        'reason': decision_request.reason,
+        'dispositions': [
+            {
+                'finding_id': disposition.finding_id,
+                'verdict': disposition.verdict,
+                'reason': disposition.reason,
+            }
+            for disposition in decision_request.dispositions
+        ],
+    }
+    if not await submissions.record_decision(
+        dependencies.connection_pool, submission_id, decision, approver.employee
+    ):
+        raise HTTPException(status.HTTP_409_CONFLICT, 'submission is not awaiting a decision')
+    dependencies.queue.send(
+        QueueMessage(type='resume', submission_id=submission_id, thread_id=record.idempotency_key)
+    )
+    return {'submission_id': str(submission_id), 'status': 'decided'}

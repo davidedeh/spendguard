@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.types import Command
 
 from spendguard.db.database import ConnectionPool
 from spendguard.graph.build import ReviewGraph
@@ -31,10 +32,11 @@ async def process_message(message: QueueMessage, runtime: WorkerRuntime) -> None
             message_type=message.type,
         )
         return
-    if message.type == 'resume':
-        raise NotImplementedError('resuming a decided submission')
     thread: RunnableConfig = {'configurable': {'thread_id': submission.idempotency_key}}
     snapshot = await runtime.graph.aget_state(thread)
+    if snapshot.interrupts:
+        await runtime.graph.ainvoke(Command(resume=submission.decision), thread)
+        return
     if snapshot.next:
         await runtime.graph.ainvoke(None, thread)
         return
