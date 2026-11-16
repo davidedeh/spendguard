@@ -21,4 +21,5 @@ class GraphConfig:
     connection_pool: ConnectionPool
     checkpointer: BaseCheckpointSaver[str]
     decision_event_sender: DecisionEventSender
+    precedent_memory: bool
     policy_context: PolicyContext

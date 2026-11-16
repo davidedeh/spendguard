@@ -23,6 +23,8 @@ async def current_precedents(
     graph_config: GraphConfig, submission: Submission, requester: str
 ) -> list[SuppliedPrecedent]:
     found: list[SuppliedPrecedent] = []
+    if not graph_config.precedent_memory:
+        return found
     for code, definition in graph_config.policy.finding_codes.items():
         subject = precedent_subject(definition.precedent_scope, submission, requester)
         if subject is not None:

@@ -3,13 +3,14 @@ import datetime
 from decimal import Decimal
 from pathlib import Path
 
-from spendguard.eval.metrics import Proportion, RowMetrics, RuleMetrics
+from spendguard.eval.metrics import MemoryMetrics, Proportion, RowMetrics, RuleMetrics
 from spendguard.eval.report import (
     OVERLAP_WORDING,
     PRODUCTION_DEFAULT_WORDING,
     RESULTS_END_MARKER,
     RESULTS_START_MARKER,
     EvalResults,
+    MemoryComparison,
     RowResult,
     write_results,
 )
@@ -91,6 +92,7 @@ RESULTS = EvalResults(
         recall=Proportion(7, 7),
         per_code={'MISSING_PO': Proportion(2, 2)},
     ),
+    memory_comparison=None,
 )
 
 
@@ -168,6 +170,56 @@ def test_the_project_readme_states_the_fixed_wording_around_the_results_table() 
     assert "GPT OSS 120B is OpenAI's open-weight model, not frontier GPT." in readme
     assert readme.count(RESULTS_START_MARKER) == 1
     assert readme.count(RESULTS_END_MARKER) == 1
+
+
+def test_the_results_file_reports_memory_on_and_off_for_the_primary_model(tmp_path: Path) -> None:
+    haiku = RESULTS.rows[0]
+    results = dataclasses.replace(
+        RESULTS,
+        memory_comparison=MemoryComparison(
+            row=haiku.row,
+            model=haiku.model,
+            memory_on=MemoryMetrics(
+                false_positive_rate=Proportion(0, 3),
+                recommendation_agreement=Proportion(3, 3),
+                cleared_with_pair_precedent=Proportion(2, 3),
+                silent_clearances=Proportion(1, 3),
+            ),
+            memory_off=MemoryMetrics(
+                false_positive_rate=Proportion(2, 3),
+                recommendation_agreement=Proportion(1, 3),
+                cleared_with_pair_precedent=Proportion(0, 3),
+                silent_clearances=Proportion(1, 3),
+            ),
+        ),
+    )
+    readme_path = tmp_path / 'README.md'
+    readme_path.write_text(README_BEFORE)
+
+    text = write_results(results, tmp_path / 'results', readme_path).read_text()
+
+    assert '## Memory on versus off' in text
+    assert (
+        'Claude Haiku (primary), `us.anthropic.claude-haiku-4-5-20251001-v1:0`, scored against'
+        ' labels written for memory on. Memory follow-ups: 3.'
+    ) in text
+    assert (
+        '| Memory on | 0/3 = 0.00 | 3/3 = 1.00 | 2/3 = 0.67 | 1/3 = 0.33 |'
+        '\n| Memory off | 2/3 = 0.67 | 1/3 = 0.33 | 0/3 = 0.00 | 1/3 = 0.33 |'
+    ) in text
+    assert 'Memory on versus off' not in readme_path.read_text()
+
+
+def test_the_results_file_says_when_memory_was_not_compared(tmp_path: Path) -> None:
+    readme_path = tmp_path / 'README.md'
+    readme_path.write_text(README_BEFORE)
+
+    text = write_results(RESULTS, tmp_path / 'results', readme_path).read_text()
+
+    assert (
+        '## Memory on versus off\n\nNot compared: no eval row runs the primary model with'
+        ' retrieved clauses.'
+    ) in text
 
 
 def test_the_whole_policy_row_shows_retrieval_recall_as_not_applicable(tmp_path: Path) -> None:

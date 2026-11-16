@@ -71,6 +71,18 @@ async def recent_precedents(
     ]
 
 
+async def precedent_ids_recorded_from(
+    connection_pool: ConnectionPool, submission_id: uuid.UUID
+) -> frozenset[str]:
+    async with connection_pool.connection() as connection:
+        rows = await (
+            await connection.execute(
+                'select id from precedents where submission_id = %s', (submission_id,)
+            )
+        ).fetchall()
+    return frozenset(str(row['id']) for row in rows)
+
+
 async def clear_precedents(connection_pool: ConnectionPool) -> None:
     async with connection_pool.connection() as connection:
         await connection.execute('delete from precedents')

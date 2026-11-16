@@ -71,6 +71,7 @@ def graph_config(
         connection_pool=connection_pool,
         checkpointer=InMemorySaver(),
         decision_event_sender=UnusedSender(),
+        precedent_memory=True,
         policy_context='retrieved_clauses',
     )
 
