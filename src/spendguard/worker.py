@@ -1,3 +1,5 @@
+import asyncio
+import sys
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -24,11 +26,14 @@ from spendguard.observability.tracing import (
     traced_advance,
 )
 from spendguard.policy.loader import POLICY_PATH, load_policy
-from spendguard.queue.messages import STATUS_EXPECTED_BY, QueueMessage
+from spendguard.queue.messages import STATUS_EXPECTED_BY, ConsumableQueue, QueueMessage
+from spendguard.queue.sqs import SqsQueue, ensure_branch_queue, sqs_client
 from spendguard.seed.loader import SEED_DIRECTORY, read_seed_directory
 from spendguard.settings import Settings
 from spendguard.store import submissions
 from spendguard.structured_logging import configure_logging, log_event
+
+IDLE_POLL_SECONDS = 1
 
 
 @dataclass(frozen=True)
@@ -105,6 +110,22 @@ async def handle_sqs_event(event: Mapping[str, object], runtime: WorkerRuntime) 
     }
 
 
+async def process_available_messages(queue: ConsumableQueue, runtime: WorkerRuntime) -> int:
+    deliveries = queue.receive()
+    for delivery in deliveries:
+        try:
+            await process_message(delivery.message, runtime)
+        except Exception as error:
+            log_event(
+                'message_failed',
+                submission_id=str(delivery.message.submission_id),
+                error_type=type(error).__name__,
+            )
+            break
+        queue.acknowledge(delivery.receipt_handle)
+    return len(deliveries)
+
+
 def build_worker_runtime(loaded_settings: Settings) -> WorkerRuntime:
     if (
         loaded_settings.decision_event_signing_key is None
@@ -161,3 +182,25 @@ def create_production_worker_app() -> FastAPI:
         await runtime.connection_pool.close()
 
     return create_worker_app(runtime, lifespan=lifespan)
+
+
+async def _run_local_worker() -> None:
+    loaded_settings = settings.load_settings()
+    if loaded_settings.sqs_endpoint_url is None:
+        sys.exit('the local worker consumes ElasticMQ: set SQS_ENDPOINT_URL in .env')
+    configure_logging(loaded_settings.log_level)
+    runtime = build_worker_runtime(loaded_settings)
+    queue = SqsQueue(
+        client=sqs_client(loaded_settings), queue_url=ensure_branch_queue(loaded_settings)
+    )
+    await runtime.connection_pool.open(wait=True)
+    try:
+        while True:
+            if await process_available_messages(queue, runtime) == 0:
+                await asyncio.sleep(IDLE_POLL_SECONDS)
+    finally:
+        await runtime.connection_pool.close()
+
+
+if __name__ == '__main__':
+    asyncio.run(_run_local_worker())

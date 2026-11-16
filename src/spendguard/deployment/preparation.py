@@ -35,3 +35,15 @@ def create_production_preparation_app() -> FastAPI:
         return {'status': 'prepared'}
 
     return app
+
+
+async def _prepare_local_database() -> None:
+    loaded_settings = settings.load_settings()
+    configure_logging(loaded_settings.log_level)
+    policy = load_policy(POLICY_PATH)
+    await prepare_database(loaded_settings, policy, build_embedder(loaded_settings))
+    log_event('database_prepared', policy_version=policy.version)
+
+
+if __name__ == '__main__':
+    asyncio.run(_prepare_local_database())

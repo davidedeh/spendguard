@@ -71,7 +71,7 @@ Model IDs are configuration, never code: each model's ID is a `CHAT_MODELS__<KEY
 
 ## Running locally
 
-You need Docker, uv and make. Nothing in this section calls a model or AWS.
+You need Docker, uv and make. Nothing in this section calls a model or AWS, apart from the demo with real models at its end.
 
 ```sh
 make install        # uv sync --frozen
@@ -98,7 +98,22 @@ make smoke URL=http://localhost:8000    # health is 200, an unsigned webhook is 
 curl -H "Authorization: Bearer <token>" "http://localhost:8000/submissions?status=pending_review"
 ```
 
-Outside the tests nothing consumes the local queue, so a submission posted to the local API is queued but not advanced: the worker runs as a Lambda fed by SQS.
+A submission posted to the local API is queued but not advanced until a worker consumes the local queue; deployed, the worker runs as a Lambda fed by SQS.
+
+### Demo with real models
+
+`make demo` posts three signed sample submissions taken from the frozen eval dataset (a clean small claim, a claim whose purpose is unclear, and a claim with injected instructions in its business purpose), waits for each to be processed, lists the pending reviews and prints one finding with its clause and quotes. The demo itself only talks to the local API. The worker and the policy index call the models configured in `.env`, so set their credentials there first, and leave `SSM_PARAMETER_PREFIX` empty: the demo refuses to start if it is set.
+
+```sh
+make seed                           # the samples refer to the Halden seed data
+make index-policy                   # embeds changed policy clauses with the configured embedding model
+make issue-token APPROVER=EMP-001   # prints a bearer token once
+make run-api                        # terminal 1; needs WEBHOOK_SIGNING_KEY and DECISION_EVENT_SIGNING_KEY in .env
+make run-worker                     # terminal 2; advances submissions with the configured models
+make demo TOKEN=<token>             # terminal 3; URL=<base URL> if the API is not on http://localhost:8000
+```
+
+The samples keep their eval case IDs as claim IDs, so running the demo again returns the same submissions rather than creating new ones. A message the worker fails on stays queued and is retried, and after three failures it moves to the dead-letter queue.
 
 One compose stack serves every worktree. The database and queue names derive from the sanitised git branch name, so branches share services without sharing state.
 

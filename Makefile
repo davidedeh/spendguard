@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down migrate lint format typecheck test check build-wheel build-image validate-template smoke run-api seed smoke-providers draft-cases freeze issue-token eval bootstrap secrets deploy destroy destroy-bootstrap
+.PHONY: help install up down migrate lint format typecheck test check build-wheel build-image validate-template smoke run-api run-worker index-policy demo seed smoke-providers draft-cases freeze issue-token eval bootstrap secrets deploy destroy destroy-bootstrap
 
 not_built_yet = @echo "make $@ is not built yet ($(1))" >&2; exit 1
 
@@ -42,6 +42,15 @@ build-image: ## Build the container image
 
 run-api: ## Serve the API locally
 	uv run uvicorn spendguard.api.app:create_production_app --factory --reload
+
+run-worker: ## Advance submissions from the local queue (calls the configured models)
+	uv run python -m spendguard.worker
+
+index-policy: ## Embed changed policy clauses into this branch's index (calls the configured embedding model)
+	uv run python -m spendguard.deployment.preparation
+
+demo: ## Post signed sample submissions to a running API and show a pending finding (TOKEN=approver token, URL=base URL)
+	uv run python -m spendguard.demo $(or $(URL),http://localhost:8000) $(TOKEN)
 
 validate-template: ## Validate the SAM template with sam validate and cfn-lint (offline)
 	sam validate --lint --template template.yaml --region us-east-1
