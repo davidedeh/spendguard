@@ -3,7 +3,15 @@ from decimal import Decimal
 from pathlib import Path
 
 from spendguard.eval.metrics import Proportion, RowMetrics, RuleMetrics
-from spendguard.eval.report import EvalResults, RowResult, write_results
+from spendguard.eval.report import (
+    OVERLAP_WORDING,
+    PRODUCTION_DEFAULT_WORDING,
+    RESULTS_END_MARKER,
+    RESULTS_START_MARKER,
+    EvalResults,
+    RowResult,
+    write_results,
+)
 from spendguard.settings import ChatModelSettings, EvalRow, ModelPrice
 
 README_BEFORE = """# A project
@@ -143,3 +151,13 @@ def test_the_dated_results_file_states_the_wording_parameters_and_counts(tmp_pat
     assert text.count('| ALCOHOL_NOT_PERMITTED | 13/16 | 13/16 |') == 1
     assert text.count('| MISSING_PO | 2/2 |') == 1
     assert text.count('7/8 = 0.88') == 1
+
+
+def test_the_project_readme_states_the_fixed_wording_around_the_results_table() -> None:
+    readme = (Path(__file__).parent.parent / 'README.md').read_text()
+
+    assert OVERLAP_WORDING in readme
+    assert PRODUCTION_DEFAULT_WORDING in readme
+    assert "GPT OSS 120B is OpenAI's open-weight model, not frontier GPT." in readme
+    assert readme.count(RESULTS_START_MARKER) == 1
+    assert readme.count(RESULTS_END_MARKER) == 1

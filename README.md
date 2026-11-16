@@ -41,6 +41,18 @@ One compose stack serves every worktree. The database and queue names derive fro
 
 `make help` lists every target. Targets for work not built yet exit with an error naming the ticket that builds them.
 
+## Eval results
+
+`make eval` runs every configured row against the frozen `eval-v1` dataset and refuses to report if the dataset no longer matches its lock file. Each row runs once, at temperature 0 where the provider supports it, and writes a dated results file in `evals/results/` with the exact parameters, prices and per-code counts. The table below is filled by that run and names the exact model IDs measured. GPT OSS 120B is OpenAI's open-weight model, not frontier GPT.
+
+Overlapping 95% intervals are never claimed as a win.
+
+Production default: Haiku unless the eval shows it worse. With 16 positives the eval can only detect large gaps, so this is a cost-led default, not a demonstrated equivalence.
+
+<!-- eval-results:start -->
+No results yet: the eval has not been run against real models.
+<!-- eval-results:end -->
+
 ## Tests
 
 - `make test` runs every test, including database and queue tests. Database and queue fixtures raise when compose is down; they never skip.
