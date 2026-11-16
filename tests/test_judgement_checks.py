@@ -378,11 +378,28 @@ async def test_the_step_cap_stops_a_model_that_keeps_calling_tools_and_asks_for_
         True,
     ]
     assert [outcome['code'] for outcome in update['judgement_outcomes']] == ['PURPOSE_UNCLEAR']
-    assert update['audit'][0] == {
-        'node': 'run_judgement_checks',
-        'event': 'tool_call_limit_reached',
-        'detail': {'tool_calls': 3},
-    }
+    assert update['audit'] == [
+        {
+            'node': 'run_judgement_checks',
+            'event': 'tool_call_limit_reached',
+            'detail': {'tool_calls': 3},
+        },
+        {
+            'node': 'run_judgement_checks',
+            'event': 'judgement_verdict_missing',
+            'detail': {'code': 'WEEKEND_SPEND_UNJUSTIFIED'},
+        },
+        {
+            'node': 'run_judgement_checks',
+            'event': 'judgement_verdict_missing',
+            'detail': {'code': 'RECEIPT_MISMATCH'},
+        },
+        {
+            'node': 'run_judgement_checks',
+            'event': 'judgement_verdict_missing',
+            'detail': {'code': 'ALCOHOL_NOT_PERMITTED'},
+        },
+    ]
 
 
 @pytest.mark.parametrize(
