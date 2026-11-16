@@ -1,7 +1,9 @@
+import asyncio
 import json
 import time
 import uuid
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -32,6 +34,7 @@ from spendguard.models.factory import build_embedder
 from spendguard.models.fake import FakeChatModel, structured_response
 from spendguard.policy.loader import POLICY_PATH, FindingCode, load_policy
 from spendguard.queue.memory import InMemoryQueue
+from spendguard.queue.messages import QueueMessage
 from spendguard.queue.sqs import SqsQueue, sqs_client
 from spendguard.retrieval.policy_index import index_policy
 from spendguard.security.approver_tokens import issue_token
@@ -43,6 +46,7 @@ from spendguard.submission import SupplierInvoiceDelivery
 from spendguard.worker import WorkerRuntime, handle_sqs_event, process_message
 
 if TYPE_CHECKING:
+    from mypy_boto3_sqs.client import SQSClient
     from mypy_boto3_sqs.type_defs import ReceiveMessageResultTypeDef
 
 SETTINGS = make_test_settings()
@@ -148,6 +152,15 @@ class Application:
         raw_body = json.dumps(delivery).encode()
         return await self.client.post(
             path, content=raw_body, headers=signed_headers(key, raw_body, signed_at)
+        )
+
+    async def decide(
+        self, submission_id: str, token: str, decision: dict[str, Any]
+    ) -> httpx.Response:
+        return await self.client.post(
+            f'/submissions/{submission_id}/decision',
+            json=decision,
+            headers={'Authorization': f'Bearer {token}'},
         )
 
     async def run_worker(self) -> None:
@@ -261,7 +274,7 @@ async def application(
         yield Application(
             client=client,
             queue=queue,
-            worker=WorkerRuntime(graph=graph, connection_pool=connection_pool),
+            worker=WorkerRuntime(graph=graph, connection_pool=connection_pool, tracing=None),
             connection_pool=connection_pool,
             sender=sender,
             branch_database=branch_database,
@@ -579,20 +592,6 @@ async def test_the_mock_erp_rejects_an_event_signed_with_the_webhook_key(
 
 
 @pytest.mark.parametrize(
-    ('method', 'path'),
-    [
-        ('POST', '/submissions/00000000-0000-0000-0000-000000000001/decision'),
-    ],
-)
-async def test_every_endpoint_not_built_yet_returns_501(
-    application: Application, method: str, path: str
-) -> None:
-    response = await application.client.request(method, path)
-
-    assert response.status_code == 501
-
-
-@pytest.mark.parametrize(
     'path',
     ['/submissions?status=pending_review', '/submissions/00000000-0000-0000-0000-000000000001'],
 )
@@ -702,6 +701,213 @@ async def test_with_the_kill_switch_on_a_clean_small_claim_waits_for_review(
     assert (review['recommendation'], review['findings']) == ('approve', [])
 
 
+async def claim_waiting_for_review(application: Application, **claim_overrides: Any) -> str:
+    response = await application.post_claim(
+        expense_claim_delivery(
+            unique_claim_id(), **({'amount': '30.00', 'receipt_text': None} | claim_overrides)
+        )
+    )
+    submission_id: str = response.json()['submission_id']
+    await application.run_worker()
+    assert await application.status_of(submission_id) == 'pending_review'
+    return submission_id
+
+
+def missing_receipt_decision(outcome: str, reason: str | None) -> dict[str, Any]:
+    return {
+        'outcome': outcome,
+        'reason': reason,
+        'dispositions': [
+            {'finding_id': 'MISSING_RECEIPT', 'verdict': 'upheld', 'reason': None},
+        ],
+    }
+
+
+async def test_an_approved_claim_ends_complete_with_one_approved_erp_event(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+
+    decided = await application.decide(
+        submission_id,
+        application.issue_token('EMP-002'),
+        missing_receipt_decision('approve', None),
+    )
+    await application.run_worker()
+
+    assert decided.status_code == 202
+    assert await application.status_of(submission_id) == 'complete'
+    events = await application.recorded_events(submission_id)
+    assert [(event['outcome'], event['decided_by']) for event in events] == [
+        ('approved', 'EMP-002')
+    ]
+
+
+async def test_a_rejected_claim_ends_complete_with_one_erp_event_carrying_the_stored_reason(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+
+    await application.decide(
+        submission_id,
+        application.issue_token('EMP-001'),
+        missing_receipt_decision('reject', 'No receipt for a 30 pound lunch'),
+    )
+    await application.run_worker()
+
+    assert await application.status_of(submission_id) == 'complete'
+    events = await application.recorded_events(submission_id)
+    assert [(event['outcome'], event['decided_by'], event['reason']) for event in events] == [
+        ('rejected', 'EMP-001', 'No receipt for a 30 pound lunch')
+    ]
+
+
+@pytest.mark.parametrize(
+    'claim_overrides',
+    [{'claimant': 'EMP-002'}, {'amount': '5000.01'}],
+    ids=['the approver is the requester', 'the amount is over the approval limit'],
+)
+async def test_a_decision_the_approver_may_not_make_returns_403_and_changes_nothing(
+    application: Application, claim_overrides: dict[str, Any]
+) -> None:
+    submission_id = await claim_waiting_for_review(application, **claim_overrides)
+
+    decided = await application.decide(
+        submission_id,
+        application.issue_token('EMP-002'),
+        missing_receipt_decision('approve', None),
+    )
+
+    assert decided.status_code == 403
+    assert await application.status_of(submission_id) == 'pending_review'
+    assert application.queue.receive() == []
+
+
+@pytest.mark.parametrize(
+    'dispositions',
+    [
+        [],
+        [{'finding_id': 'MISSING_PO', 'verdict': 'upheld', 'reason': None}],
+        [
+            {'finding_id': 'MISSING_RECEIPT', 'verdict': 'upheld', 'reason': None},
+            {'finding_id': 'MISSING_RECEIPT', 'verdict': 'dismissed', 'reason': 'Lost in transit'},
+        ],
+        [{'finding_id': 'MISSING_RECEIPT', 'verdict': 'dismissed', 'reason': None}],
+    ],
+    ids=[
+        'no dispositions',
+        'a disposition for another finding',
+        'two dispositions for one finding',
+        'a dismissal without a reason',
+    ],
+)
+async def test_a_decision_without_one_disposition_per_finding_returns_422_and_changes_nothing(
+    application: Application, dispositions: list[dict[str, Any]]
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+
+    decided = await application.decide(
+        submission_id,
+        application.issue_token('EMP-001'),
+        {'outcome': 'approve', 'reason': None, 'dispositions': dispositions},
+    )
+
+    assert decided.status_code == 422
+    assert await application.status_of(submission_id) == 'pending_review'
+    assert application.queue.receive() == []
+
+
+async def decisions_waiting_on_a_row_lock(branch_database: str) -> int:
+    async with await psycopg.AsyncConnection.connect(branch_database, autocommit=True) as observer:
+        row = await (
+            await observer.execute(
+                "select count(*) from pg_stat_activity where wait_event_type = 'Lock'"
+                " and query like 'update submissions set status = ''decided''%'"
+            )
+        ).fetchone()
+    assert row is not None
+    count: int = row[0]
+    return count
+
+
+async def test_a_rejection_without_a_reason_returns_422_and_changes_nothing(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+
+    decided = await application.decide(
+        submission_id,
+        application.issue_token('EMP-001'),
+        missing_receipt_decision('reject', None),
+    )
+
+    assert decided.status_code == 422
+    assert await application.status_of(submission_id) == 'pending_review'
+    assert application.queue.receive() == []
+
+
+async def test_a_decision_on_a_submission_not_yet_reviewed_returns_409_and_changes_nothing(
+    application: Application,
+) -> None:
+    response = await application.post_claim(
+        expense_claim_delivery(unique_claim_id(), amount='30.00', receipt_text=None)
+    )
+    submission_id = response.json()['submission_id']
+
+    decided = await application.decide(
+        submission_id,
+        application.issue_token('EMP-001'),
+        missing_receipt_decision('approve', None),
+    )
+
+    assert decided.status_code == 409
+    assert await application.status_of(submission_id) == 'received'
+    assert [delivery.message.type for delivery in application.queue.receive()] == ['start']
+
+
+async def test_of_two_concurrent_decisions_exactly_one_wins_and_the_other_gets_409(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+    approvers = ['EMP-001', 'EMP-002']
+    tokens = [application.issue_token(approver) for approver in approvers]
+    async with await psycopg.AsyncConnection.connect(application.branch_database) as blocker:
+        async with blocker.transaction():
+            await blocker.execute(
+                'select id from submissions where id = %s for update', (submission_id,)
+            )
+            racing = [
+                asyncio.create_task(
+                    application.decide(
+                        submission_id, token, missing_receipt_decision('approve', None)
+                    )
+                )
+                for token in tokens
+            ]
+            async with asyncio.timeout(5):
+                while (await decisions_waiting_on_a_row_lock(application.branch_database)) < len(
+                    racing
+                ):
+                    await asyncio.sleep(0.01)
+        responses = await asyncio.gather(*racing)
+
+    assert sorted(response.status_code for response in responses) == [202, 409]
+    [winner] = [
+        approver
+        for approver, response in zip(approvers, responses, strict=True)
+        if response.status_code == 202
+    ]
+    record = await submissions.find_submission(
+        application.connection_pool, uuid.UUID(submission_id)
+    )
+    assert record is not None
+    assert (record.status, record.decision and record.decision['decided_by']) == (
+        'decided',
+        winner,
+    )
+    assert [delivery.message.type for delivery in application.queue.receive()] == ['resume']
+
+
 def lambda_event_from(received: 'ReceiveMessageResultTypeDef') -> dict[str, Any]:
     return {
         'Records': [
@@ -717,10 +923,10 @@ def lambda_event_from(received: 'ReceiveMessageResultTypeDef') -> dict[str, Any]
     }
 
 
-async def test_the_worker_handler_runs_a_start_message_from_elasticmq_to_complete(
-    application: Application, branch_queue: str
-) -> None:
-    client = sqs_client(SETTINGS)
+@asynccontextmanager
+async def queue_backed_client(
+    application: Application, client: 'SQSClient', branch_queue: str
+) -> AsyncIterator[httpx.AsyncClient]:
     queue_backed_app = create_app(
         ApiDependencies(
             settings=SETTINGS,
@@ -730,16 +936,29 @@ async def test_the_worker_handler_runs_a_start_message_from_elasticmq_to_complet
             queue=SqsQueue(client=client, queue_url=branch_queue),
         )
     )
-    raw_body = json.dumps(expense_claim_delivery(unique_claim_id())).encode()
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=queue_backed_app), base_url='http://testserver'
-    ) as webhook_client:
-        response = await webhook_client.post(
-            '/webhooks/expense-claims',
-            content=raw_body,
-            headers=signed_headers(WEBHOOK_KEY, raw_body),
+    ) as api_client:
+        yield api_client
+
+
+async def post_claim_through(api_client: httpx.AsyncClient, delivery: dict[str, Any]) -> str:
+    raw_body = json.dumps(delivery).encode()
+    response = await api_client.post(
+        '/webhooks/expense-claims', content=raw_body, headers=signed_headers(WEBHOOK_KEY, raw_body)
+    )
+    submission_id: str = response.json()['submission_id']
+    return submission_id
+
+
+async def test_the_worker_handler_runs_a_start_message_from_elasticmq_to_complete(
+    application: Application, branch_queue: str
+) -> None:
+    client = sqs_client(SETTINGS)
+    async with queue_backed_client(application, client, branch_queue) as api_client:
+        submission_id = await post_claim_through(
+            api_client, expense_claim_delivery(unique_claim_id())
         )
-    submission_id = response.json()['submission_id']
     received = client.receive_message(QueueUrl=branch_queue, MaxNumberOfMessages=10)
 
     outcome = await handle_sqs_event(lambda_event_from(received), application.worker)
@@ -747,6 +966,36 @@ async def test_the_worker_handler_runs_a_start_message_from_elasticmq_to_complet
     assert outcome == {'batchItemFailures': []}
     assert await application.status_of(submission_id) == 'complete'
     assert [event.submission_id for event in application.sender.sent] == [submission_id]
+
+
+async def test_the_worker_handler_runs_a_resume_message_from_elasticmq_to_complete(
+    application: Application, branch_queue: str
+) -> None:
+    client = sqs_client(SETTINGS)
+    token = application.issue_token('EMP-001')
+    async with queue_backed_client(application, client, branch_queue) as api_client:
+        submission_id = await post_claim_through(
+            api_client,
+            expense_claim_delivery(unique_claim_id(), amount='30.00', receipt_text=None),
+        )
+        started = client.receive_message(QueueUrl=branch_queue, MaxNumberOfMessages=10)
+        await handle_sqs_event(lambda_event_from(started), application.worker)
+        for message in started.get('Messages', []):
+            client.delete_message(QueueUrl=branch_queue, ReceiptHandle=message['ReceiptHandle'])
+        await api_client.post(
+            f'/submissions/{submission_id}/decision',
+            json=missing_receipt_decision('reject', 'Receipt never supplied'),
+            headers={'Authorization': f'Bearer {token}'},
+        )
+    resumed = client.receive_message(QueueUrl=branch_queue, MaxNumberOfMessages=10)
+
+    outcome = await handle_sqs_event(lambda_event_from(resumed), application.worker)
+
+    assert outcome == {'batchItemFailures': []}
+    assert await application.status_of(submission_id) == 'complete'
+    assert [(event.submission_id, event.outcome) for event in application.sender.sent] == [
+        (submission_id, 'rejected')
+    ]
 
 
 def lambda_record(message_id: str, body: str) -> dict[str, Any]:
@@ -893,3 +1142,72 @@ async def test_rule_and_judgement_findings_reach_review_as_one_verified_set(
         ),
     ]
     assert review['recommendation'] == 'reject'
+
+
+async def test_a_duplicate_resume_message_after_completion_sends_no_second_event(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+    await application.decide(
+        submission_id, application.issue_token('EMP-001'), missing_receipt_decision('approve', None)
+    )
+    [resume] = application.queue.receive()
+    await process_message(resume.message, application.worker)
+
+    await process_message(resume.message, application.worker)
+
+    assert await application.status_of(submission_id) == 'complete'
+    assert [event.submission_id for event in application.sender.sent] == [submission_id]
+
+
+async def test_a_resume_message_for_an_undecided_submission_is_a_no_op(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+    record = await submissions.find_submission(
+        application.connection_pool, uuid.UUID(submission_id)
+    )
+    assert record is not None
+
+    await process_message(
+        QueueMessage(type='resume', submission_id=record.id, thread_id=record.idempotency_key),
+        application.worker,
+    )
+
+    assert await application.status_of(submission_id) == 'pending_review'
+    assert application.sender.sent == []
+
+
+@dataclass
+class FailingFirstSender:
+    inner: DecisionEventSender
+    attempts: int = 0
+
+    async def send(self, event: DecisionEvent) -> None:
+        self.attempts += 1
+        if self.attempts == 1:
+            raise httpx.ConnectError('the ERP is unreachable')
+        await self.inner.send(event)
+
+
+async def test_a_resume_redelivered_after_a_failed_erp_send_completes_with_one_rejection(
+    application: Application,
+) -> None:
+    submission_id = await claim_waiting_for_review(application)
+    await application.decide(
+        submission_id,
+        application.issue_token('EMP-001'),
+        missing_receipt_decision('reject', 'Receipt never supplied'),
+    )
+    [resume] = application.queue.receive()
+    application.sender.inner = FailingFirstSender(application.sender.inner)
+    with pytest.raises(httpx.ConnectError):
+        await process_message(resume.message, application.worker)
+
+    await process_message(resume.message, application.worker)
+
+    assert await application.status_of(submission_id) == 'complete'
+    events = await application.recorded_events(submission_id)
+    assert [(event['outcome'], event['reason']) for event in events] == [
+        ('rejected', 'Receipt never supplied')
+    ]
