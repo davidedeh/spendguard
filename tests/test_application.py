@@ -41,7 +41,7 @@ from spendguard.security.approver_tokens import issue_token
 from spendguard.security.signatures import sign
 from spendguard.seed.loader import load_seed_data, read_seed_directory
 from spendguard.settings import Settings
-from spendguard.store import decision_events, submissions
+from spendguard.store import decision_events, precedents, submissions
 from spendguard.submission import SupplierInvoiceDelivery
 from spendguard.worker import WorkerRuntime, handle_sqs_event, process_message
 
@@ -233,6 +233,7 @@ async def application(
 ) -> AsyncIterator[Application]:
     with psycopg.connect(branch_database) as connection:
         load_seed_data(connection, SEED_DATA)
+    await precedents.clear_precedents(connection_pool)
     queue = InMemoryQueue(
         visibility_timeout_seconds=application_settings.queue_visibility_timeout_seconds
     )
@@ -1210,4 +1211,86 @@ async def test_a_resume_redelivered_after_a_failed_erp_send_completes_with_one_r
     events = await application.recorded_events(submission_id)
     assert [(event['outcome'], event['reason']) for event in events] == [
         ('rejected', 'Receipt never supplied')
+    ]
+
+
+async def review_of(application: Application, submission_id: str) -> dict[str, Any]:
+    listed = await application.pending_review(application.issue_token('EMP-001'))
+    [review] = [
+        item for item in listed.json()['submissions'] if item['submission_id'] == submission_id
+    ]
+    return dict(review)
+
+
+async def unapproved_supplier_invoice_waiting_for_review(application: Application) -> str:
+    response = await application.post_invoice(
+        supplier_invoice_delivery(
+            unique_invoice_number(), supplier='SUP-002', purchase_order=None, cost_centre='CC-200'
+        )
+    )
+    submission_id: str = response.json()['submission_id']
+    await application.run_worker()
+    assert await application.status_of(submission_id) == 'pending_review'
+    return submission_id
+
+
+async def decide_dismissing(
+    application: Application,
+    submission_id: str,
+    *,
+    approver: str,
+    outcome: str,
+    dismissed: dict[str, str],
+) -> None:
+    review = await review_of(application, submission_id)
+    decided = await application.decide(
+        submission_id,
+        application.issue_token(approver),
+        {
+            'outcome': outcome,
+            'reason': None if outcome == 'approve' else 'Rejected for another reason',
+            'dispositions': [
+                {
+                    'finding_id': finding['finding_id'],
+                    'verdict': 'dismissed' if finding['code'] in dismissed else 'upheld',
+                    'reason': dismissed.get(finding['code']),
+                }
+                for finding in review['findings']
+            ],
+        },
+    )
+    assert decided.status_code == 202
+    await application.run_worker()
+    assert await application.status_of(submission_id) == 'complete'
+
+
+@pytest.mark.parametrize('outcome', ['approve', 'reject'])
+async def test_a_dismissed_supplier_finding_annotates_the_next_invoice_from_that_supplier(
+    application: Application, outcome: str
+) -> None:
+    first = await unapproved_supplier_invoice_waiting_for_review(application)
+    await decide_dismissing(
+        application,
+        first,
+        approver='EMP-001',
+        outcome=outcome,
+        dismissed={'NON_APPROVED_SUPPLIER': 'Onboarding with procurement is under way'},
+    )
+
+    second = await unapproved_supplier_invoice_waiting_for_review(application)
+
+    [finding] = [
+        finding
+        for finding in (await review_of(application, second))['findings']
+        if finding['code'] == 'NON_APPROVED_SUPPLIER'
+    ]
+    assert [
+        (precedent['code'], precedent['clause_reference'], precedent['reason'])
+        for precedent in finding['precedents']
+    ] == [
+        (
+            'NON_APPROVED_SUPPLIER',
+            clause_reference('approved_suppliers'),
+            'Onboarding with procurement is under way',
+        )
     ]

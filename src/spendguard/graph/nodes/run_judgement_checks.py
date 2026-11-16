@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import Sequence
 from typing import Any
@@ -13,6 +14,7 @@ from langchain_core.messages import (
 from spendguard.graph.config import GraphConfig
 from spendguard.graph.judgement_tools import submission_tools
 from spendguard.graph.nodes.intake import SUBMISSION_ADAPTER
+from spendguard.graph.precedents import current_precedents
 from spendguard.graph.state import (
     AuditEntry,
     CheckGuidance,
@@ -20,12 +22,14 @@ from spendguard.graph.state import (
     JudgementOutcomeKind,
     RetrievedClause,
     ReviewState,
+    SuppliedPrecedent,
 )
 from spendguard.models.structured_output import output_schema, structured_reply
 from spendguard.policy.loader import FindingCode, Policy
 from spendguard.privacy.prompt_data import DATA_TAG_INSTRUCTION, prompt_fields, untrusted_data
 from spendguard.rules.checks import judgement_checks
 from spendguard.strict_model import StrictModel
+from spendguard.submission import Submission
 
 VERDICT_REQUEST = 'Now give your verdict for every check.'
 TOOL_CALL_LIMIT_REACHED = 'Not run: the tool call limit for this submission is reached.'
@@ -100,9 +104,26 @@ def judgement_instructions(
     )
 
 
-def run_judgement_checks(state: ReviewState, graph_config: GraphConfig) -> ReviewState:
-    model_settings = graph_config.settings.chat_models[graph_config.settings.primary_model_key]
+async def run_judgement_checks(state: ReviewState, graph_config: GraphConfig) -> ReviewState:
+    requester = state['requester']
+    if requester is None:
+        raise ValueError('Judgement checks need the requester that intake derived')
     submission = SUBMISSION_ADAPTER.validate_python(state['submission'])
+    available_precedents = await current_precedents(graph_config, submission, requester)
+    judged = await asyncio.to_thread(
+        _judged, state, graph_config, submission, requester, available_precedents
+    )
+    return judged | {'current_precedents': available_precedents}
+
+
+def _judged(
+    state: ReviewState,
+    graph_config: GraphConfig,
+    submission: Submission,
+    requester: str,
+    available_precedents: list[SuppliedPrecedent],
+) -> ReviewState:
+    model_settings = graph_config.settings.chat_models[graph_config.settings.primary_model_key]
     checks = judgement_checks(submission, graph_config.seed_data, graph_config.policy)
     messages: list[BaseMessage] = [
         SystemMessage(
@@ -115,10 +136,7 @@ def run_judgement_checks(state: ReviewState, graph_config: GraphConfig) -> Revie
         ),
         HumanMessage(content=untrusted_data(prompt_fields(state['redacted_submission']))),
     ]
-    requester = state['requester']
-    if requester is None:
-        raise ValueError('Judgement checks need the requester that intake derived')
-    bound = submission_tools(submission, requester, graph_config.seed_data, graph_config.policy)
+    bound = submission_tools(submission, requester, graph_config.seed_data, available_precedents)
     tools_by_name = {tool.name: tool for tool in bound.tools}
     model_with_tools = graph_config.chat_model.bind_tools(bound.tools)
     maximum_tool_calls = graph_config.settings.judgement_max_tool_calls

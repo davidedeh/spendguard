@@ -94,9 +94,11 @@ class ReviewState(TypedDict, total=False):
     check_guidance: list[CheckGuidance]
     retrieved_clauses: list[RetrievedClause]
     judgement_checks: list[FindingCode]
+    current_precedents: list[SuppliedPrecedent]
     supplied_precedents: Annotated[list[SuppliedPrecedent], operator.add]
     judgement_outcomes: list[JudgementOutcome]
-    findings: Annotated[list[RecordedFinding], operator.add]
+    rule_findings: list[RecordedFinding]
+    findings: list[RecordedFinding]
     route: Route
     recommendation: Recommendation
     decision: Decision

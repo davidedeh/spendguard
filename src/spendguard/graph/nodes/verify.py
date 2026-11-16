@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from spendguard.graph.config import GraphConfig
+from spendguard.graph.precedents import annotated_findings
 from spendguard.graph.state import (
     CandidateFinding,
     JudgementOutcome,
@@ -161,7 +162,9 @@ def verify(state: ReviewState, graph_config: GraphConfig) -> ReviewState:
     )
     kept_outcomes, clearance_drops = verified_clearances(outcomes, evidence, graph_config.policy)
     return {
-        'findings': verification.findings,
+        'findings': annotated_findings(
+            state['rule_findings'] + verification.findings, state['current_precedents']
+        ),
         'judgement_outcomes': kept_outcomes,
         'audit': [
             {

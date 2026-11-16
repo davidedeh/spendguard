@@ -19,4 +19,4 @@ def run_rule_checks(state: ReviewState, graph_config: GraphConfig) -> ReviewStat
         }
         for finding in rule_findings(submission, graph_config.seed_data, graph_config.policy)
     ]
-    return {'findings': findings}
+    return {'rule_findings': findings}
