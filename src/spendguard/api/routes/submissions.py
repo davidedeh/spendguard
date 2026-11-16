@@ -7,6 +7,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from pydantic import Field, model_validator
 
 from spendguard.api.dependencies import ApiDependencies, api_dependencies, authenticated_approver
+from spendguard.graph.config import thread_config
 from spendguard.graph.state import AuditEntry, Decision, DecisionOutcome, DispositionVerdict
 from spendguard.queue.messages import QueueMessage
 from spendguard.store import submissions
@@ -44,7 +45,7 @@ async def read_submission(
     if record is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, 'no such submission')
     checkpoint = await AsyncPostgresSaver(dependencies.connection_pool).aget_tuple(
-        {'configurable': {'thread_id': record.idempotency_key}}
+        thread_config(record.idempotency_key)
     )
     audit: list[AuditEntry] = (
         [] if checkpoint is None else checkpoint.checkpoint['channel_values'].get('audit', [])

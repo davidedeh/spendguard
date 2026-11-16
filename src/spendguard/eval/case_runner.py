@@ -26,7 +26,7 @@ from spendguard.eval.metrics import (
 )
 from spendguard.eval.report import EvalResults, MemoryComparison, RowResult
 from spendguard.graph.build import ReviewGraph, build_graph
-from spendguard.graph.config import GraphConfig
+from spendguard.graph.config import GraphConfig, thread_config
 from spendguard.graph.nodes.execute import DecisionEvent
 from spendguard.graph.state import Decision, Disposition, RecordedFinding, ReviewState
 from spendguard.observability.tracing import Tracing, traced_advance
@@ -88,10 +88,6 @@ def eval_graph(
     )
 
 
-def _thread(idempotency_key: str) -> RunnableConfig:
-    return {'configurable': {'thread_id': idempotency_key}}
-
-
 def _idempotency_key(case: EvalCase, run_identifier: str) -> str:
     return f'eval:{run_identifier}:{case.id}'
 
@@ -118,7 +114,7 @@ async def run_case(
         'submission': payload,
     }
     token_counter = _TokenCounter()
-    thread: RunnableConfig = _thread(idempotency_key) | {'callbacks': [token_counter]}
+    thread: RunnableConfig = thread_config(idempotency_key) | {'callbacks': [token_counter]}
     started = time.perf_counter()
     await traced_advance(tracing, graph, initial_state, thread, str(recording.submission_id))
     latency_seconds = time.perf_counter() - started
@@ -184,7 +180,7 @@ async def _apply_scripted_review(
 ) -> frozenset[str]:
     connection_pool = resources.connection_pool
     idempotency_key = _idempotency_key(case, run_identifier)
-    snapshot = await graph.aget_state(_thread(idempotency_key))
+    snapshot = await graph.aget_state(thread_config(idempotency_key))
     if not snapshot.interrupts:
         return frozenset()
     submission_id = uuid.UUID(snapshot.values['submission_id'])

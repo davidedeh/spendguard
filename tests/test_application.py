@@ -31,7 +31,7 @@ from spendguard.api.dependencies import ApiDependencies
 from spendguard.db.database import ConnectionPool
 from spendguard.deployment.smoke import smoke_failures
 from spendguard.graph.build import build_graph
-from spendguard.graph.config import GraphConfig
+from spendguard.graph.config import GraphConfig, thread_config
 from spendguard.graph.nodes.execute import (
     DecisionEvent,
     DecisionEventSender,
@@ -192,9 +192,7 @@ class Application:
         return record.status
 
     async def requester_of(self, delivery: SupplierInvoiceDelivery) -> str:
-        snapshot = await self.worker.graph.aget_state(
-            {'configurable': {'thread_id': delivery.idempotency_key}}
-        )
+        snapshot = await self.worker.graph.aget_state(thread_config(delivery.idempotency_key))
         return str(snapshot.values['requester'])
 
     async def recorded_events(self, submission_id: str) -> list[dict[str, Any]]:
@@ -203,9 +201,7 @@ class Application:
     async def review_state(self, submission_id: str) -> dict[str, Any]:
         record = await submissions.find_submission(self.connection_pool, uuid.UUID(submission_id))
         assert record is not None
-        snapshot = await self.worker.graph.aget_state(
-            {'configurable': {'thread_id': record.idempotency_key}}
-        )
+        snapshot = await self.worker.graph.aget_state(thread_config(record.idempotency_key))
         state: dict[str, Any] = snapshot.values
         return state
 

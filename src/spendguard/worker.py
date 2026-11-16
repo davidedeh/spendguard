@@ -5,7 +5,6 @@ from typing import TypedDict
 
 import httpx
 from fastapi import FastAPI
-from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.types import Command
 from pydantic import BaseModel, Field
@@ -14,7 +13,7 @@ from spendguard import settings
 from spendguard.api.app import Lifespan
 from spendguard.db.database import ConnectionPool, async_connection_pool, branch_connection_info
 from spendguard.graph.build import ReviewGraph, build_graph
-from spendguard.graph.config import GraphConfig
+from spendguard.graph.config import GraphConfig, thread_config
 from spendguard.graph.nodes.execute import SignedDecisionEventSender
 from spendguard.graph.state import ReviewState
 from spendguard.models.factory import build_chat_model, build_embedder
@@ -48,7 +47,7 @@ async def process_message(message: QueueMessage, runtime: WorkerRuntime) -> None
             message_type=message.type,
         )
         return
-    thread: RunnableConfig = {'configurable': {'thread_id': submission.idempotency_key}}
+    thread = thread_config(submission.idempotency_key)
     snapshot = await runtime.graph.aget_state(thread)
     if snapshot.interrupts:
         await traced_advance(
