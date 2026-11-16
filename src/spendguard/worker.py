@@ -1,16 +1,17 @@
-import asyncio
-import functools
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import TypedDict
 
 import httpx
+from fastapi import FastAPI
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
 from spendguard import settings
+from spendguard.api.app import Lifespan
 from spendguard.db.database import ConnectionPool, async_connection_pool, branch_connection_info
 from spendguard.graph.build import ReviewGraph, build_graph
 from spendguard.graph.config import GraphConfig
@@ -111,11 +112,16 @@ async def handle_sqs_event(event: Mapping[str, object], runtime: WorkerRuntime) 
     }
 
 
-async def open_worker_runtime(loaded_settings: Settings) -> WorkerRuntime:
-    if loaded_settings.decision_event_signing_key is None:
-        raise ValueError('DECISION_EVENT_SIGNING_KEY must be set for the worker to send events')
+def build_worker_runtime(loaded_settings: Settings) -> WorkerRuntime:
+    if (
+        loaded_settings.decision_event_signing_key is None
+        or loaded_settings.decision_event_url is None
+    ):
+        raise ValueError(
+            'DECISION_EVENT_SIGNING_KEY and DECISION_EVENT_URL must be set'
+            ' for the worker to send events'
+        )
     connection_pool = async_connection_pool(branch_connection_info(loaded_settings))
-    await connection_pool.open(wait=True)
     graph = build_graph(
         GraphConfig(
             settings=loaded_settings,
@@ -137,16 +143,26 @@ async def open_worker_runtime(loaded_settings: Settings) -> WorkerRuntime:
     )
 
 
-@functools.cache
-def _lambda_worker() -> tuple[asyncio.AbstractEventLoop, WorkerRuntime]:
+def create_worker_app(runtime: WorkerRuntime, lifespan: Lifespan | None = None) -> FastAPI:
+    app = FastAPI(title='SpendGuard worker', lifespan=lifespan)
+
+    @app.post('/events')
+    @flush_traces_before_return
+    async def events(event: dict[str, object]) -> BatchResponse:
+        return await handle_sqs_event(event, runtime)
+
+    return app
+
+
+def create_production_worker_app() -> FastAPI:
     loaded_settings = settings.load_settings()
     configure_logging(loaded_settings.log_level)
-    event_loop = asyncio.new_event_loop()
-    runtime = event_loop.run_until_complete(open_worker_runtime(loaded_settings))
-    return event_loop, runtime
+    runtime = build_worker_runtime(loaded_settings)
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        await runtime.connection_pool.open(wait=True)
+        yield
+        await runtime.connection_pool.close()
 
-@flush_traces_before_return
-def handler(event: dict[str, object], context: object) -> BatchResponse:
-    event_loop, runtime = _lambda_worker()
-    return event_loop.run_until_complete(handle_sqs_event(event, runtime))
+    return create_worker_app(runtime, lifespan=lifespan)

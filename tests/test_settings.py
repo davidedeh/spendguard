@@ -57,3 +57,20 @@ def test_a_visibility_timeout_of_exactly_six_worker_timeouts_is_accepted() -> No
 def test_an_eval_row_naming_an_unconfigured_chat_model_is_rejected() -> None:
     with pytest.raises(ValueError, match="Eval row 'Claude Opus' uses chat model 'claude_opus'"):
         make_test_settings(eval_rows=[{'model_key': 'claude_opus', 'label': 'Claude Opus'}])
+
+
+def test_a_database_url_stands_in_for_the_local_postgres_settings() -> None:
+    settings = make_test_settings(
+        database_url='postgresql://pooler.example.invalid:6543/postgres',
+        postgres_host=None,
+        postgres_port=None,
+        postgres_user=None,
+        postgres_password=None,
+    )
+
+    assert settings.postgres_host is None
+
+
+def test_settings_without_a_database_url_need_every_local_postgres_setting() -> None:
+    with pytest.raises(ValueError, match='DATABASE_URL or every POSTGRES_ setting'):
+        make_test_settings(database_url=None, postgres_password=None)

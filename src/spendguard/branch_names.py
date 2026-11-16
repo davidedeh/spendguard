@@ -30,7 +30,7 @@ def _bounded_name(prefix: str, branch_name: str, separator: str, limit: int) -> 
 
 
 def current_branch_name() -> str:
-    for variable in ('GITHUB_HEAD_REF', 'GITHUB_REF_NAME'):
+    for variable in ('BRANCH_NAME', 'GITHUB_HEAD_REF', 'GITHUB_REF_NAME'):
         if branch_name := os.environ.get(variable):
             return branch_name
     completed = subprocess.run(

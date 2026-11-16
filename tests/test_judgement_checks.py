@@ -22,7 +22,7 @@ from spendguard.graph.nodes.run_judgement_checks import (
 from spendguard.graph.state import ReviewState, SuppliedPrecedent
 from spendguard.models.factory import build_embedder
 from spendguard.models.fake import FakeChatModel, structured_response
-from spendguard.policy.loader import POLICY_PATH, FindingCode, load_policy
+from spendguard.policy.loader import POLICY_PATH, FindingCode, Policy, load_policy
 from spendguard.privacy.prompt_data import DATA_TAG_INSTRUCTION, prompt_fields, untrusted_data
 from spendguard.seed.loader import read_seed_directory
 from spendguard.settings import Settings
@@ -155,7 +155,7 @@ async def test_a_flagged_check_becomes_a_candidate_finding_and_a_clear_one_an_ou
         ],
     )
 
-    update = run_judgement_checks(claim_state(), graph_config(model, connection_pool))
+    update = await run_judgement_checks(claim_state(), graph_config(model, connection_pool))
 
     assert update['judgement_outcomes'] == [
         {
@@ -213,7 +213,7 @@ async def test_lookups_answer_for_this_claim_whatever_identifiers_the_model_pass
         ],
     )
 
-    run_judgement_checks(claim_state(), graph_config(model, connection_pool))
+    await run_judgement_checks(claim_state(), graph_config(model, connection_pool))
 
     assert tool_results(model.received[1]) == {
         'call-0': {
@@ -251,7 +251,7 @@ async def test_lookups_for_an_invoice_answer_for_its_supplier_requester_and_cost
         ],
     )
 
-    run_judgement_checks(state, graph_config(model, connection_pool))
+    await run_judgement_checks(state, graph_config(model, connection_pool))
 
     assert tool_results(model.received[1]) == {
         'call-0': {
@@ -300,7 +300,9 @@ async def test_the_step_cap_stops_a_model_that_keeps_calling_tools_and_asks_for_
 ) -> None:
     model = ToolHungryChatModel(model_id='fake-judge')
 
-    update = run_judgement_checks(claim_state(), graph_config(model, connection_pool, settings))
+    update = await run_judgement_checks(
+        claim_state(), graph_config(model, connection_pool, settings)
+    )
 
     assert len(model.received) == 3
     answered = [message for message in model.received[2] if isinstance(message, ToolMessage)]
@@ -347,7 +349,7 @@ async def test_the_model_is_asked_only_the_judgement_checks_that_apply_to_the_su
         model_id='fake-judge', responses=[AIMessage(content='Nothing to look up.'), report()]
     )
 
-    update = run_judgement_checks(state, graph_config(model, connection_pool))
+    update = await run_judgement_checks(state, graph_config(model, connection_pool))
 
     assert update['judgement_checks'] == expected_checks
     system_prompt = model.received[0][0].text
@@ -368,7 +370,7 @@ async def test_the_judge_sees_the_retrieved_clauses_the_guidance_and_only_the_re
     }
     state['check_guidance'] = [{'code': 'ALCOHOL_NOT_PERMITTED', 'look_for': 'a pint on the bill'}]
 
-    run_judgement_checks(state, graph_config(model, connection_pool))
+    await run_judgement_checks(state, graph_config(model, connection_pool))
 
     [system_message, human_message] = model.received[0]
     assert DATA_TAG_INSTRUCTION in system_message.text
@@ -392,25 +394,35 @@ async def test_a_call_to_a_tool_that_does_not_exist_is_answered_with_an_error(
         ],
     )
 
-    run_judgement_checks(claim_state(), graph_config(model, connection_pool))
+    await run_judgement_checks(claim_state(), graph_config(model, connection_pool))
 
     assert tool_results(model.received[1]) == {'call-0': {'error': 'No tool named search_policy.'}}
 
 
-async def test_precedents_are_looked_up_for_the_requester_and_recorded_as_supplied(
+async def test_the_tool_supplies_the_requester_precedents_for_the_requested_code_only(
     connection_pool: ConnectionPool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    precedent: SuppliedPrecedent = {
+    purpose_precedent: SuppliedPrecedent = {
         'precedent_id': 'PRECEDENT-1',
         'code': 'PURPOSE_UNCLEAR',
         'clause_reference': reference_of('business_purpose'),
         'reason': 'Standing client visit',
     }
-    lookups: list[tuple[str, str]] = []
+    weekend_precedent: SuppliedPrecedent = {
+        'precedent_id': 'PRECEDENT-2',
+        'code': 'WEEKEND_SPEND_UNJUSTIFIED',
+        'clause_reference': reference_of('business_purpose'),
+        'reason': 'Weekend trade fair',
+    }
+    stored = {
+        ('EMP-003', 'PURPOSE_UNCLEAR'): [purpose_precedent],
+        ('EMP-003', 'WEEKEND_SPEND_UNJUSTIFIED'): [weekend_precedent],
+    }
 
-    def recent_precedents(subject: str, code: FindingCode) -> list[SuppliedPrecedent]:
-        lookups.append((subject, code))
-        return [precedent]
+    async def recent_precedents(
+        connection_pool: ConnectionPool, subject: str, code: FindingCode, policy: Policy
+    ) -> list[SuppliedPrecedent]:
+        return stored.get((subject, code), [])
 
     monkeypatch.setattr(precedents, 'recent_precedents', recent_precedents)
     model = FakeChatModel(
@@ -425,8 +437,7 @@ async def test_precedents_are_looked_up_for_the_requester_and_recorded_as_suppli
         ],
     )
 
-    update = run_judgement_checks(claim_state(), graph_config(model, connection_pool))
+    update = await run_judgement_checks(claim_state(), graph_config(model, connection_pool))
 
-    assert lookups == [('EMP-003', 'PURPOSE_UNCLEAR')]
-    assert tool_results(model.received[1]) == {'call-0': [precedent], 'call-1': []}
-    assert update['supplied_precedents'] == [precedent]
+    assert tool_results(model.received[1]) == {'call-0': [purpose_precedent], 'call-1': []}
+    assert update['supplied_precedents'] == [purpose_precedent]

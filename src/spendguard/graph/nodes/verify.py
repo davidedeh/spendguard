@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from spendguard.graph.config import GraphConfig
+from spendguard.graph.precedents import annotated_findings
 from spendguard.graph.state import (
+    AuditEntry,
     CandidateFinding,
     JudgementOutcome,
     Quote,
@@ -160,19 +162,31 @@ def verify(state: ReviewState, graph_config: GraphConfig) -> ReviewState:
         graph_config.policy,
     )
     kept_outcomes, clearance_drops = verified_clearances(outcomes, evidence, graph_config.policy)
+    audit: list[AuditEntry] = [
+        {
+            'node': 'verify',
+            'event': 'finding_dropped',
+            'detail': {
+                'code': drop.code,
+                'clause_reference': drop.clause_reference,
+                'reason': drop.reason,
+            },
+        }
+        for drop in verification.drops + clearance_drops
+    ]
+    audit.extend(
+        {
+            'node': 'verify',
+            'event': 'cleared_by_precedent',
+            'detail': {'code': outcome['code'], 'precedent_id': outcome['precedent_id']},
+        }
+        for outcome in kept_outcomes
+        if outcome['outcome'] == 'cleared_by_precedent'
+    )
     return {
-        'findings': verification.findings,
+        'findings': annotated_findings(
+            state['rule_findings'] + verification.findings, state['current_precedents']
+        ),
         'judgement_outcomes': kept_outcomes,
-        'audit': [
-            {
-                'node': 'verify',
-                'event': 'finding_dropped',
-                'detail': {
-                    'code': drop.code,
-                    'clause_reference': drop.clause_reference,
-                    'reason': drop.reason,
-                },
-            }
-            for drop in verification.drops + clearance_drops
-        ],
+        'audit': audit,
     }
