@@ -1,8 +1,12 @@
+import hashlib
+import math
+import re
 from collections.abc import Callable, Sequence
 from operator import itemgetter
 from typing import Any
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.output_parsers import JsonOutputParser, PydanticOutputParser
@@ -13,6 +17,8 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel, Field
 
 from spendguard.settings import StructuredOutputMethod
+
+_WORD_PATTERN = re.compile(r'[a-z0-9]+')
 
 
 class FakeResponsesExhaustedError(Exception):
@@ -91,3 +97,20 @@ def structured_response(value: BaseModel) -> AIMessage:
             }
         ],
     )
+
+
+class KeywordFakeEmbedder(Embeddings):
+    def __init__(self, size: int) -> None:
+        self.size = size
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self.embed_query(text) for text in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        vector = [0.0] * self.size
+        vector[0] = 1.0
+        for word in _WORD_PATTERN.findall(text.lower()):
+            digest = hashlib.sha256(word.encode()).digest()
+            vector[1 + int.from_bytes(digest[:4]) % (self.size - 1)] += 1.0
+        length = math.sqrt(sum(value * value for value in vector))
+        return [value / length for value in vector]

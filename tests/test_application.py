@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import psycopg
 import pytest
+from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.messages import BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from settings_factory import make_test_settings
@@ -22,11 +25,13 @@ from spendguard.graph.nodes.execute import (
     DecisionEventSender,
     SignedDecisionEventSender,
 )
+from spendguard.graph.nodes.plan import RetrievalPlan
 from spendguard.models.factory import build_embedder
-from spendguard.models.fake import FakeChatModel
+from spendguard.models.fake import FakeChatModel, structured_response
 from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.queue.memory import InMemoryQueue
 from spendguard.queue.sqs import SqsQueue, sqs_client
+from spendguard.retrieval.policy_index import index_policy
 from spendguard.security.approver_tokens import issue_token
 from spendguard.security.signatures import sign
 from spendguard.seed.loader import load_seed_data, read_seed_directory
@@ -161,6 +166,37 @@ class Application:
     async def recorded_events(self, submission_id: str) -> list[dict[str, Any]]:
         return await decision_events.events_for(self.connection_pool, submission_id)
 
+    async def review_state(self, submission_id: str) -> dict[str, Any]:
+        record = await submissions.find_submission(self.connection_pool, uuid.UUID(submission_id))
+        assert record is not None
+        snapshot = await self.worker.graph.aget_state(
+            {'configurable': {'thread_id': record.idempotency_key}}
+        )
+        state: dict[str, Any] = snapshot.values
+        return state
+
+
+def clause_reference(clause_id: str) -> str:
+    return next(clause.reference for clause in POLICY.clauses if clause.id == clause_id)
+
+
+class PlanningChatModel(FakeChatModel):
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        self.received.append(list(messages))
+        reply = structured_response(
+            RetrievalPlan(
+                retrieval_queries=['is alcohol reimbursed with a meal', 'receipts for a lunch'],
+                check_guidance=[],
+            )
+        )
+        return ChatResult(generations=[ChatGeneration(message=reply)])
+
 
 @pytest.fixture
 def application_settings() -> Settings:
@@ -195,13 +231,16 @@ async def application(
                 key=b'test-decision-event-signing-key',
             )
         )
+        embedder = build_embedder(application_settings)
+        async with connection_pool.connection() as connection:
+            await index_policy(connection, POLICY, embedder)
         graph = build_graph(
             GraphConfig(
                 settings=application_settings,
                 policy=POLICY,
                 seed_data=SEED_DATA,
-                chat_model=FakeChatModel(model_id='fake-chat'),
-                embedder=build_embedder(application_settings),
+                chat_model=PlanningChatModel(model_id='fake-chat'),
+                embedder=embedder,
                 connection_pool=connection_pool,
                 checkpointer=AsyncPostgresSaver(connection_pool),
                 decision_event_sender=sender,
@@ -271,6 +310,25 @@ async def test_a_claim_missing_a_required_receipt_waits_for_review_and_sends_no_
 
     assert await application.status_of(submission_id) == 'pending_review'
     assert await application.recorded_events(submission_id) == []
+
+
+async def test_the_clauses_retrieved_for_a_submission_are_recorded_in_its_state_and_audit(
+    application: Application,
+) -> None:
+    response = await application.post_claim(expense_claim_delivery(unique_claim_id()))
+    submission_id = response.json()['submission_id']
+
+    await application.run_worker()
+
+    state = await application.review_state(submission_id)
+    retrieved_references = [clause['clause_reference'] for clause in state['retrieved_clauses']]
+    assert clause_reference('no_alcohol') in retrieved_references
+    assert len(retrieved_references) == len(set(retrieved_references)) > 1
+    assert {
+        'node': 'retrieve_policy',
+        'event': 'policy_retrieved',
+        'detail': {'clause_references': retrieved_references},
+    } in state['audit']
 
 
 async def test_a_receipted_claim_repeating_an_earlier_claim_waits_for_review_and_sends_no_event(
@@ -595,7 +653,17 @@ async def test_reading_an_auto_approved_claim_shows_its_recommendation_status_an
     assert body['status'] == 'complete'
     assert body['review']['recommendation'] == 'approve'
     assert body['review']['findings'] == []
+    state = await application.review_state(submission_id)
     assert body['audit'] == [
+        {
+            'node': 'retrieve_policy',
+            'event': 'policy_retrieved',
+            'detail': {
+                'clause_references': [
+                    clause['clause_reference'] for clause in state['retrieved_clauses']
+                ]
+            },
+        },
         {'node': 'execute', 'event': 'decision_event_sent', 'detail': {'outcome': 'approved'}},
         {'node': 'finalize', 'event': 'outcome_recorded', 'detail': {'outcome': 'approve'}},
     ]
