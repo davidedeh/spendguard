@@ -7,6 +7,10 @@ Parameters:
     Type: String
     Default: ''
     Description: Tag of the image in this stack's repository. Empty creates everything except the functions, so a first deploy can create the repository before any image exists.
+  PipelineExecutionRoleArn:
+    Type: String
+    Default: ''
+    Description: Role deploy.yml assumes, allowed to run the preparation function after each deploy. Empty grants nothing.
   AlarmEmail:
     Type: String
     AllowedPattern: '.+@.+'
@@ -32,6 +36,9 @@ Parameters:
 
 Conditions:
   HasImage: !Not [!Equals [!Ref ImageTag, '']]
+  GrantsPipelinePreparation: !And
+    - !Condition HasImage
+    - !Not [!Equals [!Ref PipelineExecutionRoleArn, '']]
 
 Globals:
   Function:
@@ -79,6 +86,7 @@ Resources:
   ImageRepository:
     Type: AWS::ECR::Repository
     Properties:
+      RepositoryName: !Ref AWS::StackName
       EmptyOnDelete: true
       ImageScanningConfiguration:
         ScanOnPush: true
@@ -286,6 +294,19 @@ Resources:
             QueueName: !GetAtt SubmissionQueue.QueueName
         - SSMParameterReadPolicy:
             ParameterName: !Ref ParameterPath
+  PipelinePreparationGrant:
+    Type: AWS::IAM::Policy
+    Condition: GrantsPipelinePreparation
+    Properties:
+      PolicyName: !Sub '${AWS::StackName}-invoke-preparation'
+      Roles:
+        - !Select [1, !Split ['/', !Ref PipelineExecutionRoleArn]]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource: !GetAtt PreparationFunction.Arn
 
 Outputs:
   ImageRepositoryUri:
