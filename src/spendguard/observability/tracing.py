@@ -86,9 +86,12 @@ async def traced_advance(
         trace_identifiers: dict[str, str] = {}
     else:
         handler = CallbackHandler(public_key=tracing.public_key)
+        supplied_callbacks = thread.get('callbacks')
+        if supplied_callbacks is not None and not isinstance(supplied_callbacks, list):
+            raise TypeError('traced_advance merges callbacks given as a list only')
         traced_thread: RunnableConfig = {
             **thread,
-            'callbacks': [handler],
+            'callbacks': [*(supplied_callbacks or []), handler],
             'metadata': {'langfuse_session_id': submission_id},
         }
         await graph.ainvoke(graph_input, traced_thread)

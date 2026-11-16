@@ -1,9 +1,11 @@
 import io
 import json
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langfuse._client.resource_manager import LangfuseResourceManager
 from langgraph.checkpoint.memory import InMemorySaver
@@ -238,3 +240,34 @@ async def test_log_lines_from_an_advance_carry_the_submission_node_and_trace_ids
         'trace_id': format(intake_span.context.trace_id, '032x'),
     }
     assert 'ana.ruiz' not in log_stream.getvalue()
+
+
+class ChatModelCallCounter(BaseCallbackHandler):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def on_chat_model_start(
+        self, serialized: dict[str, Any], messages: list[list[BaseMessage]], **kwargs: Any
+    ) -> None:
+        self.calls += 1
+
+
+async def test_a_traced_advance_still_reports_to_the_callbacks_the_caller_supplied(
+    tracing: Tracing, exporter: InMemorySpanExporter
+) -> None:
+    counter = ChatModelCallCounter()
+    thread: RunnableConfig = {
+        'configurable': {'thread_id': 'expense-claims:C-6'},
+        'callbacks': [counter],
+    }
+
+    await traced_advance(
+        tracing,
+        pausing_graph(),
+        {'submission_id': SUBMISSION_ID, 'audit': []},
+        thread,
+        SUBMISSION_ID,
+    )
+
+    assert counter.calls == 1
+    assert any(span.name == 'plan' for span in exported_spans(tracing, exporter))

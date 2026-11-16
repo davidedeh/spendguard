@@ -10,6 +10,7 @@ from spendguard.eval.freeze import dataset_argument_parser, read_locked_hash
 from spendguard.eval.report import write_results
 from spendguard.eval.validator import validate_dataset
 from spendguard.models.factory import build_chat_model, build_embedder
+from spendguard.observability.tracing import create_tracing
 from spendguard.policy.loader import Policy, load_policy
 from spendguard.retrieval.policy_index import index_policy
 from spendguard.seed.loader import read_seed_directory
@@ -57,7 +58,9 @@ async def _measure(
             await index_policy(connection, policy, embedder)
         results = await run_eval(
             cases,
-            EvalResources(settings, policy, seed_data, connection_pool, embedder),
+            EvalResources(
+                settings, policy, seed_data, connection_pool, embedder, create_tracing(settings)
+            ),
             lambda row: build_chat_model(settings, row.model_key),
             measured_on=datetime.date.today(),
             dataset_hash=dataset_hash,
