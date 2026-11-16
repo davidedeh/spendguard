@@ -36,6 +36,7 @@ def make_test_settings(**overrides: Any) -> Settings:
         'decision_event_url': 'http://testserver/mock-erp/decision-events',
         'signature_tolerance_seconds': 300,
         'force_human_review': False,
+        'maximum_field_length': 2000,
         'judgement_max_tool_calls': 6,
         'retrieval_top_k': 5,
         'worker_timeout_seconds': 120,
