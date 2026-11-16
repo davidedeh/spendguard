@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -20,6 +21,7 @@ class SubmissionRecord:
     submission_type: SubmissionType
     payload: dict[str, Any]
     status: SubmissionStatus
+    review: dict[str, Any] | None
 
 
 @dataclass(frozen=True)
@@ -68,7 +70,7 @@ async def find_submission(
     async with connection_pool.connection() as connection:
         row = await (
             await connection.execute(
-                'select id, idempotency_key, submission_type, payload, status'
+                'select id, idempotency_key, submission_type, payload, status, review'
                 ' from submissions where id = %s',
                 (submission_id,),
             )
@@ -81,6 +83,7 @@ async def find_submission(
         submission_type=row['submission_type'],
         payload=row['payload'],
         status=row['status'],
+        review=row['review'],
     )
 
 
@@ -100,3 +103,23 @@ async def move_status(
             )
         ).fetchone()
     return moved is not None
+
+
+async def record_review(
+    connection_pool: ConnectionPool, submission_id: uuid.UUID, review: Mapping[str, Any]
+) -> None:
+    async with connection_pool.connection() as connection:
+        await connection.execute(
+            'update submissions set review = %s where id = %s', (Jsonb(review), submission_id)
+        )
+
+
+async def pending_reviews(connection_pool: ConnectionPool) -> list[dict[str, Any]]:
+    async with connection_pool.connection() as connection:
+        rows = await (
+            await connection.execute(
+                "select review from submissions where status = 'pending_review'"
+                ' order by status_changed_at, id'
+            )
+        ).fetchall()
+    return [row['review'] for row in rows]
