@@ -24,6 +24,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from pydantic import Field
 
+from seeding import replace_seed_data
 from settings_factory import make_test_settings
 from spendguard.api.app import create_app
 from spendguard.api.dependencies import ApiDependencies
@@ -48,7 +49,7 @@ from spendguard.queue.sqs import SqsQueue, sqs_client
 from spendguard.retrieval.policy_index import index_policy
 from spendguard.security.approver_tokens import issue_token
 from spendguard.security.signatures import sign
-from spendguard.seed.loader import load_seed_data, read_seed_directory
+from spendguard.seed.loader import read_seed_directory
 from spendguard.settings import Settings
 from spendguard.store import decision_events, precedents, submissions
 from spendguard.store.precedents import NewPrecedent
@@ -309,7 +310,7 @@ async def application(
     application_policy: Policy,
 ) -> AsyncIterator[Application]:
     with psycopg.connect(branch_database) as connection:
-        load_seed_data(connection, SEED_DATA)
+        replace_seed_data(connection, SEED_DATA)
     await precedents.clear_precedents(connection_pool)
     queue = InMemoryQueue(
         visibility_timeout_seconds=application_settings.queue_visibility_timeout_seconds

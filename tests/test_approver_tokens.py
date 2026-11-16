@@ -3,15 +3,16 @@ from pathlib import Path
 import psycopg
 import pytest
 
+from seeding import replace_seed_data
 from spendguard.security.approver_tokens import NotAnApproverError, issue_token
-from spendguard.seed.loader import load_seed_data, read_seed_directory
+from spendguard.seed.loader import read_seed_directory
 
 SEED_DATA = read_seed_directory(Path(__file__).parent / 'fixtures' / 'seed')
 
 
 @pytest.fixture
 def seeded_connection(database_connection: psycopg.Connection) -> psycopg.Connection:
-    load_seed_data(database_connection, SEED_DATA)
+    replace_seed_data(database_connection, SEED_DATA)
     return database_connection
 
 

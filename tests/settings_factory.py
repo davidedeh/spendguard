@@ -48,5 +48,5 @@ def make_test_settings(**overrides: Any) -> Settings:
         'sweeper_stuck_after_seconds': 900,
     }
     if 'branch_name' not in overrides:
-        fields['branch_name'] = current_branch_name()
+        fields['branch_name'] = f'{current_branch_name()}-tests'
     return Settings(**(fields | overrides))
