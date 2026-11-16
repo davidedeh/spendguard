@@ -1,16 +1,23 @@
+import base64
 import functools
-import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 from langfuse import Langfuse, get_client, propagate_attributes
-from langfuse._utils.serializer import EventSerializer
+from langfuse._version import __version__ as langfuse_version
 from langfuse.langchain import CallbackHandler
+from langfuse.types import (
+    MaskOtelSpansParams,
+    MaskOtelSpansResult,
+    OtelSpanIdentifier,
+    OtelSpanPatch,
+)
 from langgraph.types import Command
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace import Event, ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
+from opentelemetry.trace import Status
 
 from spendguard.graph.build import ReviewGraph
 from spendguard.graph.state import ReviewState
@@ -19,18 +26,80 @@ from spendguard.settings import Settings
 from spendguard.structured_logging import log_event
 
 
-def _redacted(value: Any) -> Any:
-    if isinstance(value, str):
-        return redact(value)
-    if isinstance(value, dict):
-        return {key: _redacted(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_redacted(item) for item in value]
-    return value
+def _redacted_text(attributes: Mapping[str, object]) -> dict[str, str | list[str]]:
+    redacted: dict[str, str | list[str]] = {}
+    for key, value in attributes.items():
+        if isinstance(value, str) and redact(value) != value:
+            redacted[key] = redact(value)
+        elif isinstance(value, Sequence) and not isinstance(value, str):
+            texts = [item for item in value if isinstance(item, str)]
+            if len(texts) == len(value) and [redact(text) for text in texts] != texts:
+                redacted[key] = [redact(text) for text in texts]
+    return redacted
 
 
-def mask_personal_data(*, data: Any, **keyword_arguments: Any) -> Any:
-    return _redacted(json.loads(json.dumps(data, cls=EventSerializer)))
+def mask_span_attributes(*, params: MaskOtelSpansParams) -> MaskOtelSpansResult:
+    patches: dict[OtelSpanIdentifier, OtelSpanPatch | None] = {}
+    for identifier, span in params.spans.items():
+        redacted = _redacted_text(span.attributes)
+        patches[identifier] = OtelSpanPatch(set_attributes=redacted) if redacted else None
+    return MaskOtelSpansResult(span_patches=patches)
+
+
+class RedactingSpanExporter(SpanExporter):
+    def __init__(self, exporter: SpanExporter) -> None:
+        self._exporter = exporter
+
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        return self._exporter.export([_with_redacted_status_and_events(span) for span in spans])
+
+    def shutdown(self) -> None:
+        self._exporter.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return self._exporter.force_flush(timeout_millis)
+
+
+def _with_redacted_status_and_events(span: ReadableSpan) -> ReadableSpan:
+    description = span.status.description
+    return ReadableSpan(
+        name=span.name,
+        context=span.context,
+        parent=span.parent,
+        resource=span.resource,
+        attributes=span.attributes,
+        events=[
+            Event(
+                name=event.name,
+                attributes={
+                    **(event.attributes or {}),
+                    **_redacted_text(event.attributes or {}),
+                },
+                timestamp=event.timestamp,
+            )
+            for event in span.events
+        ],
+        links=span.links,
+        kind=span.kind,
+        status=Status(span.status.status_code, redact(description) if description else None),
+        start_time=span.start_time,
+        end_time=span.end_time,
+        instrumentation_scope=span.instrumentation_scope,
+    )
+
+
+def _langfuse_otlp_exporter(public_key: str, secret_key: str, base_url: str) -> SpanExporter:
+    credentials = base64.b64encode(f'{public_key}:{secret_key}'.encode()).decode('ascii')
+    return OTLPSpanExporter(
+        endpoint=f'{base_url}/api/public/otel/v1/traces',
+        headers={
+            'Authorization': f'Basic {credentials}',
+            'x-langfuse-sdk-name': 'python',
+            'x-langfuse-sdk-version': langfuse_version,
+            'x-langfuse-public-key': public_key,
+            'x-langfuse-ingestion-version': '4',
+        },
+    )
 
 
 @dataclass(frozen=True)
@@ -47,12 +116,15 @@ def create_tracing(
     if settings.langfuse_public_key is None or settings.langfuse_secret_key is None:
         return None
     public_key = settings.langfuse_public_key.get_secret_value()
+    secret_key = settings.langfuse_secret_key.get_secret_value()
     client = Langfuse(
         public_key=public_key,
-        secret_key=settings.langfuse_secret_key.get_secret_value(),
+        secret_key=secret_key,
         base_url=settings.langfuse_host,
-        mask=mask_personal_data,
-        span_exporter=span_exporter,
+        mask_otel_spans=mask_span_attributes,
+        span_exporter=RedactingSpanExporter(
+            span_exporter or _langfuse_otlp_exporter(public_key, secret_key, settings.langfuse_host)
+        ),
         tracer_provider=tracer_provider,
     )
     return Tracing(client=client, public_key=public_key)

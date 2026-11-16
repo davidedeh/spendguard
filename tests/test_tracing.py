@@ -13,7 +13,6 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from pydantic import BaseModel
 
 from settings_factory import make_test_settings
 from spendguard.graph.build import ReviewGraph
@@ -23,7 +22,6 @@ from spendguard.observability.tracing import (
     Tracing,
     create_tracing,
     flush_traces_before_return,
-    mask_personal_data,
     traced_advance,
 )
 
@@ -178,17 +176,65 @@ async def test_without_configured_keys_nothing_is_traced_even_when_the_environme
     assert LangfuseResourceManager._instances == {}
 
 
-class ToolResult(BaseModel):
-    contact: str
-    grades: tuple[str, ...]
+def failing_intake(state: ReviewState) -> ReviewState:
+    raise ValueError('No receipt from ana.ruiz@halden.example, call +44 20 7946 0958')
 
 
-def test_masking_redacts_text_inside_objects_and_tuples() -> None:
-    masked = mask_personal_data(
-        data={'result': ToolResult(contact='ana.ruiz@halden.example', grades=('+44 20 7946 0958',))}
+def failing_graph() -> ReviewGraph:
+    builder: StateGraph[ReviewState, None, ReviewState, ReviewState] = StateGraph(ReviewState)
+    builder.add_node('intake', failing_intake)
+    builder.add_edge(START, 'intake')
+    builder.add_edge('intake', END)
+    return builder.compile(checkpointer=InMemorySaver())
+
+
+def everything_exported(spans: tuple[ReadableSpan, ...]) -> str:
+    return repr(
+        [
+            (
+                span.name,
+                dict(span.attributes or {}),
+                span.status.description,
+                [(event.name, dict(event.attributes or {})) for event in span.events],
+            )
+            for span in spans
+        ]
     )
 
-    assert masked == {'result': {'contact': '[EMAIL]', 'grades': ['[PHONE]']}}
+
+async def test_an_advance_that_fails_with_personal_data_in_its_error_exports_none_of_it(
+    tracing: Tracing, exporter: InMemorySpanExporter
+) -> None:
+    thread: RunnableConfig = {'configurable': {'thread_id': 'expense-claims:C-7'}}
+
+    with pytest.raises(ValueError, match='No receipt'):
+        await traced_advance(
+            tracing,
+            failing_graph(),
+            {'submission_id': SUBMISSION_ID, 'audit': []},
+            thread,
+            SUBMISSION_ID,
+        )
+
+    exported_text = everything_exported(exported_spans(tracing, exporter))
+    assert '[EMAIL]' in exported_text
+    for personal_data in ('ana.ruiz@halden.example', '7946 0958'):
+        assert personal_data not in exported_text
+
+
+async def test_an_exception_recorded_on_a_span_exports_no_personal_data(
+    tracing: Tracing, exporter: InMemorySpanExporter
+) -> None:
+    with (
+        pytest.raises(ValueError, match='Case drafted'),
+        tracing.client.start_as_current_observation(name='eval item'),
+    ):
+        raise ValueError('Case drafted for ana.ruiz@halden.example')
+
+    spans = exported_spans(tracing, exporter)
+    exported_text = everything_exported(spans)
+    assert any(event.name == 'exception' for span in spans for event in span.events)
+    assert 'ana.ruiz@halden.example' not in exported_text
 
 
 async def test_guardrail_events_are_recorded_once_with_metadata_in_the_advance_that_raised_them(

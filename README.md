@@ -53,7 +53,7 @@ See [ADR 0003](docs/adr/0003-lambda-and-fifo-queue-runtime.md).
 
 - Redaction runs before every prompt and again on traces before they leave. Untrusted submission fields reach the model inside labelled data tags. Logs are JSON lines carrying IDs only.
 - Each graph advance is one Langfuse trace, grouped into a session by submission ID and flushed before the Lambda returns. Guardrail events (redactions, hygiene changes, verification drops) are recorded on the trace as metadata.
-- **OpenTelemetry**: the Langfuse Python SDK pinned in `uv.lock` (5.2.0) is built on OpenTelemetry. It exports spans over OTLP and accepts a supplied tracer provider or span exporter, so the traces are OpenTelemetry-compatible. Masking uses the SDK's `mask` hook, which covers observations made through the SDK, including the LangChain callback handler; a test checks the exported spans carry no card numbers, emails or phone numbers.
+- **OpenTelemetry**: the Langfuse Python SDK pinned in `uv.lock` (5.2.0) is built on OpenTelemetry. It exports spans over OTLP and accepts a supplied tracer provider or span exporter, so the traces are OpenTelemetry-compatible. Masking happens at export: the SDK's `mask_otel_spans` hook redacts every string attribute, and a wrapping exporter redacts span status descriptions and exception events, which that hook cannot change. Tests check the exported spans, including those of a failed advance, carry no card numbers, emails or phone numbers.
 
 ## Stack
 
@@ -193,5 +193,4 @@ CI runs the same checks on every pull request and on main against Postgres and E
 ## Future improvements
 
 - **Tiered auto-approve thresholds by category**, for example a higher one for travel and accommodation. Today one threshold covers every category.
-- **Masking at export.** Langfuse's documentation now calls the `mask` hook legacy and recommends `mask_otel_spans`, which masks at the export stage and also covers spans from other OpenTelemetry instrumentation.
 - **A model reflection pass in verification**, deferred in ADR 0001 because it costs an extra call and is not deterministic; worth adding only if measured precision is poor.
