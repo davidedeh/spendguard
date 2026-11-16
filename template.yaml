@@ -158,6 +158,12 @@ Resources:
       LogGroupName: !Sub '/spendguard/${AWS::StackName}/preparation'
       RetentionInDays: 14
 
+  SweeperLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/spendguard/${AWS::StackName}/sweeper'
+      RetentionInDays: 14
+
   ApiFunction:
     Type: AWS::Serverless::Function
     Condition: HasImage
@@ -248,6 +254,40 @@ Resources:
             - Effect: Allow
               Action: bedrock:InvokeModel
               Resource: arn:aws:bedrock:*::foundation-model/*
+
+  SweeperFunction:
+    Type: AWS::Serverless::Function
+    Condition: HasImage
+    Properties:
+      PackageType: Image
+      ImageUri: !Sub '${ImageRepository.RepositoryUri}:${ImageTag}'
+      Timeout: 60
+      ImageConfig:
+        Command:
+          - uvicorn
+          - spendguard.sweeper:create_production_sweeper_app
+          - --factory
+          - --host
+          - 127.0.0.1
+          - --port
+          - '8000'
+      LoggingConfig:
+        LogGroup: !Ref SweeperLogGroup
+      Environment:
+        Variables:
+          AWS_LWA_READINESS_CHECK_PROTOCOL: tcp
+          AWS_LWA_ERROR_STATUS_CODES: 500-599
+      Events:
+        EveryFiveMinutes:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: rate(5 minutes)
+            Input: '{}'
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt SubmissionQueue.QueueName
+        - SSMParameterReadPolicy:
+            ParameterName: !Ref ParameterPath
 
 Outputs:
   ImageRepositoryUri:

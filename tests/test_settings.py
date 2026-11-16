@@ -59,6 +59,19 @@ def test_an_eval_row_naming_an_unconfigured_chat_model_is_rejected() -> None:
         make_test_settings(eval_rows=[{'model_key': 'claude_opus', 'label': 'Claude Opus'}])
 
 
+def test_a_sweeper_threshold_equal_to_the_visibility_timeout_is_rejected() -> None:
+    with pytest.raises(ValueError, match=r'greater than QUEUE_VISIBILITY_TIMEOUT_SECONDS \(720\)'):
+        make_test_settings(queue_visibility_timeout_seconds=720, sweeper_stuck_after_seconds=720)
+
+
+def test_a_sweeper_threshold_one_second_over_the_visibility_timeout_is_accepted() -> None:
+    settings = make_test_settings(
+        queue_visibility_timeout_seconds=720, sweeper_stuck_after_seconds=721
+    )
+
+    assert settings.sweeper_stuck_after_seconds == 721
+
+
 def test_a_database_url_stands_in_for_the_local_postgres_settings() -> None:
     settings = make_test_settings(
         database_url='postgresql://pooler.example.invalid:6543/postgres',
