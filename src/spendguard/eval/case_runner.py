@@ -1,5 +1,8 @@
+import datetime
 import hashlib
 import time
+import uuid
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -13,7 +16,8 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from spendguard.db.database import ConnectionPool
 from spendguard.eval.cases import EvalCase
-from spendguard.eval.metrics import CaseOutcome
+from spendguard.eval.metrics import CaseOutcome, row_metrics, rule_metrics
+from spendguard.eval.report import EvalResults, RowResult
 from spendguard.graph.build import ReviewGraph, build_graph
 from spendguard.graph.config import GraphConfig
 from spendguard.graph.nodes.execute import DecisionEvent
@@ -21,7 +25,7 @@ from spendguard.graph.state import ReviewState
 from spendguard.policy.loader import Policy
 from spendguard.seed.schema import SeedData
 from spendguard.settings import EvalRow, Settings
-from spendguard.store import submissions
+from spendguard.store import precedents, submissions
 
 
 class _DiscardedDecisionEvents:
@@ -118,4 +122,45 @@ async def run_case(
         latency_seconds=latency_seconds,
         input_tokens=token_counter.input_tokens,
         output_tokens=token_counter.output_tokens,
+    )
+
+
+async def run_eval(
+    cases: Sequence[EvalCase],
+    resources: EvalResources,
+    chat_model_for: Callable[[EvalRow], BaseChatModel],
+    measured_on: datetime.date,
+    dataset_hash: str,
+) -> EvalResults:
+    settings = resources.settings
+    run_identifier = uuid.uuid4().hex
+    row_results: list[RowResult] = []
+    first_row_outcomes: list[CaseOutcome] = []
+    for row in settings.eval_rows:
+        await precedents.clear_precedents(resources.connection_pool)
+        graph = eval_graph(row, chat_model_for(row), resources)
+        outcomes = [
+            await run_case(
+                case, graph, resources.connection_pool, f'{run_identifier}:{row.model_key}'
+            )
+            for case in cases
+        ]
+        first_row_outcomes = first_row_outcomes or outcomes
+        price = settings.model_prices.get(row.model_key)
+        row_results.append(
+            RowResult(
+                row=row,
+                model=settings.chat_models[row.model_key],
+                price=price,
+                metrics=row_metrics(cases, outcomes, resources.policy, price),
+            )
+        )
+    return EvalResults(
+        measured_on=measured_on,
+        dataset_hash=dataset_hash,
+        case_count=len(cases),
+        retrieval_top_k=settings.retrieval_top_k,
+        judgement_max_tool_calls=settings.judgement_max_tool_calls,
+        rows=tuple(row_results),
+        rule_metrics=rule_metrics(cases, first_row_outcomes, resources.policy),
     )
