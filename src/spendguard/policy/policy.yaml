@@ -105,7 +105,10 @@ sections:
           and that the employee could not reasonably have avoided. Every submission
           states its business purpose in enough detail for an approver who was not
           there to see why the spend was needed: what the activity was, and who it
-          was for or with.
+          was for or with. The purpose names the organisation the spend was for or
+          with (or the individual, where no organisation is involved); a role such
+          as "a client" is not enough. Personal names of guests or staff are not
+          required.
 
           A purpose such as "business", "meeting" or "sundries" on its own is not
           enough, and nor is a purpose that does not fit the spend, such as a
