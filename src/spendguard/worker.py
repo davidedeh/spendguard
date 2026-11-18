@@ -153,6 +153,7 @@ def build_worker_runtime(loaded_settings: Settings) -> WorkerRuntime:
                 key=loaded_settings.decision_event_signing_key.get_secret_value().encode(),
             ),
             precedent_memory=True,
+            record_precedents=True,
             policy_context='retrieved_clauses',
         )
     )

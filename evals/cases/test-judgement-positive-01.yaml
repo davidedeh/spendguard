@@ -35,12 +35,10 @@ scripted_review:
   dispositions:
   - code: WEEKEND_SPEND_UNJUSTIFIED
     disposition: dismissed
-    reason: EMP-001 is the Group CEO whose role routinely requires work on weekends,
-      particularly in the lead-up to board meetings and during quarter-end reviews;
-      weekend subsistence for this employee in connection with board or executive
-      duties is consistent with the demands of the role and does not require separate
-      justification on each occasion.
-expected_clearance: null
+    reason: EMP-001 is the Group CEO, whose role routinely requires weekend work on board
+      and executive matters, particularly in the lead-up to board meetings and during
+      quarter-end reviews.
+memory: null
 drafted_by:
   provider: bedrock
   model_id: us.anthropic.claude-sonnet-4-6

@@ -31,9 +31,12 @@ from spendguard.eval.case_runner import (
     EvalResources,
     EvalRunOptions,
     eval_graph,
+    eval_idempotency_key,
+    planned_precedents,
     run_case,
     run_cases,
     run_eval,
+    seed_follow_up_precedents,
 )
 from spendguard.eval.cases import EvalCase
 from spendguard.eval.dataset_runs import case_failure
@@ -438,6 +441,8 @@ async def test_a_pre_flight_runs_one_round_of_every_slice_in_every_row(
 
 
 class PrecedentAwareEvalModel(FakeChatModel):
+    flags_without_precedent: bool = True
+
     def _generate(
         self,
         messages: list[BaseMessage],
@@ -465,7 +470,11 @@ class PrecedentAwareEvalModel(FakeChatModel):
             reply = structured_response(
                 JudgementReport(verdicts=[weekend_clearance(supplied_ids[0])])
                 if supplied_ids
-                else JudgementReport(verdicts=[weekend_flag_quoting('Monday')])
+                else JudgementReport(
+                    verdicts=[weekend_flag_quoting('Monday')]
+                    if self.flags_without_precedent
+                    else []
+                )
             )
         elif not tool_results:
             reply = AIMessage(
@@ -521,7 +530,98 @@ PRIMARY_ROW = EvalRow(
 )
 
 
-async def test_a_follow_up_runs_after_its_pair_and_is_cleared_by_the_precedent_its_dismissal_wrote(
+async def test_each_follow_up_s_precedent_is_seeded_from_its_pair_s_scripted_review(
+    connection_pool: ConnectionPool,
+) -> None:
+    resources = await indexed_resources(connection_pool)
+    pair, follow_up = dataset_case(PAIR_ID), dataset_case(FOLLOW_UP_ID)
+    run_identifier = uuid.uuid4().hex
+
+    seeded = await seed_follow_up_precedents((follow_up, pair), resources, run_identifier)
+
+    [loaded] = await precedents.recent_precedents(
+        connection_pool, 'EMP-015', 'WEEKEND_SPEND_UNJUSTIFIED', POLICY
+    )
+    assert seeded == {FOLLOW_UP_ID: loaded['precedent_id']}
+    assert pair.scripted_review is not None
+    assert loaded['reason'] == pair.scripted_review.dispositions[0].reason
+    assert loaded['clause_reference'] == '§2.4'
+    pair_recording = await submissions.record_submission(
+        connection_pool,
+        idempotency_key=eval_idempotency_key(pair, run_identifier),
+        submission_type=pair.submission.type,
+        payload=pair.submission.model_dump(mode='json'),
+    )
+    [recorded] = await precedents.precedents_recorded_from(
+        connection_pool, pair_recording.submission_id
+    )
+    assert (recorded.subject, recorded.approver) == ('EMP-015', 'EMP-002')
+
+
+def test_seeding_refuses_a_pair_whose_gold_clause_is_not_in_the_current_policy() -> None:
+    pair = dataset_case(PAIR_ID)
+    [finding] = pair.expected_findings
+    stale_pair = pair.model_copy(
+        update={'expected_findings': (finding.model_copy(update={'gold_clauses': ('§99.9',)}),)}
+    )
+
+    with pytest.raises(ValueError, match=r'§99\.9 is not in the current policy'):
+        planned_precedents((stale_pair, dataset_case(FOLLOW_UP_ID)), POLICY)
+
+
+async def test_a_follow_up_is_cleared_by_its_seeded_precedent_when_the_row_missed_its_pair(
+    connection_pool: ConnectionPool,
+) -> None:
+    resources = await indexed_resources(connection_pool)
+    graph = eval_graph(
+        PRIMARY_ROW,
+        PrecedentAwareEvalModel(model_id='fake-chat', flags_without_precedent=False),
+        resources,
+        precedent_memory=True,
+    )
+
+    run = await run_cases(
+        (dataset_case(FOLLOW_UP_ID), dataset_case(PAIR_ID)),
+        graph,
+        resources,
+        uuid.uuid4().hex,
+        None,
+    )
+
+    pair, follow_up = completed(run.results)
+    assert pair.judgement_codes == frozenset()
+    seeded_precedent_id = run.precedent_id_by_follow_up[FOLLOW_UP_ID]
+    assert follow_up.clearances == {('WEEKEND_SPEND_UNJUSTIFIED', seeded_precedent_id)}
+
+
+async def test_an_eval_row_records_no_precedent_from_its_paired_case_s_scripted_dismissal(
+    connection_pool: ConnectionPool,
+) -> None:
+    resources = await indexed_resources(connection_pool)
+    graph = eval_graph(
+        PRIMARY_ROW, PrecedentAwareEvalModel(model_id='fake-chat'), resources, precedent_memory=True
+    )
+    pair = dataset_case(PAIR_ID)
+    run_identifier = uuid.uuid4().hex
+
+    run = await run_cases((pair,), graph, resources, run_identifier, None)
+
+    [outcome] = completed(run.results)
+    assert outcome.judgement_codes == {'WEEKEND_SPEND_UNJUSTIFIED'}
+    pair_recording = await submissions.record_submission(
+        connection_pool,
+        idempotency_key=eval_idempotency_key(pair, run_identifier),
+        submission_type=pair.submission.type,
+        payload=pair.submission.model_dump(mode='json'),
+    )
+    assert pair_recording.outcome == 'repeated'
+    assert (
+        await precedents.precedents_recorded_from(connection_pool, pair_recording.submission_id)
+        == []
+    )
+
+
+async def test_a_follow_up_runs_after_its_pair_and_is_cleared_by_its_seeded_precedent(
     connection_pool: ConnectionPool,
 ) -> None:
     resources = await indexed_resources(connection_pool)
@@ -541,8 +641,8 @@ async def test_a_follow_up_runs_after_its_pair_and_is_cleared_by_the_precedent_i
     pair, follow_up = completed(run.results)
     assert pair.judgement_codes == {'WEEKEND_SPEND_UNJUSTIFIED'}
     assert follow_up.judgement_codes == frozenset()
-    [pair_precedent_id] = run.precedent_ids_by_pair[PAIR_ID]
-    assert follow_up.clearances == {('WEEKEND_SPEND_UNJUSTIFIED', pair_precedent_id)}
+    seeded_precedent_id = run.precedent_id_by_follow_up[FOLLOW_UP_ID]
+    assert follow_up.clearances == {('WEEKEND_SPEND_UNJUSTIFIED', seeded_precedent_id)}
 
 
 async def test_a_clearance_naming_a_precedent_never_supplied_leaves_its_check_unanswered(
@@ -565,7 +665,7 @@ async def test_a_clearance_naming_a_precedent_never_supplied_leaves_its_check_un
     assert outcome.judgement_codes == frozenset()
 
 
-async def test_with_memory_off_a_follow_up_sees_no_precedent_although_its_pair_wrote_one(
+async def test_with_memory_off_a_follow_up_sees_no_precedent_although_one_was_seeded(
     connection_pool: ConnectionPool,
 ) -> None:
     resources = await indexed_resources(connection_pool)
@@ -584,7 +684,7 @@ async def test_with_memory_off_a_follow_up_sees_no_precedent_although_its_pair_w
         None,
     )
 
-    assert len(run.precedent_ids_by_pair[PAIR_ID]) == 1
+    assert FOLLOW_UP_ID in run.precedent_id_by_follow_up
     _, follow_up = completed(run.results)
     assert follow_up.judgement_codes == {'WEEKEND_SPEND_UNJUSTIFIED'}
     assert follow_up.clearances == frozenset()
@@ -689,8 +789,8 @@ async def test_an_eval_run_compares_memory_on_and_off_on_the_primary_model_only(
     comparison = results.memory_comparison
     assert comparison is not None
     assert comparison.row == PRIMARY_ROW
-    assert counts(comparison.memory_on.false_positive_rate) == (0, 1)
-    assert counts(comparison.memory_off.false_positive_rate) == (1, 1)
+    assert counts(comparison.memory_on.raised_any_judgement_code) == (0, 1)
+    assert counts(comparison.memory_off.raised_any_judgement_code) == (1, 1)
     assert counts(comparison.memory_on.recommendation_agreement) == (1, 1)
     assert counts(comparison.memory_off.recommendation_agreement) == (0, 1)
     _, primary = results.rows

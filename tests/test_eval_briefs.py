@@ -58,7 +58,11 @@ def test_briefs_target_the_planned_codes_for_each_slice(split: Split) -> None:
     judgement_targets = Counter(
         code for brief in by_slice['judgement_positive'] for code in brief.intent.judgement_codes
     )
-    assert set(judgement_targets.values()) <= {split_plan.judgement_positives_per_code}
+    assert all(
+        count <= split_plan.judgement_positives_per_code[code]
+        for code, count in judgement_targets.items()
+    )
+    assert judgement_targets.total() == split_plan.slices.judgement_positive
     assert all(
         len(brief.intent.judgement_codes) == 1 and not brief.intent.rule_codes
         for brief in by_slice['judgement_positive'] + by_slice['injection']
@@ -220,7 +224,12 @@ FEW_CLAIMANT_BRIEFS = generate_briefs(
                     'injection': 4,
                     'memory_follow_up': 2,
                 },
-                'judgement_positives_per_code': 2,
+                'judgement_positives_per_code': {
+                    'WEEKEND_SPEND_UNJUSTIFIED': 2,
+                    'PURPOSE_UNCLEAR': 2,
+                    'RECEIPT_MISMATCH': 2,
+                    'ALCOHOL_NOT_PERMITTED': 2,
+                },
                 'memory_pairs': 2,
                 'supplier_invoices': 0,
                 'foreign_currency': 0,

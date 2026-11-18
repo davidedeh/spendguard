@@ -269,31 +269,62 @@ def results_file_text(results: EvalResults) -> str:
     )
 
 
-def _memory_row(setting: str, metrics: MemoryMetrics) -> str:
-    cells = (
-        setting,
-        _rate(metrics.false_positive_rate),
-        _rate(metrics.recommendation_agreement),
-        _rate(metrics.cleared_with_pair_precedent),
-        _rate(metrics.forced_review),
-        _rate(metrics.failed),
-        _rate(metrics.silent_clearances),
-    )
+def _markdown_row(cells: Sequence[str]) -> str:
     return '| ' + ' | '.join(cells) + ' |'
+
+
+def _other_findings(metrics: MemoryMetrics) -> str:
+    listed = [f'{case_id} ({", ".join(codes)})' for case_id, codes in metrics.other_findings]
+    return ', '.join(listed) if listed else 'none'
 
 
 def _memory_section(comparison: MemoryComparison | None) -> list[str]:
     if comparison is None:
         return ['Not compared: no eval row runs the primary model with retrieved clauses.']
+    settings = (('Memory on', comparison.memory_on), ('Memory off', comparison.memory_off))
+    memory_on = comparison.memory_on
     return [
-        f'{comparison.row.label}, `{comparison.model.model_id}`, scored against labels written'
-        f' for memory on. Memory follow-ups: {comparison.memory_on.false_positive_rate.trials}.',
+        f'{comparison.row.label}, `{comparison.model.model_id}`. Each follow-up gets its'
+        " pair's scripted reason as a precedent. Follow-ups whose precedent applies:"
+        f' {memory_on.raised_labelled_code.trials}; controls, whose precedent does not apply:'
+        f' {memory_on.controls_raised_labelled_code.trials}. With memory off no precedent is'
+        ' available, so raising the labelled code is the right answer on every follow-up.',
         '',
-        '| Setting | Judgement false-positive rate | Recommendation matches approver'
+        '| Setting | Raised the labelled code | Raised any judgement code'
         " | Cleared with the pair's precedent | Forced review | Failed | Silent clearances |",
-        '| ' + ' | '.join(['---'] * 7) + ' |',
-        _memory_row('Memory on', comparison.memory_on),
-        _memory_row('Memory off', comparison.memory_off),
+        _markdown_row(['---'] * 7),
+        *(
+            _markdown_row(
+                (
+                    setting,
+                    _rate(metrics.raised_labelled_code),
+                    _rate(metrics.raised_any_judgement_code),
+                    _rate(metrics.cleared_with_pair_precedent),
+                    _rate(metrics.forced_review),
+                    _rate(metrics.failed),
+                    _rate(metrics.silent_clearances),
+                )
+            )
+            for setting, metrics in settings
+        ),
+        '',
+        '| Setting | Controls that raised the labelled code | Controls cleared by the precedent'
+        ' | Recommendation matches the label |',
+        _markdown_row(['---'] * 4),
+        *(
+            _markdown_row(
+                (
+                    setting,
+                    _rate(metrics.controls_raised_labelled_code),
+                    _rate(metrics.controls_cleared_by_precedent),
+                    _rate(metrics.recommendation_agreement),
+                )
+            )
+            for setting, metrics in settings
+        ),
+        '',
+        f'Findings on other codes. Memory on: {_other_findings(comparison.memory_on)}.'
+        f' Memory off: {_other_findings(comparison.memory_off)}.',
     ]
 
 

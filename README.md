@@ -25,7 +25,7 @@ intake ─┬─ run_rule_checks ───────────────�
 See [ADR 0001](docs/adr/0001-model-confined-to-judgement-checks.md).
 
 - **Rule checks** (category limits, receipts, duplicates, split purchases, approved suppliers, purchase orders, budgets, the weekend or holiday gate, and claimed exchange rates) are pure Python over the submission, the seed data and the policy table. Every rule check that applies to the submission type runs every time. A model never chooses which run, never sets severity and never removes a rule finding.
-- **Judgement checks** (unclear purpose, receipt mismatch, alcohol, and whether weekend or holiday spend is justified) are the only work a model does. A model plans two to four retrieval queries, policy clauses are retrieved once from pgvector, and a tool-calling agent with a capped number of tool calls reads the case. Its tools are bound to the submission, so it can look up this employee, supplier, cost centre and precedents, and nobody else's.
+- **Judgement checks** (unclear purpose, receipt mismatch, alcohol, and whether weekend or holiday spend is justified) are the only work a model does. A model plans two to four retrieval queries, policy clauses are retrieved once from pgvector, and a tool-calling agent with a capped number of tool calls reads the case. Its tools are bound to the submission, so it can look up this employee, supplier, cost centre, the public holiday on the submission's date and precedents, and nobody else's.
 - **Verify** is pure Python. A model finding survives only if its code is a judgement code, its clause was retrieved, every quote appears verbatim in the named field of the redacted text the model saw, and any precedent it cites was one it was given. Duplicates collapse. Severity comes from the policy, not the model. Every drop is recorded in the audit trail with its reason.
 
 The cost is that the agent can do less. In return a model cannot switch off a control, and a prompt injection can affect at most one submission's judgement findings.
@@ -183,7 +183,7 @@ Per row:
 
 Rule-check precision and recall are reported once, not per row, and only as a consistency check: the rule labels were computed by the same rule functions the graph runs, so agreement shows the checks are wired into the graph correctly, not that they are accurate.
 
-A memory on versus off comparison on the primary model reports the judgement false-positive rate on memory follow-ups and how often the recommendation matches the approver, scored against labels written for memory on, so a follow-up with any judgement finding counts as a false positive. A follow-up whose check got no verdict, or whose flag or clearance verify dropped, is counted as forced review rather than as a silent clearance. It is in the dated results file, not the table below.
+Each memory follow-up gets its pair's scripted reason as a precedent before it runs, in every row, built against the current clause text; eval rows record no precedents of their own, so a row that missed the paired finding still sees the precedent. Some follow-ups are controls, whose precedent does not apply: their right answer is to raise the labelled code. A memory on versus off comparison on the primary model reports, for follow-ups whose precedent applies, how many raised the labelled code and how many raised any judgement code, side by side, and how many were cleared with the pair's precedent, forced to review, failed or silently cleared; for controls, how many raised the labelled code and how many were cleared by the precedent; how often the recommendation matches the label; and every finding a follow-up raised on another code. With memory off no precedent is available, so raising the labelled code is the right answer on every follow-up. A follow-up whose check got no verdict, or whose flag or clearance verify dropped, is counted as forced review rather than as a silent clearance. It is in the dated results file, not the table below.
 
 Each run writes a results file in `evals/results/`, named with the date and the first 8 characters of the run's identifier (`eval-v1-<date>-<run>.md`), with the exact parameters, prices and per-code counts, and replaces the table below, which names the exact model IDs measured. A results file is never overwritten, so a second run on the same day keeps the first. As each row finishes, its per-case results, token totals and run identifier are saved as JSON in a folder named like the results file, so a run that stops part-way keeps what it has paid for. A case that raises is recorded as failed and the row carries on: its expected judgement findings count as misses, its route and recommendation as wrong, and it adds no findings, latency or cost. All model clients are built before the first row, so a configuration error stops the run before any spend. `make eval CASES_PER_ROW=2` is a pre-flight: each row runs whole rounds of one case from every slice (a memory follow-up brings its pair's first case) until it has at least that many cases, so every metric gets data, and it writes a results file marked as a pre-flight, leaving this README alone.
 
@@ -206,7 +206,7 @@ GPT OSS 120B is OpenAI's open-weight model, not frontier GPT.
 
 Overlapping 95% intervals are never claimed as a win.
 
-Production default: Haiku unless the eval shows it worse. With 16 positives the eval can only detect large gaps, so this is a cost-led default, not a demonstrated equivalence.
+Production default: Haiku unless the eval shows it worse. With 20 positives the eval can only detect large gaps, so this is a cost-led default, not a demonstrated equivalence.
 
 <!-- eval-results:start -->
 Measured on 2026-11-18 against eval-v1 (226df923); test cases: 45.
@@ -233,4 +233,5 @@ CI runs the same checks on every pull request and on main against Postgres and E
 ## Future improvements
 
 - **Tiered auto-approve thresholds by category**, for example a higher one for travel and accommodation. Today one threshold covers every category.
+- **Fit-aware recommendations.** A precedent annotates a finding by employee or supplier and code, and a finding with a precedent recommends approve, even where the recorded fact does not explain this spend. Recommending approve only where the precedent fits would need a judgement the recommendation function does not make today.
 - **A model reflection pass in verification**, deferred in ADR 0001 because it costs an extra call and is not deterministic; worth adding only if measured precision is poor.

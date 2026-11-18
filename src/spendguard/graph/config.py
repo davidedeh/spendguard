@@ -23,6 +23,7 @@ class GraphConfig:
     checkpointer: BaseCheckpointSaver[str]
     decision_event_sender: DecisionEventSender
     precedent_memory: bool
+    record_precedents: bool
     policy_context: PolicyContext
 
 

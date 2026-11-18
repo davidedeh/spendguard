@@ -2,7 +2,7 @@ import asyncio
 import datetime
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -40,6 +40,7 @@ from spendguard.eval.report import (
     RowsDirectory,
     write_row_results,
 )
+from spendguard.eval.validator import precedent_subject
 from spendguard.graph.build import ReviewGraph, build_graph
 from spendguard.graph.config import GraphConfig, thread_config
 from spendguard.graph.nodes.execute import DecisionEvent
@@ -52,7 +53,7 @@ from spendguard.graph.state import (
     precedent_clearances,
 )
 from spendguard.observability.tracing import Tracing, traced_advance
-from spendguard.policy.loader import Policy
+from spendguard.policy.loader import FindingCode, Policy
 from spendguard.queue.messages import QueueMessage
 from spendguard.seed.schema import SeedData
 from spendguard.settings import EvalRow, Settings
@@ -105,13 +106,120 @@ def eval_graph(
             checkpointer=AsyncPostgresSaver(resources.connection_pool),
             decision_event_sender=_DiscardedDecisionEvents(),
             precedent_memory=precedent_memory,
+            record_precedents=False,
             policy_context=row.policy_context,
         )
     )
 
 
-def _idempotency_key(case: EvalCase, run_identifier: str) -> str:
+def eval_idempotency_key(case: EvalCase, run_identifier: str) -> str:
     return f'eval:{run_identifier}:{case.id}'
+
+
+@dataclass(frozen=True)
+class PlannedPrecedent:
+    pair: EvalCase
+    subject: str
+    code: FindingCode
+    clause_reference: str
+    clause_hash: str
+    reason: str
+    approver: str
+
+
+def planned_precedents(cases: Sequence[EvalCase], policy: Policy) -> dict[str, PlannedPrecedent]:
+    pairs = {case.id: case for case in cases if case.scripted_review is not None}
+    planned: dict[str, PlannedPrecedent] = {}
+    for follow_up in cases:
+        if follow_up.memory is not None:
+            planned[follow_up.id] = _planned_precedent(
+                pairs[follow_up.memory.precedent_from], follow_up, policy
+            )
+    return planned
+
+
+def _planned_precedent(pair: EvalCase, follow_up: EvalCase, policy: Policy) -> PlannedPrecedent:
+    memory = follow_up.memory
+    review = pair.scripted_review
+    if memory is None or review is None:
+        raise ValueError(f'{follow_up.id} does not follow up a memory pair')
+    reason = next(
+        disposition.reason
+        for disposition in review.dispositions
+        if disposition.code == memory.code and disposition.disposition == 'dismissed'
+    )
+    clause_reference = next(
+        finding.gold_clauses[0] for finding in pair.expected_findings if finding.code == memory.code
+    )
+    clause = next(
+        (clause for clause in policy.clauses if clause.reference == clause_reference), None
+    )
+    if clause is None:
+        raise ValueError(
+            f'{pair.id} gives {clause_reference} for {memory.code}, and {clause_reference} is not'
+            ' in the current policy'
+        )
+    scope = policy.finding_codes[memory.code].precedent_scope
+    subject = None if scope is None else precedent_subject(follow_up.submission, scope)
+    if reason is None or subject is None:
+        raise ValueError(f'{pair.id} gives no precedent for {memory.code}')
+    return PlannedPrecedent(
+        pair=pair,
+        subject=subject,
+        code=memory.code,
+        clause_reference=clause.reference,
+        clause_hash=clause.hash,
+        reason=reason,
+        approver=review.approver,
+    )
+
+
+async def record_planned_precedents(
+    planned: Mapping[str, PlannedPrecedent], connection_pool: ConnectionPool, run_identifier: str
+) -> dict[str, str]:
+    return {
+        follow_up_id: await _record_planned_precedent(plan, connection_pool, run_identifier)
+        for follow_up_id, plan in planned.items()
+    }
+
+
+async def _record_planned_precedent(
+    plan: PlannedPrecedent, connection_pool: ConnectionPool, run_identifier: str
+) -> str:
+    pair = plan.pair
+    recording = await submissions.record_submission(
+        connection_pool,
+        idempotency_key=eval_idempotency_key(pair, run_identifier),
+        submission_type=pair.submission.type,
+        payload=pair.submission.model_dump(mode='json'),
+    )
+    await precedents.record_precedent(
+        connection_pool,
+        precedents.NewPrecedent(
+            subject=plan.subject,
+            code=plan.code,
+            clause_reference=plan.clause_reference,
+            clause_hash=plan.clause_hash,
+            reason=plan.reason,
+            approver=plan.approver,
+            submission_id=recording.submission_id,
+        ),
+    )
+    return next(
+        recorded.precedent_id
+        for recorded in await precedents.precedents_recorded_from(
+            connection_pool, recording.submission_id
+        )
+        if recorded.code == plan.code
+    )
+
+
+async def seed_follow_up_precedents(
+    cases: Sequence[EvalCase], resources: EvalResources, run_identifier: str
+) -> dict[str, str]:
+    return await record_planned_precedents(
+        planned_precedents(cases, resources.policy), resources.connection_pool, run_identifier
+    )
 
 
 async def run_case(
@@ -122,7 +230,7 @@ async def run_case(
     tracing: Tracing | None,
 ) -> CaseOutcome:
     payload = case.submission.model_dump(mode='json')
-    idempotency_key = _idempotency_key(case, run_identifier)
+    idempotency_key = eval_idempotency_key(case, run_identifier)
     recording = await submissions.record_submission(
         connection_pool,
         idempotency_key=idempotency_key,
@@ -199,12 +307,12 @@ async def _apply_scripted_review(
     graph: ReviewGraph,
     resources: EvalResources,
     run_identifier: str,
-) -> frozenset[str]:
+) -> None:
     connection_pool = resources.connection_pool
-    idempotency_key = _idempotency_key(case, run_identifier)
+    idempotency_key = eval_idempotency_key(case, run_identifier)
     snapshot = await graph.aget_state(thread_config(idempotency_key))
     if not snapshot.interrupts:
-        return frozenset()
+        return
     submission_id = uuid.UUID(snapshot.values['submission_id'])
     dispositions = _scripted_dispositions(review, snapshot.values['findings'])
     upheld_finding_ids = [
@@ -226,16 +334,12 @@ async def _apply_scripted_review(
         QueueMessage(type='resume', submission_id=submission_id, thread_id=idempotency_key),
         WorkerRuntime(graph=graph, connection_pool=connection_pool, tracing=resources.tracing),
     )
-    return frozenset(
-        precedent.precedent_id
-        for precedent in await precedents.precedents_recorded_from(connection_pool, submission_id)
-    )
 
 
 @dataclass(frozen=True)
 class PairedRun:
     results: list[CaseResult]
-    precedent_ids_by_pair: dict[str, frozenset[str]]
+    precedent_id_by_follow_up: dict[str, str]
 
 
 async def run_cases(
@@ -245,16 +349,21 @@ async def run_cases(
     run_identifier: str,
     dataset_run: DatasetRun | None,
 ) -> PairedRun:
-    follow_ups = [case for case in cases if case.expected_clearance is not None]
-    others = [case for case in cases if case.expected_clearance is None]
-    precedent_ids_by_pair: dict[str, frozenset[str]] = {}
+    follow_ups = [case for case in cases if case.memory is not None]
+    others = [case for case in cases if case.memory is None]
+    planned = planned_precedents(cases, resources.policy)
+    precedent_id_by_follow_up: dict[str, str] = {}
 
     async def run_paired_case(case: EvalCase) -> CaseOutcome:
+        if case.memory is not None and not precedent_id_by_follow_up:
+            precedent_id_by_follow_up.update(
+                await record_planned_precedents(planned, resources.connection_pool, run_identifier)
+            )
         outcome = await run_case(
             case, graph, resources.connection_pool, run_identifier, resources.tracing
         )
         if case.scripted_review is not None:
-            precedent_ids_by_pair[case.id] = await _apply_scripted_review(
+            await _apply_scripted_review(
                 case, case.scripted_review, graph, resources, run_identifier
             )
         return outcome
@@ -269,7 +378,10 @@ async def run_cases(
         results = [await run_or_record_failure(case) for case in others + follow_ups]
     else:
         results = await run_as_dataset_run(dataset_run, others + follow_ups, run_paired_case)
-    return PairedRun(results=results, precedent_ids_by_pair=precedent_ids_by_pair)
+    return PairedRun(
+        results=results,
+        precedent_id_by_follow_up=precedent_id_by_follow_up,
+    )
 
 
 def _memory_comparison_row(settings: Settings) -> EvalRow | None:
@@ -292,9 +404,7 @@ async def _compare_memory(
     run_identifier: str,
 ) -> MemoryComparison:
     paired_cases = [
-        case
-        for case in cases
-        if case.scripted_review is not None or case.expected_clearance is not None
+        case for case in cases if case.scripted_review is not None or case.memory is not None
     ]
     metrics_by_setting: dict[bool, MemoryMetrics] = {}
     for precedent_memory in (True, False):
@@ -307,7 +417,7 @@ async def _compare_memory(
             dataset_run=None,
         )
         metrics_by_setting[precedent_memory] = memory_metrics(
-            paired_cases, run.results, run.precedent_ids_by_pair
+            paired_cases, run.results, run.precedent_id_by_follow_up
         )
     return MemoryComparison(
         row=row,
@@ -340,8 +450,8 @@ def pre_flight_cases(cases: Sequence[EvalCase], minimum_case_count: int) -> list
                 continue
             case = slice_cases[round_index]
             chosen_case_ids.add(case.id)
-            if case.expected_clearance is not None:
-                chosen_case_ids.add(case.expected_clearance.precedent_from)
+            if case.memory is not None:
+                chosen_case_ids.add(case.memory.precedent_from)
         if len(chosen_case_ids) >= minimum_case_count:
             break
     return [case for case in cases if case.id in chosen_case_ids]

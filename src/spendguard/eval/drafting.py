@@ -18,6 +18,7 @@ from spendguard.eval.cases import (
     DraftedBy,
     EvalCase,
     ExpectedFinding,
+    PipelineDraft,
     ScriptedReview,
     load_slice_plan,
 )
@@ -121,8 +122,8 @@ class _Drafter:
     model_settings: settings.ChatModelSettings
 
     @property
-    def drafted_by(self) -> DraftedBy:
-        return DraftedBy(
+    def drafted_by(self) -> PipelineDraft:
+        return PipelineDraft(
             provider=self.model_settings.provider, model_id=self.model_settings.model_id
         )
 
@@ -224,7 +225,7 @@ def _labelled_case(
         expected_route=expected_route,
         expected_recommendation=expected_recommendation,
         scripted_review=drafted.scripted_review if brief.memory_pair else None,
-        expected_clearance=brief.clearance,
+        memory=brief.clearance,
         drafted_by=drafter.drafted_by,
     )
 
@@ -613,7 +614,9 @@ def _run_summary(
     outcomes: dict[str, EvalCase | DraftFailedError],
     drafters: dict[str, _Drafter],
 ) -> str:
-    keys_by_model = {drafter.drafted_by: key for key, drafter in drafters.items()}
+    keys_by_model: dict[DraftedBy, str] = {
+        drafter.drafted_by: key for key, drafter in drafters.items()
+    }
     drafted_by_key: Counter[str] = Counter()
     fallbacks: list[str] = []
     for brief, assigned_key in zip(briefs, assigned, strict=True):

@@ -3,7 +3,8 @@ split: test
 slice: memory_follow_up
 intent:
   rule_codes: []
-  judgement_codes: []
+  judgement_codes:
+  - WEEKEND_SPEND_UNJUSTIFIED
   lookalike_code: null
   injection: null
   receipt_total_differs_because: null
@@ -21,13 +22,18 @@ submission:
     arriving on Sunday.
   receipt_text: "Larchfield Hotel London\n2026-04-26\nRoom \u2013 1 night   60.00\n\
     TOTAL 60.00"
-expected_findings: []
+expected_findings:
+- id: WEEKEND_SPEND_UNJUSTIFIED
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  gold_clauses:
+  - "\xA72.4"
 expected_route: human_review
 expected_recommendation: approve
 scripted_review: null
-expected_clearance:
-  code: WEEKEND_SPEND_UNJUSTIFIED
+memory:
   precedent_from: test-judgement-positive-02
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  precedent_applies: false
 drafted_by:
   provider: bedrock
   model_id: openai.gpt-oss-120b-1:0

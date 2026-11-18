@@ -15,7 +15,7 @@ from pydantic import Field
 
 from settings_factory import make_test_settings
 from spendguard.eval.briefs import CaseBrief, generate_briefs
-from spendguard.eval.cases import DraftedBy, EvalCase, SlicePlan, read_case_directory
+from spendguard.eval.cases import EvalCase, PipelineDraft, SlicePlan, read_case_directory
 from spendguard.eval.drafting import (
     DRAFTED_CASE_SCHEMA,
     DRAFTED_PAIR_SCHEMA,
@@ -51,7 +51,12 @@ DRAFTING_PLAN: dict[str, dict[str, Any]] = {
             'injection': 1,
             'memory_follow_up': 2,
         },
-        'judgement_positives_per_code': 2,
+        'judgement_positives_per_code': {
+            'WEEKEND_SPEND_UNJUSTIFIED': 2,
+            'PURPOSE_UNCLEAR': 2,
+            'RECEIPT_MISMATCH': 2,
+            'ALCOHOL_NOT_PERMITTED': 2,
+        },
         'memory_pairs': 2,
         'supplier_invoices': 4,
         'foreign_currency': 3,
@@ -65,7 +70,12 @@ DRAFTING_PLAN: dict[str, dict[str, Any]] = {
             'injection': 0,
             'memory_follow_up': 1,
         },
-        'judgement_positives_per_code': 1,
+        'judgement_positives_per_code': {
+            'WEEKEND_SPEND_UNJUSTIFIED': 1,
+            'PURPOSE_UNCLEAR': 1,
+            'RECEIPT_MISMATCH': 1,
+            'ALCOHOL_NOT_PERMITTED': 1,
+        },
         'memory_pairs': 1,
         'supplier_invoices': 1,
         'foreign_currency': 1,
@@ -579,7 +589,7 @@ def test_every_case_carries_the_drafted_by_of_the_model_that_produced_it(
 
     for case in read_drafted_cases(tmp_path):
         producing_model_id = marker_of(case).split(' call ')[0]
-        assert case.drafted_by == DraftedBy(provider='fake', model_id=producing_model_id)
+        assert case.drafted_by == PipelineDraft(provider='fake', model_id=producing_model_id)
 
 
 def test_rule_findings_route_and_recommendation_are_computed_by_code(tmp_path: Path) -> None:
@@ -595,7 +605,7 @@ def test_rule_findings_route_and_recommendation_are_computed_by_code(tmp_path: P
         assert labelled_rules == [finding.code for finding in computed]
         assert sorted(labelled_rules) == sorted(BRIEFS_BY_ID[case.id].intent.rule_codes)
         findings = [finding_for(finding.code, FIXTURE_POLICY) for finding in case.expected_findings]
-        cleared_code = None if case.expected_clearance is None else case.expected_clearance.code
+        cleared_code = None if case.memory is None else case.memory.code
         assert case.expected_route == route(
             findings=findings,
             cleared_by_precedent=cleared_code is not None,
@@ -622,8 +632,8 @@ def test_a_memory_pair_and_its_follow_up_are_drafted_in_one_call_by_one_drafter(
     follow_ups = [case for case in cases.values() if case.slice == 'memory_follow_up']
     assert len(follow_ups) == sum(brief.memory_pair for brief in BRIEFS)
     for follow_up in follow_ups:
-        assert follow_up.expected_clearance is not None
-        pair = cases[follow_up.expected_clearance.precedent_from]
+        assert follow_up.memory is not None
+        pair = cases[follow_up.memory.precedent_from]
         assert follow_up.drafted_by == pair.drafted_by
         assert marker_of(follow_up) == f'{marker_of(pair)} follow-up'
         assert follow_up.expected_findings == ()
@@ -670,7 +680,7 @@ def test_a_memory_pair_whose_drafter_cannot_draft_its_follow_up_falls_back_as_a_
     (follow_up,) = [
         case
         for case in cases.values()
-        if case.expected_clearance is not None and case.expected_clearance.precedent_from == pair.id
+        if case.memory is not None and case.memory.precedent_from == pair.id
     ]
     assert pair.drafted_by.model_id != DRAFTER_MODEL_IDS[assigned_key]
     assert follow_up.drafted_by == pair.drafted_by

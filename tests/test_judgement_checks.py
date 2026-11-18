@@ -75,6 +75,7 @@ def graph_config(
         checkpointer=InMemorySaver(),
         decision_event_sender=UnusedSender(),
         precedent_memory=True,
+        record_precedents=True,
         policy_context='retrieved_clauses',
     )
 
@@ -328,6 +329,32 @@ async def test_lookups_answer_for_this_claim_whatever_identifiers_the_model_pass
         },
         'call-2': {'error': 'This submission has no supplier.'},
         'call-3': [],
+    }
+
+
+async def test_the_holiday_lookup_names_the_public_holiday_on_the_claim_s_date_or_says_none(
+    connection_pool: ConnectionPool,
+) -> None:
+    lookup = tool_calls(('get_public_holiday', {}))
+    on_holiday = FakeChatModel(
+        model_id='fake-judge', responses=[lookup, AIMessage(content='Done.'), report()]
+    )
+    on_working_day = FakeChatModel(
+        model_id='fake-judge', responses=[lookup, AIMessage(content='Done.'), report()]
+    )
+
+    await run_judgement_checks(
+        claim_state(spent_on='2026-12-28'), graph_config(on_holiday, connection_pool)
+    )
+    await run_judgement_checks(
+        claim_state(spent_on='2026-12-29'), graph_config(on_working_day, connection_pool)
+    )
+
+    assert tool_results(on_holiday.received[1]) == {
+        'call-0': {'holiday_on': '2026-12-28', 'description': 'Boxing Day (substitute day)'}
+    }
+    assert tool_results(on_working_day.received[1]) == {
+        'call-0': {'error': "This submission's date is not a public holiday."}
     }
 
 

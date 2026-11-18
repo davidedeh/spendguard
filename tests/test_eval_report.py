@@ -239,20 +239,28 @@ def test_the_results_file_reports_memory_on_and_off_for_the_primary_model(tmp_pa
             row=haiku.row,
             model=haiku.model,
             memory_on=MemoryMetrics(
-                false_positive_rate=Proportion(0, 3),
-                recommendation_agreement=Proportion(3, 3),
-                cleared_with_pair_precedent=Proportion(2, 3),
+                raised_labelled_code=Proportion(0, 3),
+                raised_any_judgement_code=Proportion(1, 3),
+                cleared_with_pair_precedent=Proportion(1, 3),
                 forced_review=Proportion(1, 3),
                 failed=Proportion(0, 3),
                 silent_clearances=Proportion(0, 3),
+                controls_raised_labelled_code=Proportion(1, 2),
+                controls_cleared_by_precedent=Proportion(1, 2),
+                recommendation_agreement=Proportion(4, 5),
+                other_findings=(('test-memory-follow-up-01', ('PURPOSE_UNCLEAR',)),),
             ),
             memory_off=MemoryMetrics(
-                false_positive_rate=Proportion(2, 3),
-                recommendation_agreement=Proportion(1, 3),
+                raised_labelled_code=Proportion(2, 3),
+                raised_any_judgement_code=Proportion(2, 3),
                 cleared_with_pair_precedent=Proportion(0, 3),
                 forced_review=Proportion(0, 3),
                 failed=Proportion(1, 3),
                 silent_clearances=Proportion(0, 3),
+                controls_raised_labelled_code=Proportion(2, 2),
+                controls_cleared_by_precedent=Proportion(0, 2),
+                recommendation_agreement=Proportion(1, 5),
+                other_findings=(),
             ),
         ),
     )
@@ -263,18 +271,30 @@ def test_the_results_file_reports_memory_on_and_off_for_the_primary_model(tmp_pa
 
     assert '## Memory on versus off' in text
     assert (
-        'Claude Haiku (primary), `us.anthropic.claude-haiku-4-5-20251001-v1:0`, scored against'
-        ' labels written for memory on. Memory follow-ups: 3.'
+        'Claude Haiku (primary), `us.anthropic.claude-haiku-4-5-20251001-v1:0`. Each follow-up'
+        " gets its pair's scripted reason as a precedent. Follow-ups whose precedent applies: 3;"
+        ' controls, whose precedent does not apply: 2. With memory off no precedent is available,'
+        ' so raising the labelled code is the right answer on every follow-up.'
     ) in text
     assert (
-        '| Setting | Judgement false-positive rate | Recommendation matches approver'
+        '| Setting | Raised the labelled code | Raised any judgement code'
         " | Cleared with the pair's precedent | Forced review | Failed | Silent clearances |"
+        '\n| --- | --- | --- | --- | --- | --- | --- |'
+        '\n| Memory on | 0/3 = 0.00 | 1/3 = 0.33 | 1/3 = 0.33 | 1/3 = 0.33 | 0/3 = 0.00'
+        ' | 0/3 = 0.00 |'
+        '\n| Memory off | 2/3 = 0.67 | 2/3 = 0.67 | 0/3 = 0.00 | 0/3 = 0.00 | 1/3 = 0.33'
+        ' | 0/3 = 0.00 |'
     ) in text
     assert (
-        '| Memory on | 0/3 = 0.00 | 3/3 = 1.00 | 2/3 = 0.67 | 1/3 = 0.33 | 0/3 = 0.00'
-        ' | 0/3 = 0.00 |'
-        '\n| Memory off | 2/3 = 0.67 | 1/3 = 0.33 | 0/3 = 0.00 | 0/3 = 0.00 | 1/3 = 0.33'
-        ' | 0/3 = 0.00 |'
+        '| Setting | Controls that raised the labelled code | Controls cleared by the precedent'
+        ' | Recommendation matches the label |'
+        '\n| --- | --- | --- | --- |'
+        '\n| Memory on | 1/2 = 0.50 | 1/2 = 0.50 | 4/5 = 0.80 |'
+        '\n| Memory off | 2/2 = 1.00 | 0/2 = 0.00 | 1/5 = 0.20 |'
+    ) in text
+    assert (
+        'Findings on other codes. Memory on: test-memory-follow-up-01 (PURPOSE_UNCLEAR).'
+        ' Memory off: none.'
     ) in text
     assert 'Memory on versus off' not in readme_path.read_text()
 

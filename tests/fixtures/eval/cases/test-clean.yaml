@@ -21,7 +21,7 @@ submission:
 expected_findings: []
 expected_route: auto_approve
 expected_recommendation: approve
-expected_clearance: null
+memory: null
 drafted_by:
   provider: fake
   model_id: fake-drafter-a

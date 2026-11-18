@@ -12,6 +12,7 @@ from spendguard.submission import ExpenseClaim, Submission
 
 NO_SUPPLIER = 'This submission has no supplier.'
 NO_COST_CENTRE = 'This submission has no cost centre.'
+NO_PUBLIC_HOLIDAY = "This submission's date is not a public holiday."
 
 
 @dataclass(frozen=True)
@@ -101,6 +102,21 @@ def submission_tools(
             }
         )
 
+    def get_public_holiday() -> str:
+        found = next(
+            (
+                holiday
+                for holiday in seed_data.public_holidays
+                if holiday.holiday_on == submission.dated_on
+            ),
+            None,
+        )
+        if found is None:
+            return json.dumps({'error': NO_PUBLIC_HOLIDAY})
+        return json.dumps(
+            {'holiday_on': found.holiday_on.isoformat(), 'description': found.description}
+        )
+
     def get_precedents(code: FindingCode) -> str:
         found: list[SuppliedPrecedent] = [
             precedent | {'reason': redact(precedent['reason'])}
@@ -124,6 +140,10 @@ def submission_tools(
         StructuredTool.from_function(
             get_cost_centre,
             description='The cost centre charged for this spend: owner, budget and spend to date.',
+        ),
+        StructuredTool.from_function(
+            get_public_holiday,
+            description="The Halden Group public holiday on this submission's date, if any.",
         ),
         StructuredTool.from_function(
             get_precedents,

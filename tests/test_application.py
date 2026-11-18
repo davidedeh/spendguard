@@ -385,6 +385,7 @@ async def application(
                 checkpointer=AsyncPostgresSaver(connection_pool),
                 decision_event_sender=sender,
                 precedent_memory=True,
+                record_precedents=True,
                 policy_context='retrieved_clauses',
             )
         )

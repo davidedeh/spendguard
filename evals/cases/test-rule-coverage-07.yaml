@@ -28,7 +28,7 @@ expected_findings:
 expected_route: human_review
 expected_recommendation: none
 scripted_review: null
-expected_clearance: null
+memory: null
 drafted_by:
   provider: bedrock
   model_id: us.anthropic.claude-sonnet-4-6

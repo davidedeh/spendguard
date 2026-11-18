@@ -5,6 +5,7 @@ intent:
   rule_codes: []
   judgement_codes:
   - WEEKEND_SPEND_UNJUSTIFIED
+  - RECEIPT_MISMATCH
   lookalike_code: null
   injection: null
   receipt_total_differs_because: null
@@ -27,10 +28,14 @@ expected_findings:
   code: WEEKEND_SPEND_UNJUSTIFIED
   gold_clauses:
   - "\xA72.4"
+- id: RECEIPT_MISMATCH
+  code: RECEIPT_MISMATCH
+  gold_clauses:
+  - "\xA73.2"
 expected_route: human_review
-expected_recommendation: none
+expected_recommendation: reject
 scripted_review: null
-expected_clearance: null
+memory: null
 drafted_by:
   provider: bedrock
   model_id: openai.gpt-oss-120b-1:0

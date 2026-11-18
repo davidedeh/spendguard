@@ -17,8 +17,9 @@ submission:
   currency: GBP
   type: expense_claim
   claimed_exchange_rate: null
-  business_purpose: Working lunch on Saturday preparing materials for the Halden Group
-    executive leadership strategy session.
+  business_purpose: Working lunch on Saturday at The Anchor Kitchen in Henley-on-Thames,
+    during a full day away from the London office preparing materials for the Halden
+    Group executive leadership strategy session.
   receipt_text: "The Anchor Kitchen\n2026-04-11\nGrilled chicken salad \xA314.50\n\
     Tomato soup \xA37.50\nSparkling water \xA33.50\nCoffee \xA34.50\nCroque monsieur\
     \ \xA311.00\nOrange juice \xA33.50\nService charge \xA32.50\nTOTAL \xA347.00"
@@ -26,9 +27,10 @@ expected_findings: []
 expected_route: human_review
 expected_recommendation: approve
 scripted_review: null
-expected_clearance:
-  code: WEEKEND_SPEND_UNJUSTIFIED
+memory:
   precedent_from: test-judgement-positive-01
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  precedent_applies: true
 drafted_by:
   provider: bedrock
   model_id: us.anthropic.claude-sonnet-4-6

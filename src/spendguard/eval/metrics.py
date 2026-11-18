@@ -255,51 +255,75 @@ def row_metrics(
 
 @dataclass(frozen=True)
 class MemoryMetrics:
-    false_positive_rate: Proportion
-    recommendation_agreement: Proportion
+    raised_labelled_code: Proportion
+    raised_any_judgement_code: Proportion
     cleared_with_pair_precedent: Proportion
     forced_review: Proportion
     failed: Proportion
     silent_clearances: Proportion
+    controls_raised_labelled_code: Proportion
+    controls_cleared_by_precedent: Proportion
+    recommendation_agreement: Proportion
+    other_findings: tuple[tuple[str, tuple[FindingCode, ...]], ...]
 
 
 def memory_metrics(
     cases: Sequence[EvalCase],
     results: Sequence[CaseResult],
-    precedent_ids_by_pair: Mapping[str, frozenset[str]],
+    precedent_id_by_follow_up: Mapping[str, str],
 ) -> MemoryMetrics:
     flagged = 0
+    flagged_on_labelled_code = 0
     cleared = 0
     forced = 0
     failed = 0
-    agreeing = 0
     follow_ups = 0
+    controls_flagged = 0
+    controls_cleared = 0
+    controls = 0
+    agreeing = 0
+    other_findings: list[tuple[str, tuple[FindingCode, ...]]] = []
     for case, outcome in _paired(cases, results):
-        clearance = case.expected_clearance
-        if clearance is None:
+        memory = case.memory
+        if memory is None:
+            continue
+        other_codes = (
+            () if outcome is None else tuple(sorted(outcome.judgement_codes - {memory.code}))
+        )
+        if other_codes:
+            other_findings.append((case.id, other_codes))
+        agreeing += outcome is not None and outcome.recommendation == case.expected_recommendation
+        cleared_by_seed = outcome is not None and any(
+            code == memory.code and precedent_id == precedent_id_by_follow_up.get(case.id)
+            for code, precedent_id in outcome.clearances
+        )
+        if not memory.precedent_applies:
+            controls += 1
+            controls_flagged += outcome is not None and memory.code in outcome.judgement_codes
+            controls_cleared += cleared_by_seed
             continue
         follow_ups += 1
         if outcome is None:
             failed += 1
             continue
-        agreeing += outcome.recommendation == case.expected_recommendation
-        pair_precedent_ids = precedent_ids_by_pair.get(clearance.precedent_from, frozenset())
+        flagged_on_labelled_code += memory.code in outcome.judgement_codes
         if outcome.judgement_codes:
             flagged += 1
-        elif any(
-            code == clearance.code and precedent_id in pair_precedent_ids
-            for code, precedent_id in outcome.clearances
-        ):
+        elif cleared_by_seed:
             cleared += 1
-        elif clearance.code in outcome.unanswered_judgement_codes:
+        elif memory.code in outcome.unanswered_judgement_codes:
             forced += 1
     return MemoryMetrics(
-        false_positive_rate=Proportion(flagged, follow_ups),
-        recommendation_agreement=Proportion(agreeing, follow_ups),
+        raised_labelled_code=Proportion(flagged_on_labelled_code, follow_ups),
+        raised_any_judgement_code=Proportion(flagged, follow_ups),
         cleared_with_pair_precedent=Proportion(cleared, follow_ups),
         forced_review=Proportion(forced, follow_ups),
         failed=Proportion(failed, follow_ups),
         silent_clearances=Proportion(follow_ups - flagged - cleared - forced - failed, follow_ups),
+        controls_raised_labelled_code=Proportion(controls_flagged, controls),
+        controls_cleared_by_precedent=Proportion(controls_cleared, controls),
+        recommendation_agreement=Proportion(agreeing, follow_ups + controls),
+        other_findings=tuple(other_findings),
     )
 
 

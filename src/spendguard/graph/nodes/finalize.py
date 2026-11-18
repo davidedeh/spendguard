@@ -9,6 +9,8 @@ from spendguard.store.precedents import NewPrecedent
 
 
 async def _record_precedents(state: ReviewState, graph_config: GraphConfig) -> None:
+    if not graph_config.record_precedents:
+        return
     decision = state['decision']
     approver = decision['decided_by']
     requester = state['requester']

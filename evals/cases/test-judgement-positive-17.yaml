@@ -1,0 +1,44 @@
+id: test-judgement-positive-17
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - WEEKEND_SPEND_UNJUSTIFIED
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-013
+  spent_on: '2026-07-11'
+  category: subsistence
+  quantity: 1
+  merchant: Junction Café
+  amount: '23.40'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Lunch on Saturday during the stock count at Calloway Retail's Reading
+    distribution centre, on site from 7am to 5pm, away from the London office.
+  receipt_text: "Junction Café\n2026-07-11\nJacket potato with chilli 9.80\nSide salad\
+    \ 4.20\nApple juice 2.90\nFlat white 3.40\nFlapjack 3.10\nTOTAL 23.40"
+expected_findings:
+- id: WEEKEND_SPEND_UNJUSTIFIED
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  gold_clauses:
+  - "\xA72.4"
+expected_route: human_review
+expected_recommendation: none
+scripted_review:
+  approver: EMP-006
+  dispositions:
+  - code: WEEKEND_SPEND_UNJUSTIFIED
+    disposition: dismissed
+    reason: EMP-013 leads the stock counts at Calloway Retail's Reading distribution
+      centre under Halden's support contract, and the client holds them only on Saturdays,
+      when the site is closed to deliveries.
+memory: null
+drafted_by:
+  provider: claude_code
+  model_id: claude-opus-5-5
+  drafted_during: eval-v2 audit

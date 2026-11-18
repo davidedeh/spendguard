@@ -61,7 +61,7 @@ def upload_cases(client: Langfuse, name: str, cases: Sequence[EvalCase]) -> dict
                     'expected_findings',
                     'expected_route',
                     'expected_recommendation',
-                    'expected_clearance',
+                    'memory',
                 },
             ),
             metadata={'case_id': case.id, 'slice': case.slice},

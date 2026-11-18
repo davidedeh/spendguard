@@ -296,6 +296,69 @@ def follow_up_outcome(
     )
 
 
+def test_the_labelled_code_count_ignores_a_finding_on_another_code_the_any_code_count_takes() -> (
+    None
+):
+    follow_up = fixture_case('test-memory-follow-up')
+    follow_up_ids = ('labelled', 'another-code', 'clean')
+    cases = tuple(follow_up.model_copy(update={'id': case_id}) for case_id in follow_up_ids)
+    outcomes = (
+        follow_up_outcome('labelled', 'none', judgement_codes=('PURPOSE_UNCLEAR',)),
+        follow_up_outcome('another-code', 'none', judgement_codes=('ALCOHOL_NOT_PERMITTED',)),
+        follow_up_outcome('clean', 'approve'),
+    )
+
+    metrics = memory_metrics(cases, outcomes, {})
+
+    assert counts(metrics.raised_labelled_code) == (1, 3)
+    assert counts(metrics.raised_any_judgement_code) == (2, 3)
+
+
+def test_a_control_whose_precedent_does_not_apply_is_right_to_flag_and_wrong_to_clear() -> None:
+    follow_up = fixture_case('test-memory-follow-up')
+    assert follow_up.memory is not None
+    control_memory = follow_up.memory.model_copy(update={'precedent_applies': False})
+    cases = (
+        follow_up.model_copy(update={'id': 'should-clear'}),
+        follow_up.model_copy(update={'id': 'control-flagged', 'memory': control_memory}),
+        follow_up.model_copy(update={'id': 'control-cleared', 'memory': control_memory}),
+    )
+    outcomes = (
+        follow_up_outcome('should-clear', 'approve', clearances=(('PURPOSE_UNCLEAR', 'seed-1'),)),
+        follow_up_outcome('control-flagged', 'approve', judgement_codes=('PURPOSE_UNCLEAR',)),
+        follow_up_outcome(
+            'control-cleared', 'approve', clearances=(('PURPOSE_UNCLEAR', 'seed-3'),)
+        ),
+    )
+    seeded = {'should-clear': 'seed-1', 'control-flagged': 'seed-2', 'control-cleared': 'seed-3'}
+
+    metrics = memory_metrics(cases, outcomes, seeded)
+
+    assert counts(metrics.controls_raised_labelled_code) == (1, 2)
+    assert counts(metrics.controls_cleared_by_precedent) == (1, 2)
+    assert counts(metrics.cleared_with_pair_precedent) == (1, 1)
+    assert counts(metrics.raised_labelled_code) == (0, 1)
+
+
+def test_findings_a_follow_up_raises_on_other_codes_are_listed_by_case() -> None:
+    follow_up = fixture_case('test-memory-follow-up')
+    cases = tuple(
+        follow_up.model_copy(update={'id': case_id}) for case_id in ('both', 'labelled-only')
+    )
+    outcomes = (
+        follow_up_outcome(
+            'both',
+            'none',
+            judgement_codes=('RECEIPT_MISMATCH', 'PURPOSE_UNCLEAR', 'ALCOHOL_NOT_PERMITTED'),
+        ),
+        follow_up_outcome('labelled-only', 'none', judgement_codes=('PURPOSE_UNCLEAR',)),
+    )
+
+    metrics = memory_metrics(cases, outcomes, {})
+
+    assert metrics.other_findings == (('both', ('ALCOHOL_NOT_PERMITTED', 'RECEIPT_MISMATCH')),)
+
+
 def test_a_follow_up_is_cleared_by_its_pair_flagged_forced_to_review_or_silently_cleared() -> None:
     follow_up = fixture_case('test-memory-follow-up')
     follow_up_ids = (
@@ -326,9 +389,9 @@ def test_a_follow_up_is_cleared_by_its_pair_flagged_forced_to_review_or_silently
         follow_up_outcome('no-verdict', 'none', unanswered=('PURPOSE_UNCLEAR',)),
     )
 
-    metrics = memory_metrics(cases, outcomes, {'test-purpose-unclear': frozenset({'pair-1'})})
+    metrics = memory_metrics(cases, outcomes, {case_id: 'pair-1' for case_id in follow_up_ids})
 
-    assert counts(metrics.false_positive_rate) == (2, 7)
+    assert counts(metrics.raised_any_judgement_code) == (2, 7)
     assert counts(metrics.recommendation_agreement) == (4, 7)
     assert counts(metrics.cleared_with_pair_precedent) == (1, 7)
     assert counts(metrics.forced_review) == (1, 7)
@@ -364,4 +427,4 @@ def test_a_failed_follow_up_is_counted_as_failed_and_disagreeing_not_as_a_silent
     assert counts(metrics.failed) == (2, 3)
     assert counts(metrics.silent_clearances) == (1, 3)
     assert counts(metrics.recommendation_agreement) == (1, 3)
-    assert counts(metrics.false_positive_rate) == (0, 3)
+    assert counts(metrics.raised_any_judgement_code) == (0, 3)

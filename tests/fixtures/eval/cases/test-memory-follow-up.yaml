@@ -26,9 +26,10 @@ submission:
 expected_findings: []
 expected_route: human_review
 expected_recommendation: approve
-expected_clearance:
-  code: PURPOSE_UNCLEAR
+memory:
   precedent_from: test-purpose-unclear
+  code: PURPOSE_UNCLEAR
+  precedent_applies: true
 drafted_by:
   provider: fake
   model_id: fake-drafter-b
