@@ -28,7 +28,7 @@ from spendguard.models.fake import FakeChatModel, structured_response
 from spendguard.policy.loader import POLICY_PATH, FindingCode, Policy, load_policy
 from spendguard.privacy.prompt_data import DATA_TAG_INSTRUCTION, prompt_fields, untrusted_data
 from spendguard.seed.loader import read_seed_directory
-from spendguard.settings import Settings
+from spendguard.settings import ChatModelSettings, Settings
 from spendguard.store import precedents
 
 POLICY = load_policy(POLICY_PATH)
@@ -646,3 +646,46 @@ async def test_precedent_reasons_reach_the_judge_redacted(
     redacted_precedent = precedent | {'reason': 'Agreed with [EMAIL], card [CARD]'}
     assert tool_results(model.received[1]) == {'call-0': [redacted_precedent]}
     assert update['supplied_precedents'] == [redacted_precedent]
+
+
+async def test_a_json_schema_report_with_text_before_its_object_still_gives_its_verdicts(
+    connection_pool: ConnectionPool,
+) -> None:
+    settings = make_test_settings(
+        chat_models={
+            'fake_primary': ChatModelSettings(
+                provider='fake',
+                model_id='fake-chat',
+                structured_output_method='json_schema',
+                temperature=0.0,
+            )
+        }
+    )
+    reply = JudgementReport(
+        verdicts=[
+            verdict(
+                'ALCOHOL_NOT_PERMITTED',
+                'flagged',
+                clause_reference=ALCOHOL_CLAUSE,
+                quotes=[QuotedText(field='receipt_text', text='Pint of lager')],
+            ),
+            verdict('PURPOSE_UNCLEAR', 'not_flagged'),
+        ]
+    ).model_dump(mode='json')
+    model = FakeChatModel(
+        model_id='fake-judge',
+        responses=[
+            AIMessage(content='I have what I need.'),
+            AIMessage(content='PUR' + json.dumps(reply)),
+        ],
+    )
+
+    update = await run_judgement_checks(
+        claim_state(), graph_config(model, connection_pool, settings)
+    )
+
+    assert [(outcome['code'], outcome['outcome']) for outcome in update['judgement_outcomes']] == [
+        ('ALCOHOL_NOT_PERMITTED', 'flagged'),
+        ('PURPOSE_UNCLEAR', 'not_flagged'),
+    ]
+    assert model.structured_output_calls[-1][0] == 'json_schema'

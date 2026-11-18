@@ -4,12 +4,13 @@ from dataclasses import dataclass
 from functools import partial
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool
 from pydantic import BaseModel
 
 from spendguard import settings as settings_module
 from spendguard.models.factory import EMBEDDING_DIMENSIONS, build_chat_model, build_embedder
+from spendguard.models.structured_output import output_schema, structured_reply
 from spendguard.settings import ChatModelSettings, Settings
 
 REASONING_BLOCK_TYPES = frozenset({'reasoning', 'reasoning_content', 'thinking'})
@@ -46,25 +47,19 @@ def _reasoning_block_count(message: AIMessage) -> int:
 
 
 def check_structured_output(model: BaseChatModel, model_settings: ChatModelSettings) -> str:
-    structured_model = model.with_structured_output(
-        ClauseCitation, include_raw=True, method=model_settings.structured_output_method
+    output = structured_reply(
+        model,
+        model_settings.structured_output_method,
+        output_schema(ClauseCitation),
+        [
+            HumanMessage(
+                content='A policy clause with reference 3.4 carries severity medium. '
+                'Report its clause reference and severity.'
+            )
+        ],
     )
-    result = structured_model.invoke(
-        'A policy clause with reference 3.4 carries severity medium. '
-        'Report its clause reference and severity.'
-    )
-    if not isinstance(result, dict):
-        raise TypeError(f'Expected a dict with include_raw, got {type(result).__name__}')
-    if result['parsing_error'] is not None:
-        raise result['parsing_error']
-    parsed = result['parsed']
-    if not isinstance(parsed, ClauseCitation):
-        raise TypeError(f'Expected ClauseCitation, got {type(parsed).__name__}')
-    raw = result['raw']
-    reasoning_blocks = _reasoning_block_count(raw) if isinstance(raw, AIMessage) else 0
-    return (
-        f'parsed {parsed.clause_reference}/{parsed.severity}, reasoning blocks {reasoning_blocks}'
-    )
+    parsed = ClauseCitation.model_validate(output)
+    return f'parsed {parsed.clause_reference}/{parsed.severity}'
 
 
 def check_tool_call(model: BaseChatModel, model_settings: ChatModelSettings) -> str:
