@@ -209,16 +209,18 @@ Overlapping 95% intervals are never claimed as a win.
 
 Production default: Haiku unless the eval shows it worse. With 20 positives the eval can only detect large gaps, so this is a cost-led default, not a demonstrated equivalence.
 
+The first eval-v2 run has three caveats. With memory on, Haiku cleared both memory controls, applying a precedent whose fact does not explain the spend, as well as the three follow-ups whose precedent fits. GPT OSS 120B failed 21 of 49 cases on replies that ran to the output limit, so its row mostly measures that failure. The whole-policy row lost 7 cases to Bedrock being briefly unavailable and is not comparable until they are rerun. [evals/CHANGELOG.md](evals/CHANGELOG.md) has the detail.
+
 <!-- eval-results:start -->
-Measured on 2026-11-18 against eval-v1 (226df923); test cases: 45.
+Measured on 2026-11-18 against eval-v2 (968c6684); test cases: 49.
 
 | Row | Model ID | Judgement precision (95% CI) | Judgement recall (95% CI) | Route accuracy | Recommendation accuracy | Verify drop rate | Injection survival | Retrieval recall (top 5 per query) | p50 latency | Cost per submission | Failed cases |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Claude Haiku (primary) | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | 13/27 = 0.48 (0.31 to 0.66) | 13/16 = 0.81 (0.57 to 0.93) | 41/45 = 0.91 | 31/45 = 0.69 | 1/37 = 0.03 | 4/4 = 1.00 | 18/20 = 0.90 | 30.2 s | $0.0194 | 0 failed |
-| Claude Sonnet | `us.anthropic.claude-sonnet-4-6` | 16/34 = 0.47 (0.31 to 0.63) | 16/16 = 1.00 (0.81 to 1.00) | 41/45 = 0.91 | 30/45 = 0.67 | 0/44 = 0.00 | 4/4 = 1.00 | 19/20 = 0.95 | 30.3 s | $0.0652 | 0 failed |
-| GPT OSS 120B (OpenAI's open-weight model) | `openai.gpt-oss-120b-1:0` | 8/14 = 0.57 (0.33 to 0.79) | 8/16 = 0.50 (0.28 to 0.72) | 25/45 = 0.56 | 22/45 = 0.49 | 1/19 = 0.05 | 3/4 = 0.75 | 13/20 = 0.65 | 15.0 s | $0.0023 | 18 failed |
-| Nova Pro (AWS-native) | `us.amazon.nova-pro-v1:0` | 10/20 = 0.50 (0.30 to 0.70) | 10/16 = 0.62 (0.39 to 0.82) | 38/45 = 0.84 | 37/45 = 0.82 | 3/26 = 0.12 | 3/4 = 0.75 | 20/20 = 1.00 | 13.0 s | $0.0109 | 0 failed |
-| Claude Haiku, whole policy (no retrieval) | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | 14/26 = 0.54 (0.35 to 0.71) | 14/16 = 0.88 (0.64 to 0.97) | 43/45 = 0.96 | 31/45 = 0.69 | 1/37 = 0.03 | 4/4 = 1.00 | not applicable | 30.1 s | $0.0270 | 0 failed |
+| Claude Haiku (primary) | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | 18/29 = 0.62 (0.44 to 0.77) | 18/21 = 0.86 (0.65 to 0.95) | 46/49 = 0.94 | 40/49 = 0.82 | 0/41 = 0.00 | 4/4 = 1.00 | 23/25 = 0.92 | 30.0 s | $0.0193 | 0 failed |
+| Claude Sonnet | `us.anthropic.claude-sonnet-4-6` | 20/34 = 0.59 (0.42 to 0.74) | 20/21 = 0.95 (0.77 to 0.99) | 44/49 = 0.90 | 36/49 = 0.73 | 2/46 = 0.04 | 4/4 = 1.00 | 24/25 = 0.96 | 30.7 s | $0.0700 | 0 failed |
+| GPT OSS 120B (OpenAI's open-weight model) | `openai.gpt-oss-120b-1:0` | 9/13 = 0.69 (0.42 to 0.87) | 9/21 = 0.43 (0.24 to 0.63) | 27/49 = 0.55 | 23/49 = 0.47 | 1/20 = 0.05 | 3/4 = 0.75 | 15/25 = 0.60 | 15.9 s | $0.0025 | 21 failed |
+| Nova Pro (AWS-native) | `us.amazon.nova-pro-v1:0` | 12/21 = 0.57 (0.37 to 0.76) | 12/21 = 0.57 (0.37 to 0.76) | 42/49 = 0.86 | 36/49 = 0.73 | 2/31 = 0.06 | 2/4 = 0.50 | 25/25 = 1.00 | 14.2 s | $0.0121 | 0 failed |
+| Claude Haiku, whole policy (no retrieval) | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | 12/22 = 0.55 (0.35 to 0.73) | 12/21 = 0.57 (0.37 to 0.76) | 39/49 = 0.80 | 35/49 = 0.71 | 0/35 = 0.00 | 4/4 = 1.00 | not applicable | 29.8 s | $0.0267 | 7 failed |
 
 Rule checks, the same for every row: precision 8/8 = 1.00, recall 8/8 = 1.00.
 <!-- eval-results:end -->
@@ -235,4 +237,5 @@ CI runs the same checks on every pull request and on main against Postgres and E
 
 - **Tiered auto-approve thresholds by category**, for example a higher one for travel and accommodation. Today one threshold covers every category.
 - **Fit-aware recommendations.** A precedent annotates a finding by employee or supplier and code, and a finding with a precedent recommends approve, even where the recorded fact does not explain this spend. Recommending approve only where the precedent fits would need a judgement the recommendation function does not make today.
+- **Checking precedent fit.** With memory on, the primary model cleared both eval controls, where the recorded fact does not explain the spend, and verification checks only that a cited precedent was supplied. Making a clearance quote the fact that explains this submission, and verifying that quote as verification already checks quotes from the submission, is worth exploring.
 - **A model reflection pass in verification**, deferred in ADR 0001 because it costs an extra call and is not deterministic; worth adding only if measured precision is poor.

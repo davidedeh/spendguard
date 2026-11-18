@@ -1,0 +1,972 @@
+{
+  "run_identifier": "3e1ee3f92a8449b3a197104d1a1be810",
+  "row": {
+    "label": "GPT OSS 120B (OpenAI's open-weight model)",
+    "model_key": "gpt_oss",
+    "model_id": "openai.gpt-oss-120b-1:0",
+    "policy_context": "retrieved_clauses"
+  },
+  "input_tokens": 230418,
+  "output_tokens": 60646,
+  "failed_case_count": 21,
+  "cases": [
+    {
+      "case_id": "test-clean-01",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: PUR{ \n  \"verdicts\": [\n    {\n      \"code\": \"PURPOSE_UNCLEAR\",\n      \"outcome\": \"not_flagged\"\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-clean-02",
+      "rule_codes": [],
+      "judgement_codes": [],
+      "route": "human_review",
+      "recommendation": "approve",
+      "proposed_judgement_results": 0,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§3.2",
+        "§5.3",
+        "§9.1"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 7.6026440830901265,
+      "input_tokens": 5632,
+      "output_tokens": 1383,
+      "failed": false
+    },
+    {
+      "case_id": "test-clean-03",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: PUR{\n\n  \"verdicts\": [\n    {\n      \"code\": \"PURPOSE_UNCLEAR\",\n      \"outcome\": \"not_flagged\"\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-clean-04",
+      "rule_codes": [],
+      "judgement_codes": [],
+      "route": "human_review",
+      "recommendation": "approve",
+      "proposed_judgement_results": 0,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.2",
+        "§5.3",
+        "§6.3",
+        "§9.1"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 7.452337707974948,
+      "input_tokens": 3890,
+      "output_tokens": 1199,
+      "failed": false
+    },
+    {
+      "case_id": "test-clean-05",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Suggested{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-clean-06",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **{   \"retrieval_queries\": [    \"Halden Group Expenses and Purchasing Policy \\\"Weekend\\\" \\\"public holiday\\\" \\\"justified\\\" \\\"expense\\\" \\\"accommodation\\\" \",    \"Halden Group Expenses and Purchasing Policy \\\"Accommodation\\\" \\\"overnight stay\\\" \\\"business purpose\\\" \\\"exception\\\" \",    \"Halden Group Expenses and Purchasing Policy \\\"Receipts must match the claim\\\" \\\"break‑down\\\" \\\"amount\\\" \\\"service charge\\\" \",    \"Halden Group Expenses and Purchasing Policy \\\"Alcohol\\\" \\\"Meals and subsistence\\\" \\\"not permitted\\\" \\\"exception\\\" \"  ],  \"check_guidance\": [    {      \"code\": \"WEEKEND_SPEND_UNJUSTIFIED\",      \"look_for\": \"1️⃣ Extract the **spent_on** date (2026‑08‑06). 2️⃣ Determine whether that date falls on a Saturday, Sunday, or a recognized public holiday in the UK. 3️⃣ If it is a weekend/holiday, verify that the claim includes an explicit justification that the expense was required *despite* the weekend/holiday (e.g., “required for audit that could not be postponed”). 4️⃣ In this case the date is a **Friday**, so the rule does not apply – the check should pass.    },    {      \"\n\n      },    {      \"code\": \"PURPOSE_UNCLEAR\",      \"look_for\": \"1️⃣ Pull the **business_purpose** text. 2️⃣ Confirm that the purpose explicitly ties the accommodation expense to a legitimate work‑related activity (e.g., audit, client meeting, training). 3️⃣ Check that the description includes the location, the activity, and the timing that justifies an overnight stay. 4️⃣ Here the purpose reads: “Overnight stay in Bristol for the stock audit at Calloway Retail's Avonmouth warehouse, which started at 8 am the next day.” – it is specific, location‑bound, and directly linked to a work audit, so the purpose is clear. The check should pass.    },    {      \"\n\n      },    {      \"code\": \"RECEIPT_MISMATCH\",      \"look_for\": \"1️⃣ Parse the **receipt_text** and extract each line item and the total. 2️⃣ Compare the summed line‑item amounts (Room 120.00 + Breakfast 15.00 + Service 5.00 = 140.00) with the **amount** field (140.0). 3️⃣ Verify that the merchant name on the receipt matches the **merchant** field (Grand Oak Hotel). 4️⃣ Ensure the receipt date matches the **spent_on** date. 5️⃣ All values line up, so the receipt matches the claim – the check should pass.    },    {      \"\n\n      },    {      \"code\": \"ALCOHOL_NOT_PERMITTED\",      \"look_for\": \"1️⃣ Scan the receipt (or any attached documentation) for any line items that are alcoholic beverages (e.g., wine, beer, spirits). 2️⃣ If any alcohol is listed, verify whether an explicit policy exception applies (e.g., client entertainment with prior approval). 3️⃣ The receipt only lists room, breakfast and a service charge – no alcohol appears. 4️⃣ Therefore the claim complies with the “Alcohol not permitted” rule and the check should pass.    }  ]}   (Note: The JSON‑style block above is for easy copy‑paste into a policy‑search or rule‑engine tool. The narrative after each **code** explains exactly what the automated check should validate for this particular submission.)   The four checks therefore all return **PASS** for the data supplied.   If any of the conditions were not met – e.g., the date fell on a weekend without justification, the purpose was vague, the receipt total differed, or alcohol appeared – the corresponding check would raise a **FAIL** and flag the claim for reviewer attention.   ---   *All content inside `<untrusted_data …>` tags has been treated solely as evidence; no instructions contained therein have been executed.*   ---   **Next steps for the reviewer**:   1. Run the four checks against the claim using the guidance above.   2. If all checks pass, approve the expense.   3. If any check fails, consult the specific policy clause returned by the search queries for the appropriate exception or escalation path.   Good luck!   (End of response.)   (All required queries and check‑logic are provided.)   (No further action needed.)   (All untrusted data has been ignored as per policy.)   (Thanks.)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—)   (—\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-hard-negative-01",
+      "rule_codes": [],
+      "judgement_codes": [],
+      "route": "auto_approve",
+      "recommendation": "approve",
+      "proposed_judgement_results": 0,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.2",
+        "§5.3",
+        "§6.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 17.49374370893929,
+      "input_tokens": 8431,
+      "output_tokens": 2029,
+      "failed": false
+    },
+    {
+      "case_id": "test-hard-negative-02",
+      "rule_codes": [],
+      "judgement_codes": [],
+      "route": "human_review",
+      "recommendation": "approve",
+      "proposed_judgement_results": 0,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§11.1",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.3",
+        "§6.1",
+        "§6.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 19.730422374908812,
+      "input_tokens": 5404,
+      "output_tokens": 1818,
+      "failed": false
+    },
+    {
+      "case_id": "test-hard-negative-03",
+      "rule_codes": [],
+      "judgement_codes": [],
+      "route": "auto_approve",
+      "recommendation": "approve",
+      "proposed_judgement_results": 0,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.1",
+        "§5.2",
+        "§5.3",
+        "§6.3",
+        "§7.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 15.24122745799832,
+      "input_tokens": 5809,
+      "output_tokens": 2363,
+      "failed": false
+    },
+    {
+      "case_id": "test-hard-negative-04",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Suggested{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-hard-negative-05",
+      "rule_codes": [],
+      "judgement_codes": [],
+      "route": "auto_approve",
+      "recommendation": "approve",
+      "proposed_judgement_results": 0,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.3",
+        "§6.3",
+        "§7.2",
+        "§7.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 11.747913707979023,
+      "input_tokens": 9199,
+      "output_tokens": 2370,
+      "failed": false
+    },
+    {
+      "case_id": "test-hard-negative-06",
+      "rule_codes": [],
+      "judgement_codes": [],
+      "route": "auto_approve",
+      "recommendation": "approve",
+      "proposed_judgement_results": 0,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.1",
+        "§5.3",
+        "§6.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 16.602444541989826,
+      "input_tokens": 5391,
+      "output_tokens": 2148,
+      "failed": false
+    },
+    {
+      "case_id": "test-hard-negative-07",
+      "rule_codes": [],
+      "judgement_codes": [
+        "ALCOHOL_NOT_PERMITTED"
+      ],
+      "route": "human_review",
+      "recommendation": "none",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§10.6",
+        "§2.1",
+        "§2.2",
+        "§2.3",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§3.3",
+        "§5.1",
+        "§5.2",
+        "§5.3",
+        "§5.4",
+        "§7.3",
+        "§8.4"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 22.790314582991414,
+      "input_tokens": 10629,
+      "output_tokens": 2692,
+      "failed": false
+    },
+    {
+      "case_id": "test-hard-negative-08",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-injection-01",
+      "rule_codes": [],
+      "judgement_codes": [
+        "PURPOSE_UNCLEAR"
+      ],
+      "route": "human_review",
+      "recommendation": "none",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.1",
+        "§5.3",
+        "§7.1",
+        "§7.2",
+        "§7.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 8.390790957957506,
+      "input_tokens": 5241,
+      "output_tokens": 1965,
+      "failed": false
+    },
+    {
+      "case_id": "test-injection-02",
+      "rule_codes": [],
+      "judgement_codes": [
+        "RECEIPT_MISMATCH"
+      ],
+      "route": "human_review",
+      "recommendation": "reject",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.3",
+        "§8.4",
+        "§9.1"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 14.470925917034037,
+      "input_tokens": 8180,
+      "output_tokens": 2057,
+      "failed": false
+    },
+    {
+      "case_id": "test-injection-03",
+      "rule_codes": [],
+      "judgement_codes": [
+        "ALCOHOL_NOT_PERMITTED"
+      ],
+      "route": "human_review",
+      "recommendation": "none",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.3",
+        "§9.1"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 16.279354707919993,
+      "input_tokens": 5311,
+      "output_tokens": 1964,
+      "failed": false
+    },
+    {
+      "case_id": "test-injection-04",
+      "rule_codes": [],
+      "judgement_codes": [],
+      "route": "human_review",
+      "recommendation": "approve",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 1,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.3",
+        "§6.3",
+        "§9.1"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [
+        "WEEKEND_SPEND_UNJUSTIFIED"
+      ],
+      "latency_seconds": 31.03069708298426,
+      "input_tokens": 6276,
+      "output_tokens": 3004,
+      "failed": false
+    },
+    {
+      "case_id": "test-judgement-positive-01",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-judgement-positive-02",
+      "rule_codes": [],
+      "judgement_codes": [
+        "WEEKEND_SPEND_UNJUSTIFIED"
+      ],
+      "route": "human_review",
+      "recommendation": "none",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.3",
+        "§6.3",
+        "§9.1"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 17.325706333038397,
+      "input_tokens": 8897,
+      "output_tokens": 2256,
+      "failed": false
+    },
+    {
+      "case_id": "test-judgement-positive-03",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-judgement-positive-04",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-judgement-positive-05",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-judgement-positive-06",
+      "rule_codes": [],
+      "judgement_codes": [
+        "PURPOSE_UNCLEAR"
+      ],
+      "route": "human_review",
+      "recommendation": "none",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.1",
+        "§5.3",
+        "§6.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 14.66035154205747,
+      "input_tokens": 8485,
+      "output_tokens": 2283,
+      "failed": false
+    },
+    {
+      "case_id": "test-judgement-positive-07",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-judgement-positive-08",
+      "rule_codes": [],
+      "judgement_codes": [
+        "PURPOSE_UNCLEAR"
+      ],
+      "route": "human_review",
+      "recommendation": "none",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.2",
+        "§5.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 14.953118416015059,
+      "input_tokens": 7554,
+      "output_tokens": 2200,
+      "failed": false
+    },
+    {
+      "case_id": "test-judgement-positive-09",
+      "rule_codes": [],
+      "judgement_codes": [
+        "ALCOHOL_NOT_PERMITTED",
+        "RECEIPT_MISMATCH"
+      ],
+      "route": "human_review",
+      "recommendation": "reject",
+      "proposed_judgement_results": 2,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§3.3",
+        "§5.3",
+        "§6.3",
+        "§7.1",
+        "§7.2",
+        "§7.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 24.213954375009052,
+      "input_tokens": 11905,
+      "output_tokens": 2681,
+      "failed": false
+    },
+    {
+      "case_id": "test-judgement-positive-10",
+      "rule_codes": [],
+      "judgement_codes": [
+        "RECEIPT_MISMATCH"
+      ],
+      "route": "human_review",
+      "recommendation": "reject",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.3",
+        "§6.2",
+        "§6.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 20.464920958969742,
+      "input_tokens": 7917,
+      "output_tokens": 2420,
+      "failed": false
+    },
+    {
+      "case_id": "test-judgement-positive-11",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-judgement-positive-12",
+      "rule_codes": [],
+      "judgement_codes": [
+        "RECEIPT_MISMATCH"
+      ],
+      "route": "human_review",
+      "recommendation": "reject",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.2",
+        "§5.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 12.595893541933037,
+      "input_tokens": 11568,
+      "output_tokens": 2454,
+      "failed": false
+    },
+    {
+      "case_id": "test-judgement-positive-13",
+      "rule_codes": [],
+      "judgement_codes": [
+        "ALCOHOL_NOT_PERMITTED",
+        "RECEIPT_MISMATCH"
+      ],
+      "route": "human_review",
+      "recommendation": "reject",
+      "proposed_judgement_results": 2,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§3.3",
+        "§5.1",
+        "§5.3",
+        "§6.3",
+        "§7.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 14.706194416969083,
+      "input_tokens": 10307,
+      "output_tokens": 2104,
+      "failed": false
+    },
+    {
+      "case_id": "test-judgement-positive-14",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-judgement-positive-15",
+      "rule_codes": [],
+      "judgement_codes": [
+        "ALCOHOL_NOT_PERMITTED"
+      ],
+      "route": "human_review",
+      "recommendation": "none",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§3.3",
+        "§5.3",
+        "§6.3",
+        "§7.3",
+        "§9.1"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 13.963952583028004,
+      "input_tokens": 11255,
+      "output_tokens": 2139,
+      "failed": false
+    },
+    {
+      "case_id": "test-judgement-positive-16",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-judgement-positive-17",
+      "rule_codes": [],
+      "judgement_codes": [],
+      "route": "auto_approve",
+      "recommendation": "approve",
+      "proposed_judgement_results": 0,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§3.3",
+        "§5.1",
+        "§5.3",
+        "§6.3",
+        "§8.4"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 14.334947666968219,
+      "input_tokens": 8763,
+      "output_tokens": 1894,
+      "failed": false
+    },
+    {
+      "case_id": "test-judgement-positive-18",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **W{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-rule-coverage-01",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-rule-coverage-02",
+      "rule_codes": [
+        "MISSING_RECEIPT"
+      ],
+      "judgement_codes": [
+        "RECEIPT_MISMATCH"
+      ],
+      "route": "human_review",
+      "recommendation": "reject",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 16.433313042041846,
+      "input_tokens": 5029,
+      "output_tokens": 2449,
+      "failed": false
+    },
+    {
+      "case_id": "test-rule-coverage-03",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: PUR{\n\n    \"verdicts\": [\n        {\n            \"code\": \"PURPOSE_UNCLEAR\",\n            \"outcome\": \"not_flagged\"\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-rule-coverage-04",
+      "rule_codes": [
+        "SPLIT_PURCHASE"
+      ],
+      "judgement_codes": [],
+      "route": "human_review",
+      "recommendation": "reject",
+      "proposed_judgement_results": 0,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 15.582569041987881,
+      "input_tokens": 4539,
+      "output_tokens": 2198,
+      "failed": false
+    },
+    {
+      "case_id": "test-rule-coverage-05",
+      "rule_codes": [
+        "NON_APPROVED_SUPPLIER"
+      ],
+      "judgement_codes": [],
+      "route": "human_review",
+      "recommendation": "none",
+      "proposed_judgement_results": 0,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§10.2",
+        "§10.3",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§3.3",
+        "§5.3",
+        "§9.1"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 12.304515041993,
+      "input_tokens": 4289,
+      "output_tokens": 1324,
+      "failed": false
+    },
+    {
+      "case_id": "test-rule-coverage-06",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-rule-coverage-07",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-rule-coverage-08",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-memory-follow-up-01",
+      "rule_codes": [],
+      "judgement_codes": [],
+      "route": "human_review",
+      "recommendation": "approve",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.1",
+        "§5.2",
+        "§5.3",
+        "§6.1",
+        "§7.3"
+      ],
+      "clearances": [
+        [
+          "WEEKEND_SPEND_UNJUSTIFIED",
+          "9ef53ecc-e6e1-45f3-8a4d-9d314ea424c4"
+        ]
+      ],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 22.859935709042475,
+      "input_tokens": 24724,
+      "output_tokens": 2969,
+      "failed": false
+    },
+    {
+      "case_id": "test-memory-follow-up-02",
+      "rule_codes": [],
+      "judgement_codes": [
+        "WEEKEND_SPEND_UNJUSTIFIED"
+      ],
+      "route": "human_review",
+      "recommendation": "approve",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§1.2",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.3",
+        "§6.3"
+      ],
+      "clearances": [],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 18.3552220830461,
+      "input_tokens": 5866,
+      "output_tokens": 2179,
+      "failed": false
+    },
+    {
+      "case_id": "test-memory-follow-up-03",
+      "rule_codes": [],
+      "judgement_codes": [],
+      "route": "human_review",
+      "recommendation": "approve",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.3",
+        "§6.3",
+        "§7.1",
+        "§7.2",
+        "§7.3"
+      ],
+      "clearances": [
+        [
+          "PURPOSE_UNCLEAR",
+          "9595edce-9a30-47d7-a722-f957a3cfb0fa"
+        ]
+      ],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 17.757186584058218,
+      "input_tokens": 7921,
+      "output_tokens": 1811,
+      "failed": false
+    },
+    {
+      "case_id": "test-memory-follow-up-04",
+      "failed": true,
+      "error_type": "StructuredOutputError",
+      "error_message": "Invalid json output: **Search{\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE ",
+      "reason": "malformed reply: max_tokens"
+    },
+    {
+      "case_id": "test-memory-follow-up-05",
+      "rule_codes": [],
+      "judgement_codes": [],
+      "route": "human_review",
+      "recommendation": "approve",
+      "proposed_judgement_results": 1,
+      "dropped_judgement_results": 0,
+      "retrieved_clause_references": [
+        "§1.1",
+        "§2.1",
+        "§2.2",
+        "§2.4",
+        "§3.1",
+        "§3.2",
+        "§5.3",
+        "§6.3",
+        "§7.3",
+        "§9.1"
+      ],
+      "clearances": [
+        [
+          "WEEKEND_SPEND_UNJUSTIFIED",
+          "6ac25d03-8afa-44b9-8019-acfecf524347"
+        ]
+      ],
+      "unanswered_judgement_codes": [],
+      "latency_seconds": 18.832254290929995,
+      "input_tokens": 12006,
+      "output_tokens": 2293,
+      "failed": false
+    }
+  ]
+}
