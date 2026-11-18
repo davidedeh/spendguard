@@ -474,7 +474,7 @@ class PrecedentAwareEvalModel(FakeChatModel):
                 JudgementReport(verdicts=[weekend_clearance(supplied_ids[0])])
                 if supplied_ids
                 else JudgementReport(
-                    verdicts=[weekend_flag_quoting('Monday')]
+                    verdicts=[weekend_flag_quoting('Saturday')]
                     if self.flags_without_precedent
                     else []
                 )
@@ -526,8 +526,8 @@ async def indexed_resources(connection_pool: ConnectionPool) -> EvalResources:
     return EvalResources(settings, POLICY, SEED_DATA, connection_pool, embedder, None)
 
 
-PAIR_ID = 'dev-judgement-positive-01'
-FOLLOW_UP_ID = 'dev-memory-follow-up-01'
+PAIR_ID = 'test-judgement-positive-17'
+FOLLOW_UP_ID = 'test-memory-follow-up-04'
 PRIMARY_ROW = EvalRow(
     model_key='fake_primary', label='Fake primary', policy_context='retrieved_clauses'
 )
@@ -545,7 +545,7 @@ async def test_each_follow_up_s_precedent_is_seeded_from_its_pair_s_scripted_rev
     )
 
     [loaded] = await precedents.recent_precedents(
-        connection_pool, 'EMP-015', 'WEEKEND_SPEND_UNJUSTIFIED', POLICY
+        connection_pool, 'EMP-013', 'WEEKEND_SPEND_UNJUSTIFIED', POLICY
     )
     assert seeded == {FOLLOW_UP_ID: loaded['precedent_id']}
     assert pair.scripted_review is not None
@@ -560,7 +560,7 @@ async def test_each_follow_up_s_precedent_is_seeded_from_its_pair_s_scripted_rev
     [recorded] = await precedents.precedents_recorded_from(
         connection_pool, pair_recording.submission_id
     )
-    assert (recorded.subject, recorded.approver) == ('EMP-015', 'EMP-002')
+    assert (recorded.subject, recorded.approver) == ('EMP-013', 'EMP-006')
 
 
 def test_seeding_refuses_a_pair_whose_gold_clause_is_not_in_the_current_policy() -> None:
@@ -991,7 +991,7 @@ def failing_on_clean_invoice() -> FailingOnTextEvalModel:
     )
 
 
-FAILING_AND_PASSING_CASES = ('dev-clean-01', PAIR_ID)
+FAILING_AND_PASSING_CASES = ('dev-clean-01', 'dev-judgement-positive-01')
 
 
 @pytest.mark.parametrize(
@@ -1041,7 +1041,7 @@ async def test_a_case_that_raises_is_recorded_as_failed_and_the_row_carries_on(
     saved = json.loads((tmp_path / 'row-1.json').read_text())
     assert [(case['case_id'], case['failed']) for case in saved['cases']] == [
         ('dev-clean-01', True),
-        (PAIR_ID, False),
+        ('dev-judgement-positive-01', False),
     ]
     assert saved['cases'][0]['error_message'] == 'the provider is unavailable'
 

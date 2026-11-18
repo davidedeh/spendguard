@@ -1,6 +1,6 @@
 # Eval dataset changelog
 
-## eval-v2 (not yet frozen)
+## eval-v2 (frozen, dataset hash `968c6684f01ecf58c3ad73bca433cf2667f8891afa7e8d6b756b1592d8959827`)
 
 eval-v1 stays as committed in the tag `eval-v1`. Every change below has a reason that holds without any system having run: the policy text, the recorded v1 intent, or a blind audit finding. System outputs are never a reason. eval-v2 is frozen before any system runs on it and is not edited afterwards.
 
@@ -35,7 +35,7 @@ The changes come from two audit passes over the v1 test split's judgement labels
   - Audit support: the first pass raised it at medium confidence and marked it ambiguous. The second pass was shown a system's flag and classed it "defensible", siding with the system. Neither pass called the old label wrong outright.
 - **test-memory-follow-up-01** now says where the lunch took place, because the first pass noted that it did not. Its label is unchanged, but it counts as a changed case.
   - After the third pass, its spend changed from preparing an executive strategy session to reviewing the quarter-end results for the quarter that ended on 31 March. The third pass found the precedent covered the strategy session only on balance, because the recorded fact names quarter-end reviews. The precedent, its paired case and the label are unchanged.
-- **dev-memory-follow-up-01**, after the third pass, now buys binders for report packs the team delivers to the client on Monday, instead of for an internal review meeting. The third pass found its precedent, about client deliverables with hard Monday deadlines, covered the internal meeting only on balance. The precedent, its paired case and the label are unchanged.
+- **dev-memory-follow-up-01**, after the third pass, was changed to buy binders for report packs the team delivers to the client on Monday, instead of for an internal review meeting. The third pass found its precedent, about client deliverables with hard Monday deadlines, covered the internal meeting only on balance. After the fourth pass it was dropped under the stop rule (see Blind check). dev-judgement-positive-01 loses its scripted review and stays a weekend judgement positive with the same label, so the dev split has no memory pair.
 - **Why these two edits, and what they cost.** The reason is the third pass's blind finding and the second review of the proposed fixes, not any system output; v2 has not been run. The edits still fit the facts to a label, and they make the memory slice easier for every system. The slice now tests use of a clearly fitting precedent and refusal of a clearly unfitting one. It does not test borderline fit.
 - **test-memory-follow-up-02 and -03** keep their content and are relabelled: the precedent does not apply, so the finding is expected. This follows the first pass's blind reading. They become controls for a precedent that does not fit.
 - **Recorded reasons.** Every scripted dismissal reason drops its ruling about future claims and keeps only the fact. This covers test-judgement-positive-01, -02 and -05 and dev-judgement-positive-01.
@@ -103,7 +103,21 @@ A fresh blind pass labels every v2 case from the policy, the reference data and 
   - Its judgement findings matched the v2 labels on all 60 cases, and its reading of each follow-up's precedent matched `precedent_applies` on all six.
   - Four changed cases were only medium confidence on their labelled answer: test-judgement-positive-01, dev-judgement-positive-01, test-memory-follow-up-01 and dev-memory-follow-up-01.
   - These led to the §2.4 deadline sentence and the two follow-up edits above.
-- **Round 2 (fourth audit pass).** Not yet run.
-  - Stop rule: any of those four cases still at medium confidence on its labelled answer after the fourth pass is dropped, not edited again.
-  - A case whose inputs did not change but whose confidence falls counts only if the pass ties its doubt to the new §2.4 sentence.
-  - test-hard-negative-05 and dev-hard-negative-01 mention a renewal deadline beside a client-fixed day. The fourth pass's answer on them checks that the new sentence did not flip them.
+- **Round 2 (fourth audit pass).**
+  - Stop rule, set before the pass: any of those four cases still at medium confidence on its labelled answer is dropped, not edited again. A case whose inputs did not change but whose confidence falls counts only if the pass ties its doubt to the new §2.4 sentence.
+  - Result: its judgement findings matched the v2 labels on all 60 cases, and its reading of each follow-up's precedent matched `precedent_applies` on all six.
+  - test-hard-negative-05 and dev-hard-negative-01, which mention a renewal deadline beside a client-fixed day, stayed at no findings with high confidence: the new sentence did not flip them.
+  - The fourth pass gives one confidence per case, so each medium case was read for where its doubt sits.
+  - **dropped: dev-memory-follow-up-01.** The doubt is on its labelled answer: the precedent explains working on Saturday, but not why the binders could not be bought on Friday. That was its second round, so the stop rule applies.
+  - **kept: dev-judgement-positive-01**, at high confidence.
+  - **kept: test-judgement-positive-01.** The weekend finding is at high confidence; the pass says so. The remaining doubt is whether PURPOSE_UNCLEAR also applies because the claim does not show the lunch was away from the usual workplace (§5.1). That is the meal condition with no finding code, already listed as a known limitation.
+  - **kept: test-memory-follow-up-01.**
+    - The precedent call ("covers") carries no doubt.
+    - The medium is about whether PURPOSE_UNCLEAR applies, because the claim does not say why the review took the claimant to Henley-on-Thames (§5.1). This is the same no-code limitation, which this changelog already names for this case.
+    - The third pass noted the same question without lowering its confidence. In that pass, its medium was on the precedent's fit, which the quarter-end edit addressed.
+  - **kept: test-memory-follow-up-03, a control.**
+    - It is not one of the four, and was first at medium in this pass. The fourth pass still agreed with its label: the precedent does not cover.
+    - The doubt is that §10.6 does not say how specific a role-based fact must be.
+    - Its inputs were the same in the third pass, which rated it high. Its confidence fell with no tie to the new sentence, the case the carve-out discounts.
+  - Other medium cases had unchanged inputs and doubts outside their labelled answers, mostly the §5.1 and §6.2 conditions with no code: test-judgement-positive-03 and -15, test-rule-coverage-01 and -03, and test-clean-04. No label changed.
+- **Frozen.** No case, policy text or reference data changes after this point.

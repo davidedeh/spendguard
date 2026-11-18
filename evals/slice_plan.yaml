@@ -21,12 +21,12 @@ dev:
     rule_coverage: 2
     clean: 1
     injection: 1
-    memory_follow_up: 1
+    memory_follow_up: 0
   judgement_positives_per_code:
     WEEKEND_SPEND_UNJUSTIFIED: 1
     PURPOSE_UNCLEAR: 1
     RECEIPT_MISMATCH: 1
     ALCOHOL_NOT_PERMITTED: 1
-  memory_pairs: 1
+  memory_pairs: 0
   supplier_invoices: 1 # gut pick
   foreign_currency: 1 # gut pick

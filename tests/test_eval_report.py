@@ -173,7 +173,7 @@ def test_rule_check_metrics_appear_once_under_the_table_not_in_any_row(tmp_path:
     assert readme.count('7/7 = 1.00') == 1
     assert '7/8' not in table_row(readme, 'Claude Haiku (primary)')
     assert 'Rule checks, the same for every row: precision 7/8 = 0.88, recall 7/7 = 1.00' in readme
-    assert 'Measured on 2026-11-20 against eval-v1 (226df923); test cases: 5.' in readme
+    assert 'Measured on 2026-11-20 against eval-v2 (226df923); test cases: 5.' in readme
 
 
 def test_the_dated_results_file_states_the_wording_parameters_and_counts(tmp_path: Path) -> None:
@@ -182,7 +182,7 @@ def test_the_dated_results_file_states_the_wording_parameters_and_counts(tmp_pat
 
     results_path = write_results(RESULTS, tmp_path / 'results', readme_path)
 
-    assert results_path == tmp_path / 'results' / 'eval-v1-2026-11-20-5c0ffee1.md'
+    assert results_path == tmp_path / 'results' / 'eval-v2-2026-11-20-5c0ffee1.md'
     text = results_path.read_text()
     assert 'Overlapping 95% intervals are never claimed as a win.' in text
     assert (
@@ -387,7 +387,7 @@ def test_a_pre_flight_writes_its_own_results_file_and_leaves_the_readme_alone(
         readme_path,
     )
 
-    assert results_path == tmp_path / 'results' / 'eval-v1-2026-11-20-5c0ffee1-preflight.md'
+    assert results_path == tmp_path / 'results' / 'eval-v2-2026-11-20-5c0ffee1-preflight.md'
     assert (
         'Pre-flight: a sample of 6 cases per row, at least one from every slice; not reported.'
         in results_path.read_text()
@@ -400,7 +400,7 @@ def test_writing_results_never_replaces_an_existing_results_file_or_the_readme(
 ) -> None:
     readme_path = tmp_path / 'README.md'
     readme_path.write_text(README_BEFORE)
-    existing_path = tmp_path / 'results' / 'eval-v1-2026-11-20-5c0ffee1.md'
+    existing_path = tmp_path / 'results' / 'eval-v2-2026-11-20-5c0ffee1.md'
     existing_path.parent.mkdir()
     existing_path.write_text('An earlier run.\n')
 
@@ -439,14 +439,14 @@ def test_a_finished_row_is_saved_with_its_case_results_and_token_totals(tmp_path
     )
 
     path = write_row_results(
-        RowsDirectory(tmp_path / 'eval-v1-2026-11-20-5c0ffee1', RESULTS.run_identifier),
+        RowsDirectory(tmp_path / 'eval-v2-2026-11-20-5c0ffee1', RESULTS.run_identifier),
         2,
         gemini.row,
         gemini.model,
         [completed, failure, another],
     )
 
-    assert path == tmp_path / 'eval-v1-2026-11-20-5c0ffee1' / 'row-2.json'
+    assert path == tmp_path / 'eval-v2-2026-11-20-5c0ffee1' / 'row-2.json'
     saved = json.loads(path.read_text())
     assert saved['run_identifier'] == '5c0ffee1d2e3f4a5b6c7d8e9f0a1b2c3'
     assert saved['row'] == {

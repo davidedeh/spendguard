@@ -1073,8 +1073,8 @@ def test_the_committed_slice_plan_is_the_eval_v2_plan() -> None:
     }
     assert plan.test.memory_pairs == 5
     dev_counts = plan.dev.slices.model_dump()
-    assert dev_counts['memory_follow_up'] == plan.dev.memory_pairs == 1
-    assert sum(dev_counts.values()) - dev_counts['memory_follow_up'] == 10
+    assert dev_counts.pop('memory_follow_up') == plan.dev.memory_pairs == 0
+    assert sum(dev_counts.values()) == 10
     assert min(dev_counts.values()) >= 1
 
 

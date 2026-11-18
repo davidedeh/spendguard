@@ -21,7 +21,7 @@ from spendguard.wording import counted
 
 RESULTS_START_MARKER = '<!-- eval-results:start -->'
 RESULTS_END_MARKER = '<!-- eval-results:end -->'
-DATASET_NAME = 'eval-v1'
+DATASET_NAME = 'eval-v2'
 DATASET_HASH_PREFIX_LENGTH = 8
 RUN_IDENTIFIER_PREFIX_LENGTH = 8
 OVERLAP_WORDING = 'Overlapping 95% intervals are never claimed as a win.'
