@@ -263,6 +263,7 @@ class MemoryMetrics:
     silent_clearances: Proportion
     controls_raised_labelled_code: Proportion
     controls_cleared_by_precedent: Proportion
+    controls_failed: Proportion
     recommendation_agreement: Proportion
     other_findings: tuple[tuple[str, tuple[FindingCode, ...]], ...]
 
@@ -280,6 +281,7 @@ def memory_metrics(
     follow_ups = 0
     controls_flagged = 0
     controls_cleared = 0
+    controls_failed = 0
     controls = 0
     agreeing = 0
     other_findings: list[tuple[str, tuple[FindingCode, ...]]] = []
@@ -293,14 +295,18 @@ def memory_metrics(
         if other_codes:
             other_findings.append((case.id, other_codes))
         agreeing += outcome is not None and outcome.recommendation == case.expected_recommendation
-        cleared_by_seed = outcome is not None and any(
+        cleared_by_seeded_precedent = outcome is not None and any(
             code == memory.code and precedent_id == precedent_id_by_follow_up.get(case.id)
             for code, precedent_id in outcome.clearances
         )
         if not memory.precedent_applies:
             controls += 1
-            controls_flagged += outcome is not None and memory.code in outcome.judgement_codes
-            controls_cleared += cleared_by_seed
+            if outcome is None:
+                controls_failed += 1
+            elif memory.code in outcome.judgement_codes:
+                controls_flagged += 1
+            elif cleared_by_seeded_precedent:
+                controls_cleared += 1
             continue
         follow_ups += 1
         if outcome is None:
@@ -309,7 +315,7 @@ def memory_metrics(
         flagged_on_labelled_code += memory.code in outcome.judgement_codes
         if outcome.judgement_codes:
             flagged += 1
-        elif cleared_by_seed:
+        elif cleared_by_seeded_precedent:
             cleared += 1
         elif memory.code in outcome.unanswered_judgement_codes:
             forced += 1
@@ -322,6 +328,7 @@ def memory_metrics(
         silent_clearances=Proportion(follow_ups - flagged - cleared - forced - failed, follow_ups),
         controls_raised_labelled_code=Proportion(controls_flagged, controls),
         controls_cleared_by_precedent=Proportion(controls_cleared, controls),
+        controls_failed=Proportion(controls_failed, controls),
         recommendation_agreement=Proportion(agreeing, follow_ups + controls),
         other_findings=tuple(other_findings),
     )

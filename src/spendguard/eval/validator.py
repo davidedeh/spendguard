@@ -564,12 +564,12 @@ def follow_up_problems(
     on_weekend_or_holiday = falls_on_weekend_or_holiday(dated_on, seed_data)
     if memory.code == WEEKEND_CODE and not on_weekend_or_holiday:
         yield (
-            f'a follow-up cleared of {WEEKEND_CODE} needs a weekend or public holiday, and'
+            f'a follow-up on {WEEKEND_CODE} needs a weekend or public holiday, and'
             f' {dated_on.isoformat()} is a working day'
         )
     if memory.code != WEEKEND_CODE and on_weekend_or_holiday:
         yield (
-            f'a follow-up cleared of {memory.code} needs a working day, and'
+            f'a follow-up on {memory.code} needs a working day, and'
             f' {dated_on.isoformat()} is a weekend or public holiday'
         )
     expected_codes = {finding.code for finding in follow_up.expected_findings}
@@ -593,7 +593,9 @@ def paired_draft_problems(pair: EvalCase, follow_up: EvalCase) -> Iterator[str]:
     if memory is None:
         return
     if pair.scripted_review is not None and memory.code not in dismissed_codes(pair):
-        yield (f'its clearance is for {memory.code}, which memory pair {pair.id} does not dismiss')
+        yield (
+            f'its memory block names {memory.code}, which memory pair {pair.id} does not dismiss'
+        )
     if follow_up.submission.amount == pair.submission.amount:
         yield f'its amount {follow_up.submission.amount} is the amount of memory pair {pair.id}'
 

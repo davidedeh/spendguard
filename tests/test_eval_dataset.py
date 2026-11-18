@@ -874,9 +874,9 @@ def test_a_follow_up_off_the_kind_of_day_its_cleared_code_needs_is_reported() ->
     )
 
     assert report.problems == (
-        'test-memory-follow-up.yaml: a follow-up cleared of PURPOSE_UNCLEAR needs a working day,'
+        'test-memory-follow-up.yaml: a follow-up on PURPOSE_UNCLEAR needs a working day,'
         ' and 2026-10-17 is a weekend or public holiday',
-        'test-memory-follow-up-2.yaml: a follow-up cleared of WEEKEND_SPEND_UNJUSTIFIED needs a'
+        'test-memory-follow-up-2.yaml: a follow-up on WEEKEND_SPEND_UNJUSTIFIED needs a'
         ' weekend or public holiday, and 2026-10-16 is a working day',
     )
 
@@ -976,7 +976,7 @@ def test_an_upheld_disposition_needs_no_reason_but_gives_its_follow_up_no_preced
     report = validate(cases)
 
     assert report.problems == (
-        'test-memory-follow-up.yaml: its clearance is for PURPOSE_UNCLEAR, which memory pair'
+        'test-memory-follow-up.yaml: its memory block names PURPOSE_UNCLEAR, which memory pair'
         ' test-purpose-unclear does not dismiss',
     )
 

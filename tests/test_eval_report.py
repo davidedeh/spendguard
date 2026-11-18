@@ -247,6 +247,7 @@ def test_the_results_file_reports_memory_on_and_off_for_the_primary_model(tmp_pa
                 silent_clearances=Proportion(0, 3),
                 controls_raised_labelled_code=Proportion(1, 2),
                 controls_cleared_by_precedent=Proportion(1, 2),
+                controls_failed=Proportion(0, 2),
                 recommendation_agreement=Proportion(4, 5),
                 other_findings=(('test-memory-follow-up-01', ('PURPOSE_UNCLEAR',)),),
             ),
@@ -259,6 +260,7 @@ def test_the_results_file_reports_memory_on_and_off_for_the_primary_model(tmp_pa
                 silent_clearances=Proportion(0, 3),
                 controls_raised_labelled_code=Proportion(2, 2),
                 controls_cleared_by_precedent=Proportion(0, 2),
+                controls_failed=Proportion(1, 2),
                 recommendation_agreement=Proportion(1, 5),
                 other_findings=(),
             ),
@@ -287,11 +289,16 @@ def test_the_results_file_reports_memory_on_and_off_for_the_primary_model(tmp_pa
     ) in text
     assert (
         '| Setting | Controls that raised the labelled code | Controls cleared by the precedent'
-        ' | Recommendation matches the label |'
+        ' | Controls that failed |'
         '\n| --- | --- | --- | --- |'
-        '\n| Memory on | 1/2 = 0.50 | 1/2 = 0.50 | 4/5 = 0.80 |'
-        '\n| Memory off | 2/2 = 1.00 | 0/2 = 0.00 | 1/5 = 0.20 |'
+        '\n| Memory on | 1/2 = 0.50 | 1/2 = 0.50 | 0/2 = 0.00 |'
+        '\n| Memory off | 2/2 = 1.00 | 0/2 = 0.00 | 1/2 = 0.50 |'
     ) in text
+    assert (
+        'Recommendation matches the label with memory on: 4/5 = 0.80. The labels assume the'
+        ' precedent, so memory off is not scored on recommendations.'
+    ) in text
+    assert '1/5 = 0.20' not in text
     assert (
         'Findings on other codes. Memory on: test-memory-follow-up-01 (PURPOSE_UNCLEAR).'
         ' Memory off: none.'

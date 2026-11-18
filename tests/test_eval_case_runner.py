@@ -21,6 +21,7 @@ from langfuse.api import (
     PaginatedDatasetItems,
     Projects,
 )
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from pydantic import Field, SecretStr
@@ -33,14 +34,16 @@ from spendguard.eval.case_runner import (
     eval_graph,
     eval_idempotency_key,
     planned_precedents,
+    record_planned_precedents,
     run_case,
     run_cases,
     run_eval,
-    seed_follow_up_precedents,
+    seeded_cases,
 )
 from spendguard.eval.cases import EvalCase
 from spendguard.eval.dataset_runs import case_failure
 from spendguard.eval.metrics import CaseOutcome, CaseResult, Proportion
+from spendguard.graph.config import thread_config
 from spendguard.graph.nodes.plan import RetrievalPlan
 from spendguard.graph.nodes.run_judgement_checks import CheckVerdict, JudgementReport, QuotedText
 from spendguard.models.factory import build_embedder
@@ -533,11 +536,13 @@ PRIMARY_ROW = EvalRow(
 async def test_each_follow_up_s_precedent_is_seeded_from_its_pair_s_scripted_review(
     connection_pool: ConnectionPool,
 ) -> None:
-    resources = await indexed_resources(connection_pool)
+    await precedents.clear_precedents(connection_pool)
     pair, follow_up = dataset_case(PAIR_ID), dataset_case(FOLLOW_UP_ID)
     run_identifier = uuid.uuid4().hex
 
-    seeded = await seed_follow_up_precedents((follow_up, pair), resources, run_identifier)
+    seeded = await record_planned_precedents(
+        planned_precedents((follow_up, pair), POLICY), connection_pool, run_identifier
+    )
 
     [loaded] = await precedents.recent_precedents(
         connection_pool, 'EMP-015', 'WEEKEND_SPEND_UNJUSTIFIED', POLICY
@@ -580,8 +585,10 @@ async def test_a_follow_up_is_cleared_by_its_seeded_precedent_when_the_row_misse
         precedent_memory=True,
     )
 
+    cases = (dataset_case(FOLLOW_UP_ID), dataset_case(PAIR_ID))
+
     run = await run_cases(
-        (dataset_case(FOLLOW_UP_ID), dataset_case(PAIR_ID)),
+        seeded_cases(cases, POLICY),
         graph,
         resources,
         uuid.uuid4().hex,
@@ -604,7 +611,7 @@ async def test_an_eval_row_records_no_precedent_from_its_paired_case_s_scripted_
     pair = dataset_case(PAIR_ID)
     run_identifier = uuid.uuid4().hex
 
-    run = await run_cases((pair,), graph, resources, run_identifier, None)
+    run = await run_cases(seeded_cases((pair,), POLICY), graph, resources, run_identifier, None)
 
     [outcome] = completed(run.results)
     assert outcome.judgement_codes == {'WEEKEND_SPEND_UNJUSTIFIED'}
@@ -629,8 +636,10 @@ async def test_a_follow_up_runs_after_its_pair_and_is_cleared_by_its_seeded_prec
         PRIMARY_ROW, PrecedentAwareEvalModel(model_id='fake-chat'), resources, precedent_memory=True
     )
 
+    cases = (dataset_case(FOLLOW_UP_ID), dataset_case(PAIR_ID))
+
     run = await run_cases(
-        (dataset_case(FOLLOW_UP_ID), dataset_case(PAIR_ID)),
+        seeded_cases(cases, POLICY),
         graph,
         resources,
         uuid.uuid4().hex,
@@ -676,8 +685,10 @@ async def test_with_memory_off_a_follow_up_sees_no_precedent_although_one_was_se
         precedent_memory=False,
     )
 
+    cases = (dataset_case(PAIR_ID), dataset_case(FOLLOW_UP_ID))
+
     run = await run_cases(
-        (dataset_case(PAIR_ID), dataset_case(FOLLOW_UP_ID)),
+        seeded_cases(cases, POLICY),
         graph,
         resources,
         uuid.uuid4().hex,
@@ -795,6 +806,34 @@ async def test_an_eval_run_compares_memory_on_and_off_on_the_primary_model_only(
     assert counts(comparison.memory_off.recommendation_agreement) == (0, 1)
     _, primary = results.rows
     assert counts(primary.metrics.recommendation_accuracy) == (2, 2)
+
+
+async def test_the_memory_comparison_runs_only_the_follow_ups_with_their_seeded_precedents(
+    connection_pool: ConnectionPool, tmp_path: Path
+) -> None:
+    resources = await indexed_resources(connection_pool)
+    settings = resources.settings.model_copy(
+        update={'eval_rows': (PRIMARY_ROW,), 'model_prices': {'fake_primary': PRICE}}
+    )
+    options = run_options(tmp_path)
+
+    results = await run_eval(
+        (dataset_case(PAIR_ID), dataset_case(FOLLOW_UP_ID)),
+        EvalResources(settings, POLICY, SEED_DATA, connection_pool, resources.embedder, None),
+        lambda row: PrecedentAwareEvalModel(model_id='fake-chat'),
+        options,
+    )
+
+    comparison = results.memory_comparison
+    assert comparison is not None
+    assert counts(comparison.memory_on.cleared_with_pair_precedent) == (1, 1)
+    checkpoints = AsyncPostgresSaver(connection_pool)
+    for setting in ('memory-on', 'memory-off'):
+        run_identifier = f'{options.run_identifier}:{setting}'
+        pair_thread = thread_config(f'eval:{run_identifier}:{PAIR_ID}')
+        follow_up_thread = thread_config(f'eval:{run_identifier}:{FOLLOW_UP_ID}')
+        assert await checkpoints.aget_tuple(pair_thread) is None
+        assert await checkpoints.aget_tuple(follow_up_thread) is not None
 
 
 async def test_the_memory_comparison_reuses_the_model_built_for_its_row(

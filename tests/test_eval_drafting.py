@@ -499,7 +499,7 @@ def marker_of(case: EvalCase) -> str:
 
 def rejections_for(drafters: DrafterPool, brief: CaseBrief) -> list[str]:
     brief_text = yaml.safe_dump(
-        brief.model_dump(mode='json', exclude={'case_id', 'split', 'clearance'}, exclude_none=True),
+        brief.model_dump(mode='json', exclude={'case_id', 'split', 'memory'}, exclude_none=True),
         sort_keys=False,
         allow_unicode=True,
     )
@@ -531,7 +531,7 @@ RECEIPTED_HARD_NEGATIVE = _first_brief(
 MEMORY_PAIR_BRIEF = _first_brief(lambda brief: brief.memory_pair)
 FOLLOW_UP_BRIEF = _first_brief(
     lambda brief: (
-        brief.clearance is not None and brief.clearance.precedent_from == MEMORY_PAIR_BRIEF.case_id
+        brief.memory is not None and brief.memory.precedent_from == MEMORY_PAIR_BRIEF.case_id
     )
 )
 FOLLOW_UP_AMOUNT = (FOLLOW_UP_BRIEF.amount.at_most or Decimal(0)) - 1
@@ -778,7 +778,7 @@ def test_drafts_that_fail_validation_are_not_written_and_the_problems_are_report
         (
             'upheld_review',
             FOLLOW_UP_BRIEF,
-            f'the follow-up: its clearance is for {MEMORY_PAIR_BRIEF.intent.judgement_codes[0]},'
+            f'the follow-up: its memory block names {MEMORY_PAIR_BRIEF.intent.judgement_codes[0]},'
             f' which memory pair {MEMORY_PAIR_BRIEF.case_id} does not dismiss',
         ),
         (
@@ -1139,7 +1139,7 @@ def test_a_brief_whose_claim_differs_from_the_receipt_tells_the_drafter_which_li
     run(drafting_arguments(tmp_path), drafting_settings(), drafters.build)
 
     brief_text = yaml.safe_dump(
-        brief.model_dump(mode='json', exclude={'case_id', 'split', 'clearance'}, exclude_none=True),
+        brief.model_dump(mode='json', exclude={'case_id', 'split', 'memory'}, exclude_none=True),
         sort_keys=False,
         allow_unicode=True,
     )
@@ -1173,7 +1173,7 @@ def test_a_memory_pair_prompt_asks_for_a_standing_reason_that_covers_the_follow_
         for prompt in pair_prompts
         if yaml.safe_dump(
             MEMORY_PAIR_BRIEF.model_dump(
-                mode='json', exclude={'case_id', 'split', 'clearance'}, exclude_none=True
+                mode='json', exclude={'case_id', 'split', 'memory'}, exclude_none=True
             ),
             sort_keys=False,
             allow_unicode=True,

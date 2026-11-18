@@ -174,6 +174,21 @@ def _planned_precedent(pair: EvalCase, follow_up: EvalCase, policy: Policy) -> P
     )
 
 
+@dataclass(frozen=True)
+class SeededCases:
+    cases: Sequence[EvalCase]
+    planned: Mapping[str, PlannedPrecedent]
+
+    def follow_ups_only(self) -> 'SeededCases':
+        return SeededCases(
+            cases=[case for case in self.cases if case.memory is not None], planned=self.planned
+        )
+
+
+def seeded_cases(cases: Sequence[EvalCase], policy: Policy) -> SeededCases:
+    return SeededCases(cases=cases, planned=planned_precedents(cases, policy))
+
+
 async def record_planned_precedents(
     planned: Mapping[str, PlannedPrecedent], connection_pool: ConnectionPool, run_identifier: str
 ) -> dict[str, str]:
@@ -211,14 +226,6 @@ async def _record_planned_precedent(
             connection_pool, recording.submission_id
         )
         if recorded.code == plan.code
-    )
-
-
-async def seed_follow_up_precedents(
-    cases: Sequence[EvalCase], resources: EvalResources, run_identifier: str
-) -> dict[str, str]:
-    return await record_planned_precedents(
-        planned_precedents(cases, resources.policy), resources.connection_pool, run_identifier
     )
 
 
@@ -343,21 +350,22 @@ class PairedRun:
 
 
 async def run_cases(
-    cases: Sequence[EvalCase],
+    seeded: SeededCases,
     graph: ReviewGraph,
     resources: EvalResources,
     run_identifier: str,
     dataset_run: DatasetRun | None,
 ) -> PairedRun:
-    follow_ups = [case for case in cases if case.memory is not None]
-    others = [case for case in cases if case.memory is None]
-    planned = planned_precedents(cases, resources.policy)
+    follow_ups = [case for case in seeded.cases if case.memory is not None]
+    others = [case for case in seeded.cases if case.memory is None]
     precedent_id_by_follow_up: dict[str, str] = {}
 
     async def run_paired_case(case: EvalCase) -> CaseOutcome:
         if case.memory is not None and not precedent_id_by_follow_up:
             precedent_id_by_follow_up.update(
-                await record_planned_precedents(planned, resources.connection_pool, run_identifier)
+                await record_planned_precedents(
+                    seeded.planned, resources.connection_pool, run_identifier
+                )
             )
         outcome = await run_case(
             case, graph, resources.connection_pool, run_identifier, resources.tracing
@@ -397,27 +405,25 @@ def _memory_comparison_row(settings: Settings) -> EvalRow | None:
 
 
 async def _compare_memory(
-    cases: Sequence[EvalCase],
+    seeded: SeededCases,
     resources: EvalResources,
     row: EvalRow,
     chat_model: BaseChatModel,
     run_identifier: str,
 ) -> MemoryComparison:
-    paired_cases = [
-        case for case in cases if case.scripted_review is not None or case.memory is not None
-    ]
+    follow_ups = seeded.follow_ups_only()
     metrics_by_setting: dict[bool, MemoryMetrics] = {}
     for precedent_memory in (True, False):
         await precedents.clear_precedents(resources.connection_pool)
         run = await run_cases(
-            paired_cases,
+            follow_ups,
             eval_graph(row, chat_model, resources, precedent_memory=precedent_memory),
             resources,
             f'{run_identifier}:memory-{"on" if precedent_memory else "off"}',
             dataset_run=None,
         )
         metrics_by_setting[precedent_memory] = memory_metrics(
-            paired_cases, run.results, run.precedent_id_by_follow_up
+            follow_ups.cases, run.results, run.precedent_id_by_follow_up
         )
     return MemoryComparison(
         row=row,
@@ -495,6 +501,7 @@ async def run_eval(
     run_name_prefix = (
         f'{measured_on}' if options.cases_per_row is None else f'{measured_on} pre-flight'
     )
+    seeded = seeded_cases(row_cases, resources.policy)
     for row_number, (row, chat_model) in enumerate(
         zip(settings.eval_rows, chat_models, strict=True), start=1
     ):
@@ -511,7 +518,7 @@ async def run_eval(
             )
         )
         results = (
-            await run_cases(row_cases, graph, resources, row_run_identifier, dataset_run)
+            await run_cases(seeded, graph, resources, row_run_identifier, dataset_run)
         ).results
         model = settings.chat_models[row.model_key]
         write_row_results(rows_directory, row_number, row, model, results)
@@ -543,7 +550,7 @@ async def run_eval(
             None
             if memory_row is None
             else await _compare_memory(
-                row_cases,
+                seeded,
                 resources,
                 memory_row,
                 chat_models[settings.eval_rows.index(memory_row)],

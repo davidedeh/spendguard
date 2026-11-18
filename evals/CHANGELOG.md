@@ -24,9 +24,11 @@ The changes come from two audit passes over the v1 test split's judgement labels
 
 ### Labels and cases
 
-- **test-judgement-positive-04** adds RECEIPT_MISMATCH (§3.2). The receipt is a 2.50 single bus ticket and 27.50 of travel card credit, against a claim for bus travel. Its recommendation, recomputed by the recommendation function, moves from none to reject. Audit support:
-  - The first pass raised it at medium confidence and marked it ambiguous.
-  - The second pass called the extra flag defensible and preferred it to the label.
+- **test-judgement-positive-04** adds RECEIPT_MISMATCH (§3.2).
+  - The claim is for bus travel between two depots, but the receipt lines are "Single bus ticket 2.50" and "Travel card top‑up 27.50".
+  - §3.2 says "the items on the receipt must be the items claimed for".
+  - Its recommendation, recomputed by the recommendation function, moves from none to reject.
+  - Audit support: the first pass raised it at medium confidence and marked it ambiguous. The second pass was shown a system's flag and classed it "defensible", siding with the system. Neither pass called the old label wrong outright.
 - **test-memory-follow-up-01** now says where the lunch took place, because the first pass noted that it did not. Its label is unchanged, but it counts as a changed case.
 - **test-memory-follow-up-02 and -03** keep their content and are relabelled: the precedent does not apply, so the finding is expected. This follows the first pass's blind reading. They become controls for a precedent that does not fit.
 - **Recorded reasons.** Every scripted dismissal reason drops its ruling about future claims and keeps only the fact. This covers test-judgement-positive-01, -02 and -05 and dev-judgement-positive-01.
@@ -49,12 +51,23 @@ The changes come from two audit passes over the v1 test split's judgement labels
 
 ### Scoring
 
-- **Seeded precedents.** Each memory follow-up gets its pair's scripted reason as a precedent in every row, built against the current clause text. Eval rows no longer record precedents from their own reviews. In v1, a row that missed the paired finding left its follow-up without a precedent, and the follow-up's label could not be met.
+- **Seeded precedents.** Each memory follow-up gets its pair's scripted reason as a precedent in every row, built against the current clause text. Eval rows no longer record precedents from their own reviews.
+  - In v1, a row that did not keep the paired finding left its follow-up without a precedent, so the follow-up's label could not be met.
+  - In the v1 baseline, follow-ups ran without their precedent as follows:
+
+    | Row | Follow-ups without a precedent | Why |
+    | --- | --- | --- |
+    | Claude Haiku | 1 of 3 | the paired finding was not raised |
+    | Claude Sonnet | 0 of 3 | |
+    | GPT OSS 120B | 1 of 3 | the paired case failed; a second follow-up failed itself |
+    | Nova Pro | 3 of 3 | two paired findings were not raised; one was removed at verification for citing a precedent that had not been supplied |
+    | Claude Haiku, whole policy | 1 of 3 | the paired finding was not raised |
 - **Memory comparison.**
+  - It runs only the follow-ups, each with its seeded precedent.
   - For follow-ups whose precedent applies, it reports the labelled-code count beside the any-code count.
-  - For controls, it reports how many raised the labelled code and how many were cleared by the precedent.
+  - For controls, it reports how many raised the labelled code, were cleared by the precedent or failed.
   - It lists findings a follow-up raised on other codes.
-  - The memory-off run is the no-precedent control.
+  - The memory-off run is the no-precedent control. The labels assume the precedent, so recommendations are scored with memory on only.
 
 ### Known limitations
 

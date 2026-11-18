@@ -103,7 +103,7 @@ class CaseBrief(StrictModel):
     claimed_rate_must_deviate: bool
     receipt: ReceiptPlan | None
     memory_pair: bool
-    clearance: MemoryCheck | None
+    memory: MemoryCheck | None
     history_claims: tuple[HistoricalClaim, ...]
     history_invoices: tuple[HistoricalInvoice, ...]
 
@@ -388,7 +388,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate=False,
             receipt=ReceiptPlan(present=True),
             memory_pair=False,
-            clearance=MemoryCheck(precedent_from=pair.case_id, code=code, precedent_applies=True),
+            memory=MemoryCheck(precedent_from=pair.case_id, code=code, precedent_applies=True),
             history_claims=(),
             history_invoices=(),
         )
@@ -552,7 +552,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate='CURRENCY_ANOMALY' in target.intent.rule_codes,
             receipt=ReceiptPlan(present='MISSING_RECEIPT' not in target.intent.rule_codes),
             memory_pair=memory_pair,
-            clearance=None,
+            memory=None,
             history_claims=(),
             history_invoices=(),
         )
@@ -622,7 +622,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate=False,
             receipt=ReceiptPlan(present=True),
             memory_pair=memory_pair,
-            clearance=None,
+            memory=None,
             history_claims=(prior,),
             history_invoices=(),
         )
@@ -714,7 +714,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate='CURRENCY_ANOMALY' in codes,
             receipt=None,
             memory_pair=memory_pair,
-            clearance=None,
+            memory=None,
             history_claims=(),
             history_invoices=(),
         )
@@ -778,7 +778,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate=False,
             receipt=None,
             memory_pair=memory_pair,
-            clearance=None,
+            memory=None,
             history_claims=(),
             history_invoices=window_history,
         )
@@ -816,7 +816,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate=False,
             receipt=None,
             memory_pair=memory_pair,
-            clearance=None,
+            memory=None,
             history_claims=(),
             history_invoices=(prior,),
         )

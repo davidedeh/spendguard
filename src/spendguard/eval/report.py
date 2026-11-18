@@ -309,7 +309,7 @@ def _memory_section(comparison: MemoryComparison | None) -> list[str]:
         ),
         '',
         '| Setting | Controls that raised the labelled code | Controls cleared by the precedent'
-        ' | Recommendation matches the label |',
+        ' | Controls that failed |',
         _markdown_row(['---'] * 4),
         *(
             _markdown_row(
@@ -317,11 +317,15 @@ def _memory_section(comparison: MemoryComparison | None) -> list[str]:
                     setting,
                     _rate(metrics.controls_raised_labelled_code),
                     _rate(metrics.controls_cleared_by_precedent),
-                    _rate(metrics.recommendation_agreement),
+                    _rate(metrics.controls_failed),
                 )
             )
             for setting, metrics in settings
         ),
+        '',
+        'Recommendation matches the label with memory on:'
+        f' {_rate(memory_on.recommendation_agreement)}. The labels assume the precedent, so'
+        ' memory off is not scored on recommendations.',
         '',
         f'Findings on other codes. Memory on: {_other_findings(comparison.memory_on)}.'
         f' Memory off: {_other_findings(comparison.memory_off)}.',

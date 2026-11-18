@@ -130,26 +130,26 @@ class _Drafter:
 
 def drafting_units(briefs: list[CaseBrief]) -> list[DraftingUnit]:
     follow_ups = {
-        brief.clearance.precedent_from: brief for brief in briefs if brief.clearance is not None
+        brief.memory.precedent_from: brief for brief in briefs if brief.memory is not None
     }
     return [
         (brief, follow_ups[brief.case_id]) if brief.case_id in follow_ups else (brief,)
         for brief in briefs
-        if brief.clearance is None
+        if brief.memory is None
     ]
 
 
 def assign_drafters(briefs: list[CaseBrief], drafter_keys: tuple[str, ...]) -> list[str]:
     drafters = itertools.cycle(drafter_keys)
     assigned: dict[str, str] = {}
-    briefs_without_follow_ups = [brief for brief in briefs if brief.clearance is None]
+    briefs_without_follow_ups = [brief for brief in briefs if brief.memory is None]
     for _, slice_briefs in itertools.groupby(
         briefs_without_follow_ups, key=lambda brief: (brief.split, brief.slice)
     ):
         for brief in sorted(slice_briefs, key=lambda brief: not brief.memory_pair):
             assigned[brief.case_id] = next(drafters)
     return [
-        assigned[brief.case_id if brief.clearance is None else brief.clearance.precedent_from]
+        assigned[brief.case_id if brief.memory is None else brief.memory.precedent_from]
         for brief in briefs
     ]
 
@@ -213,7 +213,7 @@ def _labelled_case(
     )
     expected_findings = drafted.judgement_findings + rule_expected_findings
     expected_route, expected_recommendation = computed_route_and_recommendation(
-        expected_findings, brief.clearance, drafted.submission, inputs.seed_data, inputs.policy
+        expected_findings, brief.memory, drafted.submission, inputs.seed_data, inputs.policy
     )
     return EvalCase(
         id=brief.case_id,
@@ -225,7 +225,7 @@ def _labelled_case(
         expected_route=expected_route,
         expected_recommendation=expected_recommendation,
         scripted_review=drafted.scripted_review if brief.memory_pair else None,
-        memory=brief.clearance,
+        memory=brief.memory,
         drafted_by=drafter.drafted_by,
     )
 
@@ -395,7 +395,7 @@ def _receipt_problems(brief: CaseBrief, claim: ExpenseClaim) -> Iterator[str]:
 def describe_brief(brief: CaseBrief, policy: Policy) -> str:
     shown = brief.model_dump(
         mode='json',
-        exclude={'case_id', 'split', 'clearance'},
+        exclude={'case_id', 'split', 'memory'},
         exclude_none=True,
     )
     notes = list(_brief_notes(brief, policy))
@@ -459,9 +459,9 @@ def _judgement_note(brief: CaseBrief, policy: Policy) -> str:
                 f' {intent.judgement_codes[0]}; label that one judgement finding.'
             )
         case 'memory_follow_up':
-            if brief.clearance is None:
-                raise BriefError(f'{brief.case_id}: a follow-up brief needs a clearance')
-            code = brief.clearance.code
+            if brief.memory is None:
+                raise BriefError(f'{brief.case_id}: a follow-up brief needs a memory block')
+            code = brief.memory.code
             return (
                 f'A later submission from the same {policy.finding_codes[code].precedent_scope}'
                 f' that raises the same {code} concern as the first case, in a way its dismissal'

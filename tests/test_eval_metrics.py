@@ -318,24 +318,41 @@ def test_a_control_whose_precedent_does_not_apply_is_right_to_flag_and_wrong_to_
     follow_up = fixture_case('test-memory-follow-up')
     assert follow_up.memory is not None
     control_memory = follow_up.memory.model_copy(update={'precedent_applies': False})
+    control_ids = ('flagged', 'flagged-again', 'flagged-and-cleared', 'cleared', 'failed')
     cases = (
         follow_up.model_copy(update={'id': 'should-clear'}),
-        follow_up.model_copy(update={'id': 'control-flagged', 'memory': control_memory}),
-        follow_up.model_copy(update={'id': 'control-cleared', 'memory': control_memory}),
-    )
-    outcomes = (
-        follow_up_outcome('should-clear', 'approve', clearances=(('PURPOSE_UNCLEAR', 'seed-1'),)),
-        follow_up_outcome('control-flagged', 'approve', judgement_codes=('PURPOSE_UNCLEAR',)),
-        follow_up_outcome(
-            'control-cleared', 'approve', clearances=(('PURPOSE_UNCLEAR', 'seed-3'),)
+        *(
+            follow_up.model_copy(update={'id': case_id, 'memory': control_memory})
+            for case_id in control_ids
         ),
     )
-    seeded = {'should-clear': 'seed-1', 'control-flagged': 'seed-2', 'control-cleared': 'seed-3'}
+    seeded = {case_id: f'seed-{case_id}' for case_id in ('should-clear', *control_ids)}
+    results = (
+        follow_up_outcome(
+            'should-clear', 'approve', clearances=(('PURPOSE_UNCLEAR', 'seed-should-clear'),)
+        ),
+        follow_up_outcome('flagged', 'approve', judgement_codes=('PURPOSE_UNCLEAR',)),
+        follow_up_outcome('flagged-again', 'approve', judgement_codes=('PURPOSE_UNCLEAR',)),
+        follow_up_outcome(
+            'flagged-and-cleared',
+            'approve',
+            judgement_codes=('PURPOSE_UNCLEAR',),
+            clearances=(('PURPOSE_UNCLEAR', 'seed-flagged-and-cleared'),),
+        ),
+        follow_up_outcome('cleared', 'approve', clearances=(('PURPOSE_UNCLEAR', 'seed-cleared'),)),
+        CaseFailure(
+            case_id='failed',
+            error_type='RuntimeError',
+            error_message='provider down',
+            reason='RuntimeError',
+        ),
+    )
 
-    metrics = memory_metrics(cases, outcomes, seeded)
+    metrics = memory_metrics(cases, results, seeded)
 
-    assert counts(metrics.controls_raised_labelled_code) == (1, 2)
-    assert counts(metrics.controls_cleared_by_precedent) == (1, 2)
+    assert counts(metrics.controls_raised_labelled_code) == (3, 5)
+    assert counts(metrics.controls_cleared_by_precedent) == (1, 5)
+    assert counts(metrics.controls_failed) == (1, 5)
     assert counts(metrics.cleared_with_pair_precedent) == (1, 1)
     assert counts(metrics.raised_labelled_code) == (0, 1)
 
