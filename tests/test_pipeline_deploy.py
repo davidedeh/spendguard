@@ -71,13 +71,14 @@ def run_script(
     fake_bin.mkdir()
     calls_log = tmp_path / 'calls.log'
     calls_log.touch()
-    for name in ('aws', 'sam', 'git', 'docker', 'uv'):
+    for name in ('aws', 'sam', 'git', 'gh', 'docker', 'uv'):
         fake_command(fake_bin, name, fakes.get(name, ''))
     completed = subprocess.run(
         [str(REPOSITORY_ROOT / 'scripts' / script)],
         input=reply,
         capture_output=True,
         text=True,
+        cwd=tmp_path,
         env={
             'PATH': f'{fake_bin}:{os.environ["PATH"]}',
             'CALLS_LOG': str(calls_log),
@@ -138,6 +139,52 @@ def test_bootstrap_trusts_only_this_repositorys_main_branch_without_prompting(
         '--deployment-branch': 'main',
         '--image-repository': 'arn:aws:ecr:eu-west-2:111122223333:repository/a-stack',
     }
+
+
+def test_bootstrap_trusts_the_immutable_subject_github_issues_for_the_repository(
+    tmp_path: Path,
+) -> None:
+    completed, calls = run_script(
+        'bootstrap.sh',
+        tmp_path,
+        fakes={
+            'aws': '[[ "$*" == sts\\ get-caller-identity* ]] && echo 111122223333; true',
+            'git': 'echo https://github.com/an-owner/a-repo.git',
+            'gh': (
+                '[[ "$*" == "api repos/an-owner/a-repo/actions/oidc/customization/sub"* ]]'
+                ' && echo "repo:an-owner@9100/a-repo@145"; true'
+            ),
+        },
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    [sam_call] = [call for call in calls if call.startswith('sam ')]
+    options = option_values(sam_call.split())
+    assert (options['--github-org'], options['--github-repo']) == ('an-owner@9100', 'a-repo@145')
+
+
+def test_bootstrap_ignores_the_github_repository_sam_saved_from_an_earlier_run(
+    tmp_path: Path,
+) -> None:
+    saved_config = tmp_path / '.aws-sam' / 'pipeline' / 'pipelineconfig.toml'
+    saved_config.parent.mkdir(parents=True)
+    saved_config.write_text('[default.pipeline_bootstrap.parameters]\ngithub_org = "old"\n')
+
+    completed, _ = run_script(
+        'bootstrap.sh',
+        tmp_path,
+        fakes={
+            'aws': '[[ "$*" == sts\\ get-caller-identity* ]] && echo 111122223333; true',
+            'git': 'echo https://github.com/an-owner/a-repo.git',
+            'sam': (
+                '[[ -e .aws-sam/pipeline/pipelineconfig.toml ]]'
+                ' && echo "sam saw a saved config"; true'
+            ),
+        },
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert 'sam saw a saved config' not in completed.stdout
 
 
 def test_destroy_bootstrap_warns_about_the_shared_oidc_provider_and_stops_on_no(
