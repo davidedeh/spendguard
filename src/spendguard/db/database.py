@@ -12,6 +12,7 @@ from spendguard.settings import LocalPostgres, Settings
 
 MAINTENANCE_DATABASE = 'postgres'
 CONNECT_TIMEOUT_SECONDS = 3
+MAXIMUM_POOLED_CONNECTIONS = 4
 
 type ConnectionPool = AsyncConnectionPool[AsyncConnection[DictRow]]
 
@@ -103,5 +104,8 @@ def async_connection_pool(connection_info: str) -> ConnectionPool:
         connection_info,
         connection_class=AsyncConnection[DictRow],
         kwargs={'autocommit': True, 'prepare_threshold': None, 'row_factory': dict_row},
+        min_size=1,
+        max_size=MAXIMUM_POOLED_CONNECTIONS,
+        check=AsyncConnectionPool.check_connection,
         open=False,
     )

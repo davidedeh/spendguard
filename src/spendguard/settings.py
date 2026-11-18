@@ -1,4 +1,5 @@
 import datetime
+import os
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -250,7 +251,11 @@ def load_settings(env_file: Path | None = Path('.env')) -> Settings:
             branch_name=current_branch_name(),
         )
     except ValidationError as error:
-        if env_file is not None and not env_file.exists():
+        if (
+            env_file is not None
+            and not env_file.exists()
+            and not os.environ.get('SSM_PARAMETER_PREFIX')
+        ):
             raise MissingEnvFileError(env_file) from error
         raise
     return Settings.model_validate(environment_settings.model_dump())

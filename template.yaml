@@ -33,6 +33,13 @@ Parameters:
   LangfuseHost:
     Type: String
     Default: https://cloud.langfuse.com
+  WorkerTimeoutSeconds:
+    Type: Number
+    Default: 120
+  QueueVisibilityTimeoutSeconds:
+    Type: Number
+    Default: 720
+    Description: At least six times WorkerTimeoutSeconds, which the settings check at start-up.
 
 Conditions:
   HasImage: !Not [!Equals [!Ref ImageTag, '']]
@@ -80,8 +87,8 @@ Globals:
         MAXIMUM_FIELD_LENGTH: '2000'
         JUDGEMENT_MAX_TOOL_CALLS: '6'
         RETRIEVAL_TOP_K: '5'
-        WORKER_TIMEOUT_SECONDS: '120'
-        QUEUE_VISIBILITY_TIMEOUT_SECONDS: '720'
+        WORKER_TIMEOUT_SECONDS: !Ref WorkerTimeoutSeconds
+        QUEUE_VISIBILITY_TIMEOUT_SECONDS: !Ref QueueVisibilityTimeoutSeconds
         SWEEPER_STUCK_AFTER_SECONDS: '900'
 
 Resources:
@@ -119,7 +126,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       FifoQueue: true
-      VisibilityTimeout: 720
+      VisibilityTimeout: !Ref QueueVisibilityTimeoutSeconds
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
         maxReceiveCount: 3
@@ -198,7 +205,7 @@ Resources:
     Properties:
       PackageType: Image
       ImageUri: !Sub '${ImageRepository.RepositoryUri}:${ImageTag}'
-      Timeout: 120
+      Timeout: !Ref WorkerTimeoutSeconds
       ImageConfig:
         Command:
           - uvicorn

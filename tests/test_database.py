@@ -6,6 +6,7 @@ from settings_factory import make_test_settings
 from spendguard.db.database import (
     DatabaseUnreachableError,
     NotALocalDatabaseError,
+    async_connection_pool,
     drop_branch_database,
     ensure_branch_database,
 )
@@ -42,3 +43,39 @@ def test_dropping_refuses_a_database_given_by_url() -> None:
 
     with pytest.raises(NotALocalDatabaseError):
         drop_branch_database(settings)
+
+
+async def test_a_pooled_connection_the_server_closed_while_idle_is_replaced_before_use(
+    branch_database: str,
+) -> None:
+    application_name = 'idle-closed-pool-test'
+    pool = async_connection_pool(
+        psycopg.conninfo.make_conninfo(branch_database, application_name=application_name)
+    )
+    await pool.open(wait=True)
+    try:
+        with psycopg.connect(branch_database, autocommit=True) as administrator:
+            terminated = administrator.execute(
+                'select count(*) from ('
+                ' select pg_terminate_backend(pid) from pg_stat_activity'
+                ' where application_name = %s) as terminated',
+                (application_name,),
+            ).fetchone()
+
+        async with pool.connection() as connection:
+            row = await (await connection.execute('select 1 as answer')).fetchone()
+
+        assert terminated is not None
+        assert terminated[0] > 0
+        assert row == {'answer': 1}
+    finally:
+        await pool.close()
+
+
+async def test_an_open_pool_holds_one_idle_connection(branch_database: str) -> None:
+    pool = async_connection_pool(branch_database)
+    await pool.open(wait=True)
+    try:
+        assert pool.get_stats()['pool_size'] == 1
+    finally:
+        await pool.close()

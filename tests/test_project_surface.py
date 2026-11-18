@@ -1,9 +1,12 @@
 import re
 from pathlib import Path
 
+import boto3
 import pytest
 import yaml
+from pydantic import ValidationError
 
+import spendguard.settings
 from spendguard.settings import MissingEnvFileError, Settings
 from spendguard.settings import load_settings as load_settings_from_files
 
@@ -70,6 +73,20 @@ def test_a_missing_env_file_is_named_instead_of_listing_every_missing_setting(
 
     assert str(missing_env_file) in str(raised.value)
     assert '.env.example' in str(raised.value)
+
+
+def test_a_settings_error_reading_from_parameter_store_is_not_blamed_on_a_missing_env_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    for key in env_example_keys():
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv('SSM_PARAMETER_PREFIX', '/spendguard/')
+    monkeypatch.setenv('AWS_REGION', 'us-east-1')
+    monkeypatch.setattr(boto3, 'client', lambda *arguments, **keyword_arguments: object())
+    monkeypatch.setattr(spendguard.settings, 'parameter_store_values', lambda client, prefix: {})
+
+    with pytest.raises(ValidationError, match='app_environment'):
+        load_settings_from_files(tmp_path / '.env')
 
 
 def test_the_eval_workflow_runs_only_when_dispatched_by_hand() -> None:

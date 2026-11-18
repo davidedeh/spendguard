@@ -141,6 +141,13 @@ make secrets        # SecureString parameters the functions read at start-up
 
 `make secrets` asks for the Supabase transaction pooler URL and the signing keys, generating the keys if you press Enter. `make bootstrap` prints the repository variables `deploy.yml` reads. `make deploy ALARM_EMAIL=you@example.com` runs the same script from a laptop: it builds and pushes the arm64 image tagged with the commit, deploys the stack, runs migrations and indexes the policy through the preparation function, then smoke-tests the API URL. Confirm the SNS subscription email to receive dead-letter alarms.
 
+The deployed database starts with no approvers. Seed it and issue an approver token from a laptop, pointing the local commands at Supabase's session pooler URI (port 5432; `DATABASE_URL` in the environment overrides `.env`):
+
+```sh
+DATABASE_URL='<session pooler URI>' make seed
+DATABASE_URL='<session pooler URI>' make issue-token APPROVER=EMP-001
+```
+
 To tear down, `make destroy` deletes the stack and its images, and `make destroy-bootstrap` deletes the pipeline resources, warning first if that would also delete the account's GitHub OIDC provider.
 
 Images live in the stack's own repository, which keeps the five newest. The bootstrap is pointed at that repository rather than creating a second one.

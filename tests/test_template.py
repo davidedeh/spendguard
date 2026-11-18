@@ -56,14 +56,25 @@ def test_the_image_repository_keeps_only_the_five_newest_images() -> None:
     assert rule['action'] == {'type': 'expire'}
 
 
-def test_the_queue_visibility_timeout_is_at_least_six_worker_timeouts() -> None:
+def test_the_worker_and_visibility_timeouts_each_come_from_one_parameter() -> None:
     worker = RESOURCES['WorkerFunction']['Properties']
     queue = RESOURCES['SubmissionQueue']['Properties']
     environment = TEMPLATE['Globals']['Function']['Environment']['Variables']
 
-    assert queue['VisibilityTimeout'] >= VISIBILITY_TIMEOUTS_PER_WORKER_TIMEOUT * worker['Timeout']
-    assert int(environment['WORKER_TIMEOUT_SECONDS']) == worker['Timeout']
-    assert int(environment['QUEUE_VISIBILITY_TIMEOUT_SECONDS']) == queue['VisibilityTimeout']
+    assert worker['Timeout'] == {'Ref': 'WorkerTimeoutSeconds'}
+    assert environment['WORKER_TIMEOUT_SECONDS'] == {'Ref': 'WorkerTimeoutSeconds'}
+    assert queue['VisibilityTimeout'] == {'Ref': 'QueueVisibilityTimeoutSeconds'}
+    assert environment['QUEUE_VISIBILITY_TIMEOUT_SECONDS'] == {
+        'Ref': 'QueueVisibilityTimeoutSeconds'
+    }
+
+
+def test_the_default_visibility_timeout_is_at_least_six_worker_timeouts() -> None:
+    parameters = TEMPLATE['Parameters']
+
+    assert int(parameters['QueueVisibilityTimeoutSeconds']['Default']) >= (
+        VISIBILITY_TIMEOUTS_PER_WORKER_TIMEOUT * int(parameters['WorkerTimeoutSeconds']['Default'])
+    )
 
 
 def test_a_worker_server_error_fails_the_invocation_so_the_message_is_redelivered() -> None:
