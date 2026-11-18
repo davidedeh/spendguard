@@ -10,6 +10,11 @@ PARAMETER_PATH="${PARAMETER_PATH:-spendguard}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 export AWS_REGION
 
+# AWS CLI v2 reads a --cli-input-json file twice, so the request goes through a file rather than
+# a pipe. mktemp makes it readable by this user only.
+parameter_request="$(mktemp)"
+trap 'rm -f "$parameter_request"' EXIT
+
 parameter_exists() {
   aws ssm get-parameter --name "/$PARAMETER_PATH/$1" >/dev/null 2>&1
 }
@@ -22,7 +27,8 @@ print(json.dumps({
     "Value": os.environ["PARAMETER_VALUE"],
     "Type": "SecureString",
     "Overwrite": True,
-}))' | aws ssm put-parameter --cli-input-json file:///dev/stdin >/dev/null
+}))' >"$parameter_request"
+  aws ssm put-parameter --cli-input-json "file://$parameter_request" >/dev/null
   echo "  wrote /$PARAMETER_PATH/$1"
 }
 
@@ -34,7 +40,7 @@ ask_secret() {
   else
     printf '%s ' "$prompt"
   fi
-  read -rs value
+  IFS= read -rs value
   printf '\n'
   if [[ -z "$value" ]] && parameter_exists "$name"; then
     echo "  kept /$PARAMETER_PATH/$name"

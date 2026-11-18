@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -24,6 +25,21 @@ case "$*" in
   lambda\\ invoke*) echo None ;;
 esac
 true
+"""
+# AWS CLI v2 reads a --cli-input-json file:// path twice before parsing it, so input that can
+# only be read once, such as a pipe, arrives empty the second time.
+SSM_WITH_NO_PARAMETERS = """
+case "$1 $2" in
+  ssm\\ get-parameter) exit 1 ;;
+  ssm\\ put-parameter)
+    for argument in "$@"; do
+      [[ "$argument" == file://* ]] && input_path="${argument#file://}"
+    done
+    cat "$input_path" > /dev/null
+    python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin)))' \\
+      < "$input_path" >> "$PUT_PARAMETERS_LOG" || { echo 'Invalid JSON received.' >&2; exit 252; }
+    ;;
+esac
 """
 COMMIT_SHA = 'c0ffee0000000000000000000000000000000001'
 BOOTSTRAP_STACK = 'aws-sam-cli-managed-a-stack-pipeline-resources'
@@ -237,3 +253,36 @@ def test_the_pipeline_role_given_to_the_stack_may_invoke_only_the_preparation_fu
         }
     ]
     assert TEMPLATE['Parameters']['PipelineExecutionRoleArn']['Default'] == ''
+
+
+def test_secrets_reach_ssm_byte_for_byte_whatever_characters_they_hold(tmp_path: Path) -> None:
+    put_parameters_log = tmp_path / 'put-parameters.log'
+    database_url = 'postgresql://postgres.ref:p"a\\ss$wo@rd%21!x@pooler.example:6543/postgres'
+    webhook_signing_key = '  a key with \\ backslash and spaces  '
+    langfuse_public_key = 'pk-lf-$HOME-!$(date)'
+
+    completed, _ = run_script(
+        'secrets.sh',
+        tmp_path,
+        fakes={'aws': SSM_WITH_NO_PARAMETERS},
+        reply=f'{database_url}\n{webhook_signing_key}\n\n{langfuse_public_key}\n\n',
+        environment={'PARAMETER_PATH': 'a-path', 'PUT_PARAMETERS_LOG': str(put_parameters_log)},
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    written = [json.loads(line) for line in put_parameters_log.read_text().splitlines()]
+    assert {parameter['Name'] for parameter in written} == {
+        '/a-path/DATABASE_URL',
+        '/a-path/WEBHOOK_SIGNING_KEY',
+        '/a-path/DECISION_EVENT_SIGNING_KEY',
+        '/a-path/LANGFUSE_PUBLIC_KEY',
+    }
+    values = {parameter['Name']: parameter['Value'] for parameter in written}
+    assert values['/a-path/DATABASE_URL'] == database_url
+    assert values['/a-path/WEBHOOK_SIGNING_KEY'] == webhook_signing_key
+    assert values['/a-path/LANGFUSE_PUBLIC_KEY'] == langfuse_public_key
+    assert len(values['/a-path/DECISION_EVENT_SIGNING_KEY']) == 64
+    assert all(
+        (parameter['Type'], parameter['Overwrite']) == ('SecureString', True)
+        for parameter in written
+    )
