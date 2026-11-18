@@ -18,8 +18,24 @@ repository_path="${repository_path#*github.com[:/]}"
 github_owner="${repository_path%%/*}"
 github_repository="${repository_path#*/}"
 
+# Repositories with immutable OIDC subjects sign tokens as repo:OWNER@OWNER-ID/REPO@REPO-ID, and
+# SAM builds the trusted subject from these two values.
+subject_prefix="$(gh api "repos/$github_owner/$github_repository/actions/oidc/customization/sub" \
+  --jq '.sub_claim_prefix // empty')"
+if [[ -n "$subject_prefix" ]]; then
+  subject_path="${subject_prefix#repo:}"
+  github_owner="${subject_path%%/*}"
+  github_repository="${subject_path#*/}"
+fi
+
 account_id="$(aws sts get-caller-identity --query Account --output text)"
 image_repository_arn="arn:aws:ecr:$AWS_REGION:$account_id:repository/$STACK_NAME"
+
+# SAM CLI lets a saved .aws-sam/pipeline/pipelineconfig.toml override --github-org and
+# --github-repo, so it runs in an empty directory.
+sam_directory="$(mktemp -d)"
+trap 'rm -rf "$sam_directory"' EXIT
+cd "$sam_directory"
 
 # SAM CLI replaces --oidc-provider with --cicd-provider's value, so both name GitHub Actions.
 sam pipeline bootstrap \
