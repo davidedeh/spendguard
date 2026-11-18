@@ -1,14 +1,19 @@
 import json
 from pathlib import Path
+from typing import Any, NoReturn
 
 import pytest
 
+import spendguard.eval.runner
+import spendguard.settings
+from settings_factory import make_test_settings
 from spendguard.eval.cases import load_slice_plan
 from spendguard.eval.freeze import main as freeze
 from spendguard.eval.runner import DatasetRefusedError, frozen_cases
 from spendguard.eval.runner import main as run_eval_command
 from spendguard.policy.loader import load_policy
 from spendguard.seed.loader import read_seed_directory
+from spendguard.settings import ChatModelSettings
 
 FIXTURES = Path(__file__).parent / 'fixtures'
 CASE_DIRECTORY = FIXTURES / 'eval' / 'cases'
@@ -92,3 +97,133 @@ def test_the_eval_command_on_a_changed_dataset_exits_1_and_writes_no_results(
     assert 'does not match the lock' in capsys.readouterr().err
     assert not (tmp_path / 'results').exists()
     assert readme_path.read_text() == 'unchanged\n'
+
+
+def eval_command_arguments(lock_path: Path, tmp_path: Path, readme_path: Path) -> list[str]:
+    return [
+        '--cases',
+        str(CASE_DIRECTORY),
+        '--plan',
+        str(FIXTURES / 'eval' / 'slice_plan.yaml'),
+        '--policy',
+        str(FIXTURES / 'policy' / 'valid_policy.yaml'),
+        '--seed',
+        str(FIXTURES / 'seed'),
+        '--lock',
+        str(lock_path),
+        '--results',
+        str(tmp_path / 'results'),
+        '--readme',
+        str(readme_path),
+    ]
+
+
+def refuse_model_calls(*arguments: object) -> NoReturn:
+    raise AssertionError('the eval built a model before refusing')
+
+
+PRICE = {
+    'input_per_million_tokens_usd': '1.00',
+    'output_per_million_tokens_usd': '5.00',
+    'priced_on': '2026-11-02',
+}
+SECOND_MODEL = ChatModelSettings(
+    provider='fake',
+    model_id='fake-second',
+    structured_output_method='function_calling',
+    temperature=0.0,
+)
+TWO_ROWS = [
+    {'model_key': 'fake_primary', 'label': 'Primary', 'policy_context': 'retrieved_clauses'},
+    {'model_key': 'fake_second', 'label': 'Second', 'policy_context': 'retrieved_clauses'},
+]
+
+
+@pytest.mark.parametrize(
+    ('overrides', 'refusal'),
+    [
+        (
+            {'model_prices': {'fake_primary': PRICE}},
+            "Eval row 'Second' uses chat model 'fake_second', which has no price in MODEL_PRICES",
+        ),
+        (
+            {
+                'model_prices': {'fake_primary': PRICE, 'fake_second': PRICE},
+                'database_url': 'postgresql://someone@pooler.invalid:5432/postgres',
+            },
+            'DATABASE_URL is set',
+        ),
+    ],
+    ids=['a row without a price', 'a database given by URL'],
+)
+def test_the_eval_command_refuses_unsafe_settings_before_any_model_call(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, Any],
+    refusal: str,
+) -> None:
+    lock_path = locked_fixture_dataset(tmp_path / 'dataset.lock.json')
+    readme_path = tmp_path / 'README.md'
+    readme_path.write_text('unchanged\n')
+    settings = make_test_settings(
+        chat_models=make_test_settings().chat_models | {'fake_second': SECOND_MODEL},
+        eval_rows=TWO_ROWS,
+        **overrides,
+    )
+    monkeypatch.setattr(spendguard.settings, 'load_settings', lambda: settings)
+    monkeypatch.setattr(spendguard.eval.runner, 'build_embedder', refuse_model_calls)
+    monkeypatch.setattr(spendguard.eval.runner, 'build_chat_model', refuse_model_calls)
+
+    exit_code = run_eval_command(eval_command_arguments(lock_path, tmp_path, readme_path))
+
+    assert exit_code == 1
+    assert refusal in capsys.readouterr().err
+    assert not (tmp_path / 'results').exists()
+    assert readme_path.read_text() == 'unchanged\n'
+
+
+def test_a_pre_flight_writes_its_row_files_and_results_but_leaves_the_readme_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    lock_path = locked_fixture_dataset(tmp_path / 'dataset.lock.json')
+    readme_path = tmp_path / 'README.md'
+    readme_path.write_text('unchanged\n')
+    settings = make_test_settings(eval_rows=TWO_ROWS[:1], model_prices={'fake_primary': PRICE})
+    monkeypatch.setattr(spendguard.settings, 'load_settings', lambda: settings)
+
+    exit_code = run_eval_command(
+        [*eval_command_arguments(lock_path, tmp_path, readme_path), '--cases-per-row', '2']
+    )
+
+    assert exit_code == 0
+    [results_file] = (tmp_path / 'results').glob('*.md')
+    assert results_file.name.endswith('-preflight.md')
+    [row_file] = (tmp_path / 'results' / results_file.stem).glob('*.json')
+    assert len(json.loads(row_file.read_text())['cases']) == 2
+    assert readme_path.read_text() == 'unchanged\n'
+    assert 'the README is unchanged' in capsys.readouterr().out
+
+
+def test_two_pre_flights_on_the_same_day_keep_each_runs_results_and_row_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lock_path = locked_fixture_dataset(tmp_path / 'dataset.lock.json')
+    readme_path = tmp_path / 'README.md'
+    readme_path.write_text('unchanged\n')
+    settings = make_test_settings(eval_rows=TWO_ROWS[:1], model_prices={'fake_primary': PRICE})
+    monkeypatch.setattr(spendguard.settings, 'load_settings', lambda: settings)
+    arguments = [*eval_command_arguments(lock_path, tmp_path, readme_path), '--cases-per-row', '1']
+
+    exit_codes = [run_eval_command(arguments), run_eval_command(arguments)]
+
+    assert exit_codes == [0, 0]
+    results_files = sorted((tmp_path / 'results').glob('*.md'))
+    assert len(results_files) == 2
+    run_identifiers = set()
+    for results_file in results_files:
+        [row_file] = (tmp_path / 'results' / results_file.stem).glob('*.json')
+        run_identifier = json.loads(row_file.read_text())['run_identifier']
+        assert results_file.stem.endswith(f'-{run_identifier[:8]}-preflight')
+        run_identifiers.add(run_identifier)
+    assert len(run_identifiers) == 2

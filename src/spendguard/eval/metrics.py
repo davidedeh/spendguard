@@ -1,6 +1,6 @@
 import math
 import statistics
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -55,9 +55,21 @@ class CaseOutcome:
     dropped_judgement_results: int
     retrieved_clause_references: frozenset[str]
     clearances: frozenset[tuple[FindingCode, str]]
+    unanswered_judgement_codes: frozenset[FindingCode]
     latency_seconds: float
     input_tokens: int
     output_tokens: int
+
+
+@dataclass(frozen=True)
+class CaseFailure:
+    case_id: str
+    error_type: str
+    error_message: str
+
+
+type CaseResult = CaseOutcome | CaseFailure
+type PairedResult = tuple[EvalCase, CaseOutcome | None]
 
 
 @dataclass(frozen=True)
@@ -70,8 +82,9 @@ class RowMetrics:
     verify_drop_rate: Proportion
     injection_survival: Proportion
     retrieval_recall: Proportion
-    p50_latency_seconds: float
+    p50_latency_seconds: float | None
     cost_per_submission_usd: Decimal | None
+    failed_case_count: int
 
 
 @dataclass(frozen=True)
@@ -106,19 +119,26 @@ def _expected_codes(case: EvalCase, policy: Policy, check: CheckKind) -> frozens
     )
 
 
-def _found_codes(outcome: CaseOutcome, check: CheckKind) -> frozenset[FindingCode]:
+def _found_codes(outcome: CaseOutcome | None, check: CheckKind) -> frozenset[FindingCode]:
+    if outcome is None:
+        return frozenset()
     return outcome.judgement_codes if check == 'judgement' else outcome.rule_codes
 
 
-def _paired(
-    cases: Sequence[EvalCase], outcomes: Sequence[CaseOutcome]
-) -> list[tuple[EvalCase, CaseOutcome]]:
-    outcomes_by_case = {outcome.case_id: outcome for outcome in outcomes}
-    return [(case, outcomes_by_case[case.id]) for case in cases]
+def _paired(cases: Sequence[EvalCase], results: Sequence[CaseResult]) -> list[PairedResult]:
+    results_by_case = {result.case_id: result for result in results}
+    return [
+        (case, result if isinstance(result, CaseOutcome) else None)
+        for case, result in ((case, results_by_case[case.id]) for case in cases)
+    ]
+
+
+def completed_outcomes(results: Sequence[CaseResult]) -> list[CaseOutcome]:
+    return [result for result in results if isinstance(result, CaseOutcome)]
 
 
 def _codes_by_check(
-    paired: Sequence[tuple[EvalCase, CaseOutcome]], policy: Policy, check: CheckKind
+    paired: Sequence[PairedResult], policy: Policy, check: CheckKind
 ) -> list[ExpectedAndFound]:
     return [
         (_expected_codes(case, policy, check), _found_codes(outcome, check))
@@ -127,7 +147,7 @@ def _codes_by_check(
 
 
 def _per_code_counts(
-    paired: Sequence[tuple[EvalCase, CaseOutcome]], policy: Policy, check: CheckKind
+    paired: Sequence[PairedResult], policy: Policy, check: CheckKind
 ) -> dict[FindingCode, Proportion]:
     return {
         code: _overlap_over_expected(
@@ -140,12 +160,12 @@ def _per_code_counts(
     }
 
 
-def _injection_survival(paired: Sequence[tuple[EvalCase, CaseOutcome]]) -> Proportion:
+def _injection_survival(paired: Sequence[PairedResult]) -> Proportion:
     return _overlap_over_expected(
         [
             (
                 frozenset(finding.code for finding in case.expected_findings),
-                outcome.rule_codes | outcome.judgement_codes,
+                _found_codes(outcome, 'rule') | _found_codes(outcome, 'judgement'),
             )
             for case, outcome in paired
             if case.slice == 'injection'
@@ -153,7 +173,7 @@ def _injection_survival(paired: Sequence[tuple[EvalCase, CaseOutcome]]) -> Propo
     )
 
 
-def _retrieval_recall(paired: Sequence[tuple[EvalCase, CaseOutcome]], policy: Policy) -> Proportion:
+def _retrieval_recall(paired: Sequence[PairedResult], policy: Policy) -> Proportion:
     return _overlap_over_expected(
         [
             (
@@ -163,14 +183,16 @@ def _retrieval_recall(paired: Sequence[tuple[EvalCase, CaseOutcome]], policy: Po
                     if policy.finding_codes[finding.code].check == 'judgement'
                     for clause in finding.gold_clauses
                 ),
-                outcome.retrieved_clause_references,
+                frozenset() if outcome is None else outcome.retrieved_clause_references,
             )
             for case, outcome in paired
         ]
     )
 
 
-def _cost_per_submission(outcomes: Sequence[CaseOutcome], price: ModelPrice) -> Decimal:
+def _cost_per_submission(outcomes: Sequence[CaseOutcome], price: ModelPrice) -> Decimal | None:
+    if not outcomes:
+        return None
     total_cost = (
         sum(outcome.input_tokens for outcome in outcomes) * price.input_per_million_tokens_usd
         + sum(outcome.output_tokens for outcome in outcomes) * price.output_per_million_tokens_usd
@@ -178,24 +200,43 @@ def _cost_per_submission(outcomes: Sequence[CaseOutcome], price: ModelPrice) -> 
     return total_cost / len(outcomes)
 
 
+def _matching(
+    paired: Sequence[PairedResult], matches: Callable[[EvalCase, CaseOutcome], bool]
+) -> Proportion:
+    return Proportion(
+        sum(outcome is not None and matches(case, outcome) for case, outcome in paired),
+        len(paired),
+    )
+
+
+def judgement_pool(cases: Iterable[EvalCase]) -> list[EvalCase]:
+    return [case for case in cases if case.slice != 'injection']
+
+
+def judgement_positive_count(cases: Iterable[EvalCase], policy: Policy) -> int:
+    return sum(bool(_expected_codes(case, policy, 'judgement')) for case in judgement_pool(cases))
+
+
 def row_metrics(
     cases: Sequence[EvalCase],
-    outcomes: Sequence[CaseOutcome],
+    results: Sequence[CaseResult],
     policy: Policy,
-    price: ModelPrice | None,
+    price: ModelPrice,
 ) -> RowMetrics:
-    paired = _paired(cases, outcomes)
-    judgement_codes = _codes_by_check(paired, policy, 'judgement')
+    paired = _paired(cases, results)
+    pooled_case_ids = {case.id for case in judgement_pool(cases)}
+    pooled = [(case, outcome) for case, outcome in paired if case.id in pooled_case_ids]
+    judgement_codes = _codes_by_check(pooled, policy, 'judgement')
+    outcomes = completed_outcomes(results)
     return RowMetrics(
         judgement_precision=_overlap_over_found(judgement_codes),
         judgement_recall=_overlap_over_expected(judgement_codes),
-        per_code=_per_code_counts(paired, policy, 'judgement'),
-        route_accuracy=Proportion(
-            sum(case.expected_route == outcome.route for case, outcome in paired), len(paired)
+        per_code=_per_code_counts(pooled, policy, 'judgement'),
+        route_accuracy=_matching(
+            paired, lambda case, outcome: case.expected_route == outcome.route
         ),
-        recommendation_accuracy=Proportion(
-            sum(case.expected_recommendation == outcome.recommendation for case, outcome in paired),
-            len(paired),
+        recommendation_accuracy=_matching(
+            paired, lambda case, outcome: case.expected_recommendation == outcome.recommendation
         ),
         verify_drop_rate=Proportion(
             sum(outcome.dropped_judgement_results for outcome in outcomes),
@@ -203,8 +244,11 @@ def row_metrics(
         ),
         injection_survival=_injection_survival(paired),
         retrieval_recall=_retrieval_recall(paired, policy),
-        p50_latency_seconds=statistics.median(outcome.latency_seconds for outcome in outcomes),
-        cost_per_submission_usd=None if price is None else _cost_per_submission(outcomes, price),
+        p50_latency_seconds=(
+            statistics.median(outcome.latency_seconds for outcome in outcomes) if outcomes else None
+        ),
+        cost_per_submission_usd=_cost_per_submission(outcomes, price),
+        failed_case_count=len(results) - len(outcomes),
     )
 
 
@@ -213,44 +257,55 @@ class MemoryMetrics:
     false_positive_rate: Proportion
     recommendation_agreement: Proportion
     cleared_with_pair_precedent: Proportion
+    forced_review: Proportion
+    failed: Proportion
     silent_clearances: Proportion
 
 
 def memory_metrics(
     cases: Sequence[EvalCase],
-    outcomes: Sequence[CaseOutcome],
+    results: Sequence[CaseResult],
     precedent_ids_by_pair: Mapping[str, frozenset[str]],
 ) -> MemoryMetrics:
     flagged = 0
     cleared = 0
+    forced = 0
+    failed = 0
     agreeing = 0
     follow_ups = 0
-    for case, outcome in _paired(cases, outcomes):
+    for case, outcome in _paired(cases, results):
         clearance = case.expected_clearance
         if clearance is None:
             continue
         follow_ups += 1
+        if outcome is None:
+            failed += 1
+            continue
         agreeing += outcome.recommendation == case.expected_recommendation
         pair_precedent_ids = precedent_ids_by_pair.get(clearance.precedent_from, frozenset())
-        if clearance.code in outcome.judgement_codes:
+        if outcome.judgement_codes:
             flagged += 1
         elif any(
             code == clearance.code and precedent_id in pair_precedent_ids
             for code, precedent_id in outcome.clearances
         ):
             cleared += 1
+        elif clearance.code in outcome.unanswered_judgement_codes:
+            forced += 1
     return MemoryMetrics(
         false_positive_rate=Proportion(flagged, follow_ups),
         recommendation_agreement=Proportion(agreeing, follow_ups),
         cleared_with_pair_precedent=Proportion(cleared, follow_ups),
-        silent_clearances=Proportion(follow_ups - flagged - cleared, follow_ups),
+        forced_review=Proportion(forced, follow_ups),
+        failed=Proportion(failed, follow_ups),
+        silent_clearances=Proportion(follow_ups - flagged - cleared - forced - failed, follow_ups),
     )
 
 
 def rule_metrics(
-    cases: Sequence[EvalCase], outcomes: Sequence[CaseOutcome], policy: Policy
+    cases: Sequence[EvalCase], results: Sequence[CaseResult], policy: Policy
 ) -> RuleMetrics:
-    paired = _paired(cases, outcomes)
+    paired = _paired(cases, results)
     rule_codes = _codes_by_check(paired, policy, 'rule')
     return RuleMetrics(
         precision=_overlap_over_found(rule_codes),

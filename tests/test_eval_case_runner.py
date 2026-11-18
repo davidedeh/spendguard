@@ -1,7 +1,7 @@
 import datetime
 import json
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
@@ -29,13 +29,14 @@ from settings_factory import make_test_settings
 from spendguard.db.database import ConnectionPool
 from spendguard.eval.case_runner import (
     EvalResources,
+    EvalRunOptions,
     eval_graph,
     run_case,
     run_cases,
     run_eval,
 )
 from spendguard.eval.cases import EvalCase
-from spendguard.eval.metrics import Proportion
+from spendguard.eval.metrics import CaseOutcome, CaseResult, Proportion
 from spendguard.graph.nodes.plan import RetrievalPlan
 from spendguard.graph.nodes.run_judgement_checks import CheckVerdict, JudgementReport, QuotedText
 from spendguard.models.factory import build_embedder
@@ -44,7 +45,7 @@ from spendguard.observability.tracing import Tracing, create_tracing
 from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.retrieval.policy_index import index_policy
 from spendguard.seed.loader import SEED_DIRECTORY, read_seed_directory
-from spendguard.settings import ChatModelSettings, EvalRow, Settings
+from spendguard.settings import ChatModelSettings, EvalRow, ModelPrice, Settings
 from spendguard.store import precedents, submissions
 
 EMBEDDING_MODEL_ID = make_test_settings().embedding_model.model_id
@@ -53,6 +54,16 @@ POLICY = load_policy(POLICY_PATH)
 SEED_DATA = read_seed_directory(SEED_DIRECTORY)
 CASE_DIRECTORY = Path(__file__).parent.parent / 'evals' / 'cases'
 INPUT_TOKENS_PER_CALL = 100
+PRICE = ModelPrice(
+    input_per_million_tokens_usd=Decimal('1.00'),
+    output_per_million_tokens_usd=Decimal('5.00'),
+    priced_on=datetime.date(2026, 11, 2),
+)
+SECOND_PRICE = ModelPrice(
+    input_per_million_tokens_usd=Decimal('3.00'),
+    output_per_million_tokens_usd=Decimal('15.00'),
+    priced_on=datetime.date(2026, 11, 3),
+)
 OUTPUT_TOKENS_PER_CALL = 7
 
 
@@ -192,6 +203,22 @@ async def test_the_whole_policy_row_gives_judgement_the_rendered_policy_and_retr
     assert outcome.dropped_judgement_results == 0
 
 
+def completed(results: Sequence[CaseResult]) -> list[CaseOutcome]:
+    outcomes = [result for result in results if isinstance(result, CaseOutcome)]
+    assert len(outcomes) == len(results)
+    return outcomes
+
+
+def run_options(rows_directory: Path, cases_per_row: int | None = None) -> EvalRunOptions:
+    return EvalRunOptions(
+        measured_on=datetime.date(2026, 11, 20),
+        dataset_hash='a-dataset-hash',
+        run_identifier=uuid.uuid4().hex,
+        rows_directory=rows_directory,
+        cases_per_row=cases_per_row,
+    )
+
+
 def counts(proportion: Proportion) -> tuple[int, int]:
     return proportion.successes, proportion.trials
 
@@ -230,7 +257,7 @@ async def leftover_precedent(connection_pool: ConnectionPool, subject: str) -> N
 
 
 async def test_an_eval_run_reports_each_configured_row_in_order_with_memory_cleared(
-    connection_pool: ConnectionPool,
+    connection_pool: ConnectionPool, tmp_path: Path
 ) -> None:
     settings = make_test_settings(
         chat_models={
@@ -255,13 +282,7 @@ async def test_an_eval_run_reports_each_configured_row_in_order_with_memory_clea
             },
             {'model_key': 'fake_second', 'label': 'Second', 'policy_context': 'retrieved_clauses'},
         ],
-        model_prices={
-            'fake_primary': {
-                'input_per_million_tokens_usd': '1.00',
-                'output_per_million_tokens_usd': '5.00',
-                'priced_on': '2026-11-02',
-            }
-        },
+        model_prices={'fake_primary': PRICE, 'fake_second': SECOND_PRICE},
     )
     embedder = build_embedder(settings)
     async with connection_pool.connection() as connection:
@@ -279,8 +300,7 @@ async def test_an_eval_run_reports_each_configured_row_in_order_with_memory_clea
         (dataset_case('dev-judgement-positive-01'), dataset_case('dev-clean-01')),
         EvalResources(settings, POLICY, SEED_DATA, connection_pool, embedder, None),
         lambda row: models[row.model_key],
-        measured_on=datetime.date(2026, 11, 20),
-        dataset_hash='a-dataset-hash',
+        run_options(tmp_path),
     )
 
     assert [result.row.label for result in results.rows] == ['Primary', 'Second']
@@ -288,13 +308,122 @@ async def test_an_eval_run_reports_each_configured_row_in_order_with_memory_clea
     primary, second = results.rows
     assert counts(primary.metrics.judgement_recall) == (1, 1)
     assert counts(second.metrics.judgement_recall) == (0, 1)
-    assert primary.price is not None
-    assert second.price is None
+    assert (primary.price, second.price) == (PRICE, SECOND_PRICE)
     assert (results.case_count, results.dataset_hash) == (2, 'a-dataset-hash')
     remaining = await precedents.recent_precedents(
         connection_pool, 'EMP-015', 'WEEKEND_SPEND_UNJUSTIFIED', POLICY
     )
     assert 'Left by an earlier run.' not in [precedent['reason'] for precedent in remaining]
+
+
+def two_row_settings() -> Settings:
+    return make_test_settings(
+        chat_models={
+            'fake_primary': ChatModelSettings(
+                provider='fake',
+                model_id='fake-chat',
+                structured_output_method='function_calling',
+                temperature=0.0,
+            ),
+            'fake_second': ChatModelSettings(
+                provider='fake',
+                model_id='fake-second',
+                structured_output_method='function_calling',
+                temperature=0.0,
+            ),
+        },
+        eval_rows=[
+            {'model_key': 'fake_primary', 'label': 'Primary', 'policy_context': 'whole_policy'},
+            {'model_key': 'fake_second', 'label': 'Second', 'policy_context': 'whole_policy'},
+        ],
+        model_prices={'fake_primary': PRICE, 'fake_second': SECOND_PRICE},
+    )
+
+
+async def test_every_row_model_is_built_before_the_first_row_runs(
+    connection_pool: ConnectionPool, tmp_path: Path
+) -> None:
+    settings = two_row_settings()
+    primary_model = ScriptedEvalModel(model_id='fake-chat')
+
+    def chat_model_for(row: EvalRow) -> ScriptedEvalModel:
+        if row.model_key == 'fake_second':
+            raise ValueError('GOOGLE_API_KEY is not set')
+        return primary_model
+
+    with pytest.raises(ValueError, match='GOOGLE_API_KEY'):
+        await run_eval(
+            (dataset_case('dev-clean-01'),),
+            EvalResources(
+                settings, POLICY, SEED_DATA, connection_pool, build_embedder(settings), None
+            ),
+            chat_model_for,
+            run_options(tmp_path),
+        )
+
+    assert primary_model.received == []
+    assert list(tmp_path.iterdir()) == []
+
+
+class RowFileWatchingEvalModel(ScriptedEvalModel):
+    watched_file: Path
+    file_existed_at_first_call: list[bool] = Field(default_factory=list)
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        if not self.file_existed_at_first_call:
+            self.file_existed_at_first_call.append(self.watched_file.is_file())
+        return super()._generate(messages, stop, run_manager, **kwargs)
+
+
+async def test_each_row_is_saved_as_it_finishes_before_the_next_row_starts(
+    connection_pool: ConnectionPool, tmp_path: Path
+) -> None:
+    settings = two_row_settings()
+    second_model = RowFileWatchingEvalModel(
+        model_id='fake-second', watched_file=tmp_path / 'row-1.json'
+    )
+    models = {'fake_primary': ScriptedEvalModel(model_id='fake-chat'), 'fake_second': second_model}
+
+    await run_eval(
+        (dataset_case('dev-clean-01'), dataset_case(PAIR_ID), dataset_case('dev-hard-negative-01')),
+        EvalResources(settings, POLICY, SEED_DATA, connection_pool, build_embedder(settings), None),
+        lambda row: models[row.model_key],
+        run_options(tmp_path),
+    )
+
+    assert second_model.file_existed_at_first_call == [True]
+    first_row = json.loads((tmp_path / 'row-1.json').read_text())
+    second_row = json.loads((tmp_path / 'row-2.json').read_text())
+    assert (first_row['row']['label'], second_row['row']['label']) == ('Primary', 'Second')
+    assert len(second_row['cases']) == 3
+
+
+async def test_a_pre_flight_runs_only_the_first_cases_of_every_row(
+    connection_pool: ConnectionPool, tmp_path: Path
+) -> None:
+    settings = two_row_settings()
+    models = {
+        'fake_primary': ScriptedEvalModel(model_id='fake-chat'),
+        'fake_second': ScriptedEvalModel(model_id='fake-second'),
+    }
+
+    results = await run_eval(
+        (dataset_case('dev-clean-01'), dataset_case(PAIR_ID), dataset_case('dev-hard-negative-01')),
+        EvalResources(settings, POLICY, SEED_DATA, connection_pool, build_embedder(settings), None),
+        lambda row: models[row.model_key],
+        run_options(tmp_path, cases_per_row=2),
+    )
+
+    assert (results.case_count, results.cases_per_row) == (2, 2)
+    for row_number in (1, 2):
+        saved = json.loads((tmp_path / f'row-{row_number}.json').read_text())
+        assert [case['case_id'] for case in saved['cases']] == ['dev-clean-01', PAIR_ID]
 
 
 class PrecedentAwareEvalModel(FakeChatModel):
@@ -397,12 +526,32 @@ async def test_a_follow_up_runs_after_its_pair_and_is_cleared_by_the_precedent_i
         None,
     )
 
-    assert [outcome.case_id for outcome in run.outcomes] == [PAIR_ID, FOLLOW_UP_ID]
-    pair, follow_up = run.outcomes
+    assert [result.case_id for result in run.results] == [PAIR_ID, FOLLOW_UP_ID]
+    pair, follow_up = completed(run.results)
     assert pair.judgement_codes == {'WEEKEND_SPEND_UNJUSTIFIED'}
     assert follow_up.judgement_codes == frozenset()
     [pair_precedent_id] = run.precedent_ids_by_pair[PAIR_ID]
     assert follow_up.clearances == {('WEEKEND_SPEND_UNJUSTIFIED', pair_precedent_id)}
+
+
+async def test_a_clearance_naming_a_precedent_never_supplied_leaves_its_check_unanswered(
+    connection_pool: ConnectionPool,
+) -> None:
+    resources = await indexed_resources(connection_pool)
+    chat_model = ScriptedEvalModel(
+        model_id='fake-chat',
+        retrieval_queries=[clause_text('§2.4'), 'receipts for stationery'],
+        verdicts=[weekend_clearance('never-supplied')],
+    )
+    graph = eval_graph(PRIMARY_ROW, chat_model, resources, precedent_memory=True)
+
+    outcome = await run_case(
+        dataset_case(FOLLOW_UP_ID), graph, connection_pool, uuid.uuid4().hex, tracing=None
+    )
+
+    assert outcome.clearances == frozenset()
+    assert 'WEEKEND_SPEND_UNJUSTIFIED' in outcome.unanswered_judgement_codes
+    assert outcome.judgement_codes == frozenset()
 
 
 async def test_with_memory_off_a_follow_up_sees_no_precedent_although_its_pair_wrote_one(
@@ -425,13 +574,13 @@ async def test_with_memory_off_a_follow_up_sees_no_precedent_although_its_pair_w
     )
 
     assert len(run.precedent_ids_by_pair[PAIR_ID]) == 1
-    _, follow_up = run.outcomes
+    _, follow_up = completed(run.results)
     assert follow_up.judgement_codes == {'WEEKEND_SPEND_UNJUSTIFIED'}
     assert follow_up.clearances == frozenset()
 
 
 async def test_a_whole_policy_row_sharing_the_primary_model_runs_every_case_afresh(
-    connection_pool: ConnectionPool,
+    connection_pool: ConnectionPool, tmp_path: Path
 ) -> None:
     settings = make_test_settings(
         eval_rows=[
@@ -445,7 +594,8 @@ async def test_a_whole_policy_row_sharing_the_primary_model_runs_every_case_afre
                 'label': 'Whole policy',
                 'policy_context': 'whole_policy',
             },
-        ]
+        ],
+        model_prices={'fake_primary': PRICE},
     )
     embedder = build_embedder(settings)
     async with connection_pool.connection() as connection:
@@ -475,8 +625,7 @@ async def test_a_whole_policy_row_sharing_the_primary_model_runs_every_case_afre
         (dataset_case('dev-judgement-positive-01'),),
         EvalResources(settings, POLICY, SEED_DATA, connection_pool, embedder, None),
         lambda row: models[row.label],
-        measured_on=datetime.date(2026, 11, 20),
-        dataset_hash='a-dataset-hash',
+        run_options(tmp_path),
     )
 
     primary, whole_policy = results.rows
@@ -488,7 +637,7 @@ async def test_a_whole_policy_row_sharing_the_primary_model_runs_every_case_afre
 
 
 async def test_an_eval_run_compares_memory_on_and_off_on_the_primary_model_only(
-    connection_pool: ConnectionPool,
+    connection_pool: ConnectionPool, tmp_path: Path
 ) -> None:
     resources = await indexed_resources(connection_pool)
     settings = resources.settings.model_copy(
@@ -499,6 +648,7 @@ async def test_an_eval_run_compares_memory_on_and_off_on_the_primary_model_only(
                 ),
                 PRIMARY_ROW,
             ),
+            'model_prices': {'fake_primary': PRICE, 'fake_second': SECOND_PRICE},
             'chat_models': resources.settings.chat_models
             | {
                 'fake_second': ChatModelSettings(
@@ -522,8 +672,7 @@ async def test_an_eval_run_compares_memory_on_and_off_on_the_primary_model_only(
         (dataset_case(PAIR_ID), dataset_case(FOLLOW_UP_ID)),
         EvalResources(settings, POLICY, SEED_DATA, connection_pool, resources.embedder, None),
         lambda row: models[row.model_key],
-        measured_on=datetime.date(2026, 11, 20),
-        dataset_hash='a-dataset-hash',
+        run_options(tmp_path),
     )
 
     comparison = results.memory_comparison
@@ -535,6 +684,31 @@ async def test_an_eval_run_compares_memory_on_and_off_on_the_primary_model_only(
     assert counts(comparison.memory_off.recommendation_agreement) == (0, 1)
     _, primary = results.rows
     assert counts(primary.metrics.recommendation_accuracy) == (2, 2)
+
+
+async def test_the_memory_comparison_reuses_the_model_built_for_its_row(
+    connection_pool: ConnectionPool, tmp_path: Path
+) -> None:
+    resources = await indexed_resources(connection_pool)
+    settings = resources.settings.model_copy(
+        update={'eval_rows': (PRIMARY_ROW,), 'model_prices': {'fake_primary': PRICE}}
+    )
+    primary_model = PrecedentAwareEvalModel(model_id='fake-chat')
+    rows_built: list[EvalRow] = []
+
+    def chat_model_for(row: EvalRow) -> FakeChatModel:
+        rows_built.append(row)
+        return primary_model
+
+    results = await run_eval(
+        (dataset_case(PAIR_ID), dataset_case(FOLLOW_UP_ID)),
+        EvalResources(settings, POLICY, SEED_DATA, connection_pool, resources.embedder, None),
+        chat_model_for,
+        run_options(tmp_path),
+    )
+
+    assert results.memory_comparison is not None
+    assert rows_built == [PRIMARY_ROW]
 
 
 class FakeLangfuseProjects:
@@ -643,7 +817,9 @@ def tracing_into(
     return tracing
 
 
-class FailingEvalModel(FakeChatModel):
+class FailingOnTextEvalModel(ScriptedEvalModel):
+    failing_texts: list[str]
+
     def _generate(
         self,
         messages: list[BaseMessage],
@@ -651,11 +827,26 @@ class FailingEvalModel(FakeChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
-        raise RuntimeError('the provider is unavailable')
+        if any(text in message.text for message in messages for text in self.failing_texts):
+            raise RuntimeError('the provider is unavailable')
+        return super()._generate(messages, stop, run_manager, **kwargs)
 
 
-async def test_a_case_that_fails_inside_a_dataset_run_fails_the_eval(
-    connection_pool: ConnectionPool, exporter: InMemorySpanExporter
+def failing_on_clean_invoice() -> FailingOnTextEvalModel:
+    return FailingOnTextEvalModel(
+        model_id='fake-chat',
+        failing_texts=['INV-2026-0842'],
+        retrieval_queries=[clause_text('§2.4'), 'receipts for stationery'],
+        verdicts=[weekend_verdict()],
+    )
+
+
+FAILING_AND_PASSING_CASES = ('dev-clean-01', PAIR_ID)
+
+
+@pytest.mark.parametrize('traced', [False, True], ids=['plain run', 'Langfuse dataset run'])
+async def test_a_case_that_raises_is_recorded_as_failed_and_the_row_carries_on(
+    connection_pool: ConnectionPool, exporter: InMemorySpanExporter, tmp_path: Path, traced: bool
 ) -> None:
     resources = await indexed_resources(connection_pool)
     settings = resources.settings.model_copy(
@@ -663,24 +854,69 @@ async def test_a_case_that_fails_inside_a_dataset_run_fails_the_eval(
             'langfuse_public_key': SecretStr('pk-lf-test'),
             'langfuse_secret_key': SecretStr('sk-lf-test'),
             'eval_rows': (PRIMARY_ROW,),
+            'model_prices': {'fake_primary': PRICE},
         }
     )
-    tracing = tracing_into(exporter, FakeLangfuseApi(), settings)
+    tracing = tracing_into(exporter, FakeLangfuseApi(), settings) if traced else None
 
-    with pytest.raises(RuntimeError, match='the provider is unavailable'):
-        await run_eval(
-            (dataset_case('dev-clean-01'),),
-            EvalResources(
-                settings, POLICY, SEED_DATA, connection_pool, resources.embedder, tracing
-            ),
-            lambda row: FailingEvalModel(model_id='fake-chat'),
-            measured_on=datetime.date(2026, 11, 20),
-            dataset_hash='a-dataset-hash',
-        )
+    results = await run_eval(
+        tuple(dataset_case(case_id) for case_id in FAILING_AND_PASSING_CASES),
+        EvalResources(settings, POLICY, SEED_DATA, connection_pool, resources.embedder, tracing),
+        lambda row: failing_on_clean_invoice(),
+        run_options(tmp_path),
+    )
+
+    [primary] = results.rows
+    assert primary.metrics.failed_case_count == 1
+    assert counts(primary.metrics.judgement_recall) == (1, 1)
+    assert counts(primary.metrics.route_accuracy) == (1, 2)
+    saved = json.loads((tmp_path / 'row-1.json').read_text())
+    assert [(case['case_id'], case['failed']) for case in saved['cases']] == [
+        ('dev-clean-01', True),
+        (PAIR_ID, False),
+    ]
+    assert saved['cases'][0]['error_message'] == 'the provider is unavailable'
+
+
+async def test_rule_metrics_take_each_case_from_its_first_completed_row_and_miss_a_case_no_row_ran(
+    connection_pool: ConnectionPool, tmp_path: Path
+) -> None:
+    settings = make_test_settings(
+        eval_rows=[
+            {'model_key': 'fake_primary', 'label': label, 'policy_context': 'whole_policy'}
+            for label in ('First', 'Second', 'Third')
+        ],
+        model_prices={'fake_primary': PRICE},
+    )
+    over_limit_merchant = 'Trans-Nord Rail'
+    missing_receipt_merchant = 'Quillfield Stationery'
+    failing_texts_by_label = {
+        'First': [over_limit_merchant, missing_receipt_merchant],
+        'Second': [missing_receipt_merchant],
+        'Third': [over_limit_merchant, missing_receipt_merchant],
+    }
+
+    results = await run_eval(
+        (dataset_case('dev-rule-coverage-01'), dataset_case('dev-rule-coverage-02')),
+        EvalResources(settings, POLICY, SEED_DATA, connection_pool, build_embedder(settings), None),
+        lambda row: FailingOnTextEvalModel(
+            model_id='fake-chat',
+            failing_texts=failing_texts_by_label[row.label],
+            retrieval_queries=['category limits', 'receipts'],
+        ),
+        run_options(tmp_path),
+    )
+
+    assert [result.metrics.failed_case_count for result in results.rows] == [2, 1, 2]
+    rule_metrics = results.rule_metrics
+    assert counts(rule_metrics.recall) == (1, 2)
+    assert counts(rule_metrics.precision) == (1, 1)
+    assert counts(rule_metrics.per_code['OVER_CATEGORY_LIMIT']) == (1, 1)
+    assert counts(rule_metrics.per_code['MISSING_RECEIPT']) == (0, 1)
 
 
 async def test_each_row_becomes_a_langfuse_dataset_run_with_one_traced_item_per_case(
-    connection_pool: ConnectionPool, exporter: InMemorySpanExporter
+    connection_pool: ConnectionPool, exporter: InMemorySpanExporter, tmp_path: Path
 ) -> None:
     settings = make_test_settings(
         langfuse_public_key='pk-lf-test',
@@ -727,8 +963,7 @@ async def test_each_row_becomes_a_langfuse_dataset_run_with_one_traced_item_per_
         cases,
         EvalResources(settings, POLICY, SEED_DATA, connection_pool, embedder, tracing),
         scripted_model,
-        measured_on=datetime.date(2026, 11, 20),
-        dataset_hash='a-dataset-hash',
+        run_options(tmp_path),
     )
 
     tracing.client.flush()
@@ -752,7 +987,50 @@ async def test_each_row_becomes_a_langfuse_dataset_run_with_one_traced_item_per_
     assert set(item_traces) <= intake_traces
     finalize_traces = {trace_id_of(span) for span in spans if span.name == 'finalize'}
     assert {item_traces[0], item_traces[2]} <= finalize_traces
-    primary_row_calls = len(built_models[0].received)
-    assert results.rows[0].metrics.cost_per_submission_usd == Decimal(
-        primary_row_calls * (INPUT_TOKENS_PER_CALL * 1 + OUTPUT_TOKENS_PER_CALL * 5)
+    whole_policy_row_calls = len(built_models[1].received)
+    assert results.rows[1].metrics.cost_per_submission_usd == Decimal(
+        whole_policy_row_calls * (INPUT_TOKENS_PER_CALL * 1 + OUTPUT_TOKENS_PER_CALL * 5)
     ) / Decimal(1_000_000) / len(cases)
+
+
+@pytest.mark.parametrize(
+    ('cases_per_row', 'run_name_prefix'),
+    [(None, '2026-11-20 Primary '), (1, '2026-11-20 pre-flight Primary ')],
+    ids=['full run', 'pre-flight'],
+)
+async def test_a_dataset_runs_name_says_whether_it_is_a_pre_flight(
+    connection_pool: ConnectionPool,
+    exporter: InMemorySpanExporter,
+    tmp_path: Path,
+    cases_per_row: int | None,
+    run_name_prefix: str,
+) -> None:
+    settings = make_test_settings(
+        langfuse_public_key='pk-lf-test',
+        langfuse_secret_key='sk-lf-test',
+        eval_rows=[
+            {'model_key': 'fake_primary', 'label': 'Primary', 'policy_context': 'whole_policy'}
+        ],
+        model_prices={'fake_primary': PRICE},
+    )
+    tracing = tracing_into(exporter, FakeLangfuseApi(), settings)
+
+    await run_eval(
+        (dataset_case('dev-clean-01'), dataset_case(PAIR_ID)),
+        EvalResources(
+            settings, POLICY, SEED_DATA, connection_pool, build_embedder(settings), tracing
+        ),
+        lambda row: ScriptedEvalModel(
+            model_id='fake-chat', retrieval_queries=['weekend spend', 'receipts']
+        ),
+        run_options(tmp_path, cases_per_row=cases_per_row),
+    )
+
+    tracing.client.flush()
+    run_names = {
+        attribute(span, 'langfuse.experiment.name')
+        for span in exporter.get_finished_spans()
+        if span.name == 'experiment-item-run'
+    }
+    [run_name] = run_names
+    assert run_name.startswith(run_name_prefix)

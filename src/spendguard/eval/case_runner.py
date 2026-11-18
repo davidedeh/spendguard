@@ -4,6 +4,7 @@ import time
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -16,15 +17,29 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from spendguard.db.database import ConnectionPool
 from spendguard.eval.cases import EvalCase, ScriptedReview
-from spendguard.eval.dataset_runs import DatasetRun, dataset_name, run_as_dataset_run, upload_cases
+from spendguard.eval.dataset_runs import (
+    DatasetRun,
+    case_failure,
+    dataset_name,
+    run_as_dataset_run,
+    upload_cases,
+)
 from spendguard.eval.metrics import (
     CaseOutcome,
+    CaseResult,
     MemoryMetrics,
+    judgement_positive_count,
     memory_metrics,
     row_metrics,
     rule_metrics,
 )
-from spendguard.eval.report import EvalResults, MemoryComparison, RowResult
+from spendguard.eval.report import (
+    EvalResults,
+    MemoryComparison,
+    RowResult,
+    RowsDirectory,
+    write_row_results,
+)
 from spendguard.graph.build import ReviewGraph, build_graph
 from spendguard.graph.config import GraphConfig, thread_config
 from spendguard.graph.nodes.execute import DecisionEvent
@@ -33,7 +48,7 @@ from spendguard.graph.state import (
     Disposition,
     DispositionVerdict,
     RecordedFinding,
-    ReviewState,
+    initial_review_state,
     precedent_clearances,
 )
 from spendguard.observability.tracing import Tracing, traced_advance
@@ -114,12 +129,9 @@ async def run_case(
         submission_type=case.submission.type,
         payload=payload,
     )
-    initial_state: ReviewState = {
-        'submission_id': str(recording.submission_id),
-        'idempotency_key': idempotency_key,
-        'submission_type': case.submission.type,
-        'submission': payload,
-    }
+    initial_state = initial_review_state(
+        recording.submission_id, idempotency_key, case.submission.type, payload
+    )
     token_counter = _TokenCounter()
     thread: RunnableConfig = thread_config(idempotency_key) | {'callbacks': [token_counter]}
     started = time.perf_counter()
@@ -146,6 +158,7 @@ async def run_case(
         clearances=frozenset(
             (clearance['code'], clearance['precedent_id']) for clearance in kept_clearances
         ),
+        unanswered_judgement_codes=frozenset(state['unanswered_checks']),
         latency_seconds=latency_seconds,
         input_tokens=token_counter.input_tokens,
         output_tokens=token_counter.output_tokens,
@@ -221,7 +234,7 @@ async def _apply_scripted_review(
 
 @dataclass(frozen=True)
 class PairedRun:
-    outcomes: list[CaseOutcome]
+    results: list[CaseResult]
     precedent_ids_by_pair: dict[str, frozenset[str]]
 
 
@@ -246,21 +259,21 @@ async def run_cases(
             )
         return outcome
 
+    async def run_or_record_failure(case: EvalCase) -> CaseResult:
+        try:
+            return await run_paired_case(case)
+        except Exception as error:
+            return case_failure(case, error)
+
     if dataset_run is None:
-        outcomes = [await run_paired_case(case) for case in others + follow_ups]
+        results = [await run_or_record_failure(case) for case in others + follow_ups]
     else:
-        outcomes = await run_as_dataset_run(dataset_run, others + follow_ups, run_paired_case)
-    return PairedRun(outcomes=outcomes, precedent_ids_by_pair=precedent_ids_by_pair)
+        results = await run_as_dataset_run(dataset_run, others + follow_ups, run_paired_case)
+    return PairedRun(results=results, precedent_ids_by_pair=precedent_ids_by_pair)
 
 
-async def _compare_memory(
-    cases: Sequence[EvalCase],
-    resources: EvalResources,
-    chat_model_for: Callable[[EvalRow], BaseChatModel],
-    run_identifier: str,
-) -> MemoryComparison | None:
-    settings = resources.settings
-    row = next(
+def _memory_comparison_row(settings: Settings) -> EvalRow | None:
+    return next(
         (
             row
             for row in settings.eval_rows
@@ -269,14 +282,20 @@ async def _compare_memory(
         ),
         None,
     )
-    if row is None:
-        return None
+
+
+async def _compare_memory(
+    cases: Sequence[EvalCase],
+    resources: EvalResources,
+    row: EvalRow,
+    chat_model: BaseChatModel,
+    run_identifier: str,
+) -> MemoryComparison:
     paired_cases = [
         case
         for case in cases
         if case.scripted_review is not None or case.expected_clearance is not None
     ]
-    chat_model = chat_model_for(row)
     metrics_by_setting: dict[bool, MemoryMetrics] = {}
     for precedent_memory in (True, False):
         await precedents.clear_precedents(resources.connection_pool)
@@ -288,71 +307,115 @@ async def _compare_memory(
             dataset_run=None,
         )
         metrics_by_setting[precedent_memory] = memory_metrics(
-            paired_cases, run.outcomes, run.precedent_ids_by_pair
+            paired_cases, run.results, run.precedent_ids_by_pair
         )
     return MemoryComparison(
         row=row,
-        model=settings.chat_models[row.model_key],
+        model=resources.settings.chat_models[row.model_key],
         memory_on=metrics_by_setting[True],
         memory_off=metrics_by_setting[False],
     )
+
+
+def _first_completed_results(results_by_row: Sequence[Sequence[CaseResult]]) -> list[CaseResult]:
+    first_results: dict[str, CaseResult] = {}
+    for results in results_by_row:
+        for result in results:
+            earlier = first_results.get(result.case_id)
+            if earlier is None or (
+                isinstance(result, CaseOutcome) and not isinstance(earlier, CaseOutcome)
+            ):
+                first_results[result.case_id] = result
+    return list(first_results.values())
+
+
+@dataclass(frozen=True)
+class EvalRunOptions:
+    measured_on: datetime.date
+    dataset_hash: str
+    run_identifier: str
+    rows_directory: Path
+    cases_per_row: int | None
 
 
 async def run_eval(
     cases: Sequence[EvalCase],
     resources: EvalResources,
     chat_model_for: Callable[[EvalRow], BaseChatModel],
-    measured_on: datetime.date,
-    dataset_hash: str,
+    options: EvalRunOptions,
 ) -> EvalResults:
     settings = resources.settings
-    run_identifier = uuid.uuid4().hex
+    measured_on = options.measured_on
+    row_cases = cases[: options.cases_per_row]
+    chat_models = [chat_model_for(row) for row in settings.eval_rows]
+    run_identifier = options.run_identifier
+    rows_directory = RowsDirectory(options.rows_directory, run_identifier)
     row_results: list[RowResult] = []
-    first_row_outcomes: list[CaseOutcome] = []
+    results_by_row: list[list[CaseResult]] = []
     tracing = resources.tracing
-    uploaded_items = (
+    items_by_case_id = (
         None
         if tracing is None
-        else (
-            tracing.client,
-            await asyncio.to_thread(
-                upload_cases, tracing.client, dataset_name(dataset_hash), cases
-            ),
+        else await asyncio.to_thread(
+            upload_cases, tracing.client, dataset_name(options.dataset_hash), row_cases
         )
     )
-    for row_number, row in enumerate(settings.eval_rows, start=1):
+    run_name_prefix = (
+        f'{measured_on}' if options.cases_per_row is None else f'{measured_on} pre-flight'
+    )
+    for row_number, (row, chat_model) in enumerate(
+        zip(settings.eval_rows, chat_models, strict=True), start=1
+    ):
         await precedents.clear_precedents(resources.connection_pool)
-        graph = eval_graph(row, chat_model_for(row), resources, precedent_memory=True)
+        graph = eval_graph(row, chat_model, resources, precedent_memory=True)
         row_run_identifier = f'{run_identifier}:row-{row_number}'
         dataset_run = (
             None
-            if uploaded_items is None
+            if tracing is None or items_by_case_id is None
             else DatasetRun(
-                client=uploaded_items[0],
-                name=f'{measured_on} {row.label} {row_run_identifier}',
-                items_by_case_id=uploaded_items[1],
+                client=tracing.client,
+                name=f'{run_name_prefix} {row.label} {row_run_identifier}',
+                items_by_case_id=items_by_case_id,
             )
         )
-        outcomes = (
-            await run_cases(cases, graph, resources, row_run_identifier, dataset_run)
-        ).outcomes
-        first_row_outcomes = first_row_outcomes or outcomes
-        price = settings.model_prices.get(row.model_key)
+        results = (
+            await run_cases(row_cases, graph, resources, row_run_identifier, dataset_run)
+        ).results
+        model = settings.chat_models[row.model_key]
+        write_row_results(rows_directory, row_number, row, model, results)
+        results_by_row.append(results)
+        price = settings.model_prices[row.model_key]
         row_results.append(
             RowResult(
                 row=row,
-                model=settings.chat_models[row.model_key],
+                model=model,
                 price=price,
-                metrics=row_metrics(cases, outcomes, resources.policy, price),
+                metrics=row_metrics(row_cases, results, resources.policy, price),
             )
         )
+    memory_row = _memory_comparison_row(settings)
     return EvalResults(
         measured_on=measured_on,
-        dataset_hash=dataset_hash,
-        case_count=len(cases),
+        dataset_hash=options.dataset_hash,
+        run_identifier=run_identifier,
+        case_count=len(row_cases),
+        judgement_positive_count=judgement_positive_count(row_cases, resources.policy),
+        cases_per_row=options.cases_per_row,
         retrieval_top_k=settings.retrieval_top_k,
         judgement_max_tool_calls=settings.judgement_max_tool_calls,
         rows=tuple(row_results),
-        rule_metrics=rule_metrics(cases, first_row_outcomes, resources.policy),
-        memory_comparison=await _compare_memory(cases, resources, chat_model_for, run_identifier),
+        rule_metrics=rule_metrics(
+            row_cases, _first_completed_results(results_by_row), resources.policy
+        ),
+        memory_comparison=(
+            None
+            if memory_row is None
+            else await _compare_memory(
+                row_cases,
+                resources,
+                memory_row,
+                chat_models[settings.eval_rows.index(memory_row)],
+                run_identifier,
+            )
+        ),
     )

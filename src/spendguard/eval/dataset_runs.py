@@ -9,13 +9,18 @@ from langfuse.api import DatasetItem, NotFoundError
 from langfuse.experiment import ExperimentItem
 
 from spendguard.eval.cases import EvalCase
-from spendguard.eval.metrics import CaseOutcome
+from spendguard.eval.metrics import CaseFailure, CaseOutcome, CaseResult
+from spendguard.eval.report import DATASET_HASH_PREFIX_LENGTH, DATASET_NAME
 
 type CaseRun = Callable[[EvalCase], Coroutine[Any, Any, CaseOutcome]]
 
 
 def dataset_name(dataset_hash: str) -> str:
-    return f'spendguard-eval-{dataset_hash}'
+    return f'{DATASET_NAME}-{dataset_hash[:DATASET_HASH_PREFIX_LENGTH]}'
+
+
+def case_failure(case: EvalCase, error: Exception) -> CaseFailure:
+    return CaseFailure(case_id=case.id, error_type=type(error).__name__, error_message=str(error))
 
 
 @dataclass(frozen=True)
@@ -53,13 +58,12 @@ def upload_cases(client: Langfuse, name: str, cases: Sequence[EvalCase]) -> dict
 
 async def run_as_dataset_run(
     run: DatasetRun, cases: Sequence[EvalCase], run_case: CaseRun
-) -> list[CaseOutcome]:
+) -> list[CaseResult]:
     loop = asyncio.get_running_loop()
     cases_by_item_id = {run.items_by_case_id[case.id].id: case for case in cases}
-    outcomes: dict[str, CaseOutcome] = {}
-    failures: list[Exception] = []
+    results: dict[str, CaseResult] = {}
 
-    def task(*, item: ExperimentItem, **keyword_arguments: dict[str, Any]) -> dict[str, Any]:
+    def task(*, item: ExperimentItem, **keyword_arguments: Any) -> dict[str, Any]:
         if not isinstance(item, DatasetItem):
             raise TypeError('a dataset run is given dataset items only')
         case = cases_by_item_id[item.id]
@@ -71,9 +75,9 @@ async def run_as_dataset_run(
         try:
             outcome = asyncio.run_coroutine_threadsafe(run_in_item_context(), loop).result()
         except Exception as error:
-            failures.append(error)
+            results[case.id] = case_failure(case, error)
             raise
-        outcomes[case.id] = outcome
+        results[case.id] = outcome
         return {
             'rule_codes': sorted(outcome.rule_codes),
             'judgement_codes': sorted(outcome.judgement_codes),
@@ -89,6 +93,4 @@ async def run_as_dataset_run(
         task=task,
         max_concurrency=1,
     )
-    if failures:
-        raise failures[0]
-    return [outcomes[case.id] for case in cases]
+    return [results[case.id] for case in cases]
