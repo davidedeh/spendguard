@@ -21,12 +21,14 @@ github_repository="${repository_path#*/}"
 account_id="$(aws sts get-caller-identity --query Account --output text)"
 image_repository_arn="arn:aws:ecr:$AWS_REGION:$account_id:repository/$STACK_NAME"
 
+# SAM CLI replaces --oidc-provider with --cicd-provider's value, so both name GitHub Actions.
 sam pipeline bootstrap \
   --no-interactive \
   --no-confirm-changeset \
   --stage "$STACK_NAME" \
   --region "$AWS_REGION" \
   --permissions-provider oidc \
+  --cicd-provider github-actions \
   --oidc-provider github-actions \
   --oidc-provider-url https://token.actions.githubusercontent.com \
   --oidc-client-id sts.amazonaws.com \

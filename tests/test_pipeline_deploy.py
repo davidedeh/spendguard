@@ -113,6 +113,7 @@ def test_bootstrap_trusts_only_this_repositorys_main_branch_without_prompting(
         '--stage': 'a-stack',
         '--region': 'eu-west-2',
         '--permissions-provider': 'oidc',
+        '--cicd-provider': 'github-actions',
         '--oidc-provider': 'github-actions',
         '--oidc-provider-url': 'https://token.actions.githubusercontent.com',
         '--oidc-client-id': 'sts.amazonaws.com',
