@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-      ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
+      ALARM_EMAIL: ${{ secrets.ALARM_EMAIL }}
       PIPELINE_EXECUTION_ROLE_ARN: ${{ vars.PIPELINE_EXECUTION_ROLE_ARN }}
       CLOUDFORMATION_EXECUTION_ROLE_ARN: ${{ vars.CLOUDFORMATION_EXECUTION_ROLE_ARN }}
     steps:

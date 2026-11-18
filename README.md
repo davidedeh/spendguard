@@ -145,7 +145,7 @@ make bootstrap      # pipeline role trusted only by this repository's main branc
 make secrets        # SecureString parameters the functions read at start-up
 ```
 
-`make secrets` asks for the Supabase transaction pooler URL and the signing keys, generating the keys if you press Enter. `make bootstrap` prints the repository variables `deploy.yml` reads. `make deploy ALARM_EMAIL=you@example.com` runs the same script from a laptop: it builds and pushes the arm64 image tagged with the commit, deploys the stack, runs migrations and indexes the policy through the preparation function, then smoke-tests the API URL. Confirm the SNS subscription email to receive dead-letter alarms.
+`make secrets` asks for the Supabase transaction pooler URL and the signing keys, generating the keys if you press Enter. `make bootstrap` prints the repository variables and the alarm email secret `deploy.yml` reads. `make deploy ALARM_EMAIL=you@example.com` runs the same script from a laptop: it builds and pushes the arm64 image tagged with the commit, deploys the stack, runs migrations and indexes the policy through the preparation function, then smoke-tests the API URL. Confirm the SNS subscription email to receive dead-letter alarms.
 
 The deployed database starts with no approvers. Seed it and issue an approver token from a laptop, pointing the local commands at Supabase's session pooler URI (port 5432; `DATABASE_URL` in the environment overrides `.env`):
 
