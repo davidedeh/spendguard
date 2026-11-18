@@ -250,6 +250,29 @@ def test_deploy_runs_sam_deploy_against_the_stacks_repository_as_the_execution_r
     ]
 
 
+def test_a_first_deploy_creates_the_stack_without_an_image_tag_then_deploys_the_commit(
+    tmp_path: Path,
+) -> None:
+    no_stack_yet = STACK_WITH_FUNCTIONS.replace(
+        '  lambda\\ invoke*) echo None ;;\n',
+        '  lambda\\ invoke*) echo None ;;\n  cloudformation\\ describe-stacks*) exit 254 ;;\n',
+    )
+    completed, calls = run_script(
+        'deploy.sh',
+        tmp_path,
+        fakes={
+            'aws': no_stack_yet,
+            'git': f'[[ "$1" == rev-parse ]] && echo {COMMIT_SHA}; true',
+        },
+        environment={'ALARM_EMAIL': 'alarms@example.com'},
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    first_deploy, second_deploy = [call.split() for call in calls if call.startswith('sam ')]
+    assert [argument for argument in first_deploy if argument.startswith('ImageTag')] == []
+    assert f'ImageTag={COMMIT_SHA}' in second_deploy
+
+
 def test_a_laptop_deploy_without_pipeline_roles_deploys_as_the_caller_and_keeps_the_previous_grant(
     tmp_path: Path,
 ) -> None:

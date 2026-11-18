@@ -31,7 +31,12 @@ stack_output() {
 # SAM CLI requires --image-repository for any template with image functions, but it never pushes:
 # the functions' ImageUri is an intrinsic, which sam deploy leaves as it is.
 deploy_stack() {
-  local parameter_overrides=("ImageTag=$1" "AlarmEmail=$ALARM_EMAIL")
+  # SAM CLI rejects an empty override, and the template's empty ImageTag default is the stack without
+  # functions.
+  local parameter_overrides=("AlarmEmail=$ALARM_EMAIL")
+  if [[ -n "$1" ]]; then
+    parameter_overrides+=("ImageTag=$1")
+  fi
   if [[ -n "${PIPELINE_EXECUTION_ROLE_ARN:-}" ]]; then
     parameter_overrides+=("PipelineExecutionRoleArn=$PIPELINE_EXECUTION_ROLE_ARN")
   fi
