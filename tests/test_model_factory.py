@@ -4,7 +4,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import ValidationError
 
 from settings_factory import make_test_settings
-from spendguard.models.factory import build_chat_model, build_embedder
+from spendguard.models.factory import BEDROCK_MAX_ATTEMPTS, build_chat_model, build_embedder
 from spendguard.models.fake import FakeChatModel
 from spendguard.settings import ChatModelSettings, ModelSettings
 
@@ -42,7 +42,7 @@ def test_a_fake_model_key_builds_the_fake_chat_model_with_its_configured_id() ->
     assert model.model_id == 'fake-drafter-2'
 
 
-def test_a_bedrock_model_key_builds_converse_with_its_id_region_timeout_and_temperature() -> None:
+def test_a_bedrock_model_key_builds_converse_with_its_settings_and_adaptive_retries() -> None:
     settings = make_test_settings(
         aws_region='eu-central-1',
         allowed_providers=('fake', 'bedrock'),
@@ -68,6 +68,10 @@ def test_a_bedrock_model_key_builds_converse_with_its_id_region_timeout_and_temp
     assert model.model_id == 'openai.a-gpt-oss-id'
     assert model.region_name == 'eu-central-1'
     assert model.config.read_timeout == 120
+    assert model.client.meta.config.retries == {
+        'mode': 'adaptive',
+        'total_max_attempts': BEDROCK_MAX_ATTEMPTS,
+    }
     assert model.temperature == 0.0
 
 
