@@ -9,6 +9,7 @@ import httpx
 
 from spendguard.db.database import ConnectionPool
 from spendguard.demo import (
+    APPROVER_TOKEN_VARIABLE,
     DEMO_DISMISSAL_REASON,
     PROCESSING_TIMEOUT_SECONDS,
     REQUEST_TIMEOUT_SECONDS,
@@ -21,6 +22,7 @@ from spendguard.demo import (
     NotSettledError,
     PostedDecision,
     PostedSample,
+    approver_token,
     demo_samples,
     executed_decisions,
     line_buffered_stdout,
@@ -237,10 +239,14 @@ async def _present(base_url: str, token: str) -> bool:
 
 
 def main() -> None:
-    if len(sys.argv) != 3:
-        sys.exit('usage: python -m spendguard.demo_presentation <api base URL> <approver token>')
+    if len(sys.argv) != 2:
+        sys.exit(
+            f'usage: {APPROVER_TOKEN_VARIABLE}=<approver token>'
+            ' python -m spendguard.demo_presentation <api base URL>'
+        )
+    token = approver_token()
     line_buffered_stdout()
-    if not asyncio.run(_present(sys.argv[1], sys.argv[2])):
+    if not asyncio.run(_present(sys.argv[1], token)):
         sys.exit(1)
 
 

@@ -1,12 +1,16 @@
+import os
 import re
+import subprocess
+import typing
 from pathlib import Path
 
 import boto3
 import pytest
 import yaml
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 import spendguard.settings
+from spendguard.demo import APPROVER_TOKEN_VARIABLE
 from spendguard.settings import MissingEnvFileError, Settings
 from spendguard.settings import load_settings as load_settings_from_files
 
@@ -110,3 +114,52 @@ def test_every_relative_link_in_the_readme_points_to_a_file_in_the_repository() 
     relative_targets = [target for target in link_targets if '://' not in target]
     assert relative_targets
     assert [target for target in relative_targets if not (REPOSITORY_ROOT / target).exists()] == []
+
+
+def test_make_demo_runs_silently_and_hands_the_approver_token_over_only_in_the_environment(
+    tmp_path: Path,
+) -> None:
+    received = tmp_path / 'received'
+    fake_uv = tmp_path / 'uv'
+    fake_uv.write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" "$APPROVER_TOKEN" > {received}\n')
+    fake_uv.chmod(0o755)
+
+    completed = subprocess.run(
+        ['make', '--no-print-directory', 'demo', 'URL=https://an-api.example', 'DECIDE=1'],
+        cwd=REPOSITORY_ROOT,
+        env={**os.environ, 'PATH': f'{tmp_path}:{os.environ["PATH"]}', 'APPROVER_TOKEN': 'a-token'},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == ''
+    assert received.read_text().splitlines() == [
+        'run python -m spendguard.demo https://an-api.example --decide',
+        'a-token',
+    ]
+
+
+def test_no_make_target_puts_a_secret_in_a_command_it_runs() -> None:
+    secret_names = [APPROVER_TOKEN_VARIABLE] + [
+        name.upper()
+        for name, field in Settings.model_fields.items()
+        if SecretStr in (field.annotation, *typing.get_args(field.annotation))
+    ]
+    secrets = {name: f'secret-value-of-{name.lower()}' for name in secret_names}
+    targets = make_target_pattern.findall((REPOSITORY_ROOT / 'Makefile').read_text())
+
+    dry_run = subprocess.run(
+        ['make', '--dry-run', '--no-print-directory', *targets]
+        + [f'{name}={value}' for name, value in secrets.items()],
+        cwd=REPOSITORY_ROOT,
+        env={**os.environ, **secrets},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert dry_run.returncode == 0, dry_run.stderr
+    assert 'spendguard.demo' in dry_run.stdout
+    assert [value for value in secrets.values() if value in dry_run.stdout + dry_run.stderr] == []

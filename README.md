@@ -97,7 +97,8 @@ Then, from another terminal:
 
 ```sh
 make smoke URL=http://localhost:8000    # health is 200, an unsigned webhook is 401
-curl -H "Authorization: Bearer <token>" "http://localhost:8000/submissions?status=pending_review"
+read -rs APPROVER_TOKEN && export APPROVER_TOKEN   # paste the token; it stays out of history and process lists
+curl -H @- "http://localhost:8000/submissions?status=pending_review" <<<"Authorization: Bearer $APPROVER_TOKEN"
 ```
 
 A submission posted to the local API is queued but not advanced until a worker consumes the local queue; deployed, the worker runs as a Lambda fed by SQS.
@@ -112,10 +113,11 @@ make index-policy                   # embeds changed policy clauses with the con
 make issue-token APPROVER=EMP-001   # prints a bearer token once
 make run-api                        # terminal 1; needs WEBHOOK_SIGNING_KEY and DECISION_EVENT_SIGNING_KEY in .env
 make run-worker                     # terminal 2; advances submissions with the configured models
-make demo TOKEN=<token>             # terminal 3; URL=<base URL> if the API is not on http://localhost:8000
+read -rs APPROVER_TOKEN && export APPROVER_TOKEN   # terminal 3; paste the token
+make demo                           # terminal 3; URL=<base URL> if the API is not on http://localhost:8000
 ```
 
-`make demo TOKEN=<token> DECIDE=1` goes on to decide the two claims waiting for review as that approver: it dismisses the unclear-purpose finding with a reason and approves that claim, and rejects the claim with injected instructions with a reason. It then shows each decision executed, the one record the mock ERP received for each, the precedent written from the dismissal, and the 409 a second decision on the same claim gets. It reads the mock ERP records and the precedent from this branch's local database.
+`make demo DECIDE=1` goes on to decide the two claims waiting for review as that approver: it dismisses the unclear-purpose finding with a reason and approves that claim, and rejects the claim with injected instructions with a reason. It then shows each decision executed, the one record the mock ERP received for each, the precedent written from the dismissal, and the 409 a second decision on the same claim gets. It reads the mock ERP records and the precedent from this branch's local database.
 
 `make record-demo` regenerates the video. It runs its own copy of the stack on a separate branch name and port (8020 by default), runs `python -m spendguard.demo_presentation` (the same flow as `make demo DECIDE=1`, printed for the recording) and keeps each line with the time it appeared, marks only that run's traces public in Langfuse, takes stills of the injection claim's trace with Playwright, reads each review's real duration from Langfuse, and renders the edit with [Remotion](https://www.remotion.dev) from `video/`. `make render-demo` re-renders from the last take without calling any model. When `recordings/narration/` holds the narration clips (`beat-1.m4a` to `beat-7.m4a`, with beat 4 as `beat-4a` and `beat-4b`), it also cleans them (silence trimmed, light noise reduction, loudness normalised to -16 LUFS), transcribes them locally with whisper.cpp to find each cue word, and renders a narrated cut, `docs/media/spendguard-demo-narrated.mp4`, whose captions and highlights follow the voice. That needs `brew install whisper-cpp` and its `ggml-base.en.bin` model in `~/.cache/whisper-cpp/`. It needs Node, `jq` and Playwright's Chromium (`uv run --with playwright==1.58.0 python -m playwright install chromium`), calls the configured models and sends traces to Langfuse. Logs go to the ignored `recordings/` directory and the take to `video/public/take/`.
 
@@ -148,8 +150,10 @@ make secrets        # SecureString parameters the functions read at start-up
 The deployed database starts with no approvers. Seed it and issue an approver token from a laptop, pointing the local commands at Supabase's session pooler URI (port 5432; `DATABASE_URL` in the environment overrides `.env`):
 
 ```sh
-DATABASE_URL='<session pooler URI>' make seed
-DATABASE_URL='<session pooler URI>' make issue-token APPROVER=EMP-001
+read -rs DATABASE_URL && export DATABASE_URL   # paste the session pooler URI
+make seed
+make issue-token APPROVER=EMP-001
+unset DATABASE_URL
 ```
 
 To tear down, `make destroy` deletes the stack and its images, and `make destroy-bootstrap` deletes the pipeline resources, warning first if that would also delete the account's GitHub OIDC provider.

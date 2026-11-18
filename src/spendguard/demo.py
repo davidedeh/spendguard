@@ -39,6 +39,7 @@ DEMO_UPHELD_REASON = 'Upheld as raised'
 
 DemoDecision = Literal['approve', 'reject']
 DECIDE_FLAG = '--decide'
+APPROVER_TOKEN_VARIABLE = 'APPROVER_TOKEN'
 
 Sleep = Callable[[float], Awaitable[None]]
 
@@ -462,6 +463,13 @@ def _finding_to_show(
     return next(iter(quoted or raised), None)
 
 
+def approver_token() -> str:
+    token = os.environ.get(APPROVER_TOKEN_VARIABLE)
+    if not token:
+        sys.exit(f'set {APPROVER_TOKEN_VARIABLE} to the token make issue-token printed')
+    return token
+
+
 def webhook_signing_key() -> bytes:
     if os.environ.get('SSM_PARAMETER_PREFIX') or dotenv_values(ENV_FILE).get(
         'SSM_PARAMETER_PREFIX'
@@ -499,12 +507,14 @@ def main() -> None:
     arguments = sys.argv[1:]
     decide = DECIDE_FLAG in arguments
     positional = [argument for argument in arguments if argument != DECIDE_FLAG]
-    if len(positional) != 2:
+    if len(positional) != 1:
         sys.exit(
-            f'usage: python -m spendguard.demo <api base URL> <approver token> [{DECIDE_FLAG}]'
+            f'usage: {APPROVER_TOKEN_VARIABLE}=<approver token> python -m spendguard.demo'
+            f' <api base URL> [{DECIDE_FLAG}]'
         )
+    token = approver_token()
     line_buffered_stdout()
-    if not asyncio.run(_demo(positional[0], positional[1], decide)):
+    if not asyncio.run(_demo(positional[0], token, decide)):
         sys.exit(1)
 
 
