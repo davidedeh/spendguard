@@ -4,6 +4,8 @@ An agent that reviews expense claims and supplier invoices for the fictional Hal
 
 Clean, low-value submissions go through without anyone touching them. Everything else reaches an approver with findings that code has checked, each tied to a policy clause, and the approver's decision is acted on exactly once.
 
+[Watch the demo](docs/media/spendguard-demo.mp4) (about 100 seconds; [narrated version](docs/media/spendguard-demo-narrated.mp4), about 2 minutes): a clean claim approved automatically, a vague purpose flagged with its evidence, an injection attempt sent to a human, the approver's decisions, and the Langfuse trace behind the injection case. The terminal panes are the real output of a recorded run with real models.
+
 Domain terms (submission, requester, finding, disposition, precedent) are defined in [GLOSSARY.md](GLOSSARY.md). Design decisions live in [docs/adr/](docs/adr/). The policy is [docs/halden-policy.md](docs/halden-policy.md), rendered from [src/spendguard/policy/policy.yaml](src/spendguard/policy/policy.yaml).
 
 ## How it works
