@@ -245,10 +245,10 @@ def test_the_results_file_reports_memory_on_and_off_for_the_primary_model(tmp_pa
                 forced_review=Proportion(1, 3),
                 failed=Proportion(0, 3),
                 silent_clearances=Proportion(0, 3),
-                controls_raised_labelled_code=Proportion(1, 2),
-                controls_cleared_by_precedent=Proportion(1, 2),
-                controls_failed=Proportion(0, 2),
-                recommendation_agreement=Proportion(4, 5),
+                controls_raised_labelled_code=Proportion(1, 3),
+                controls_cleared_by_precedent=Proportion(2, 3),
+                controls_failed=Proportion(0, 3),
+                recommendation_agreement=Proportion(5, 6),
                 other_findings=(('test-memory-follow-up-01', ('PURPOSE_UNCLEAR',)),),
             ),
             memory_off=MemoryMetrics(
@@ -258,10 +258,10 @@ def test_the_results_file_reports_memory_on_and_off_for_the_primary_model(tmp_pa
                 forced_review=Proportion(0, 3),
                 failed=Proportion(1, 3),
                 silent_clearances=Proportion(0, 3),
-                controls_raised_labelled_code=Proportion(2, 2),
-                controls_cleared_by_precedent=Proportion(0, 2),
-                controls_failed=Proportion(1, 2),
-                recommendation_agreement=Proportion(1, 5),
+                controls_raised_labelled_code=Proportion(2, 3),
+                controls_cleared_by_precedent=Proportion(0, 3),
+                controls_failed=Proportion(1, 3),
+                recommendation_agreement=Proportion(1, 6),
                 other_findings=(),
             ),
         ),
@@ -275,7 +275,7 @@ def test_the_results_file_reports_memory_on_and_off_for_the_primary_model(tmp_pa
     assert (
         'Claude Haiku (primary), `us.anthropic.claude-haiku-4-5-20251001-v1:0`. Each follow-up'
         " gets its pair's scripted reason as a precedent. Follow-ups whose precedent applies: 3;"
-        ' controls, whose precedent does not apply: 2. With memory off no precedent is available,'
+        ' controls, whose precedent does not apply: 3. With memory off no precedent is available,'
         ' so raising the labelled code is the right answer on every follow-up.'
     ) in text
     assert (
@@ -291,14 +291,14 @@ def test_the_results_file_reports_memory_on_and_off_for_the_primary_model(tmp_pa
         '| Setting | Controls that raised the labelled code | Controls cleared by the precedent'
         ' | Controls that failed |'
         '\n| --- | --- | --- | --- |'
-        '\n| Memory on | 1/2 = 0.50 | 1/2 = 0.50 | 0/2 = 0.00 |'
-        '\n| Memory off | 2/2 = 1.00 | 0/2 = 0.00 | 1/2 = 0.50 |'
+        '\n| Memory on | 1/3 = 0.33 | 2/3 = 0.67 | 0/3 = 0.00 |'
+        '\n| Memory off | 2/3 = 0.67 | 0/3 = 0.00 | 1/3 = 0.33 |'
     ) in text
     assert (
-        'Recommendation matches the label with memory on: 4/5 = 0.80. The labels assume the'
+        'Recommendation matches the label with memory on: 5/6 = 0.83. The labels assume the'
         ' precedent, so memory off is not scored on recommendations.'
     ) in text
-    assert '1/5 = 0.20' not in text
+    assert '1/6 = 0.17' not in text
     assert (
         'Findings on other codes. Memory on: test-memory-follow-up-01 (PURPOSE_UNCLEAR).'
         ' Memory off: none.'

@@ -8,7 +8,11 @@ The changes come from two audit passes over the v1 test split's judgement labels
 
 ### Policy
 
-- **Weekend and public holiday spend (§2.4).** Halden Group public holidays are now defined as the bank holidays of England and Wales, including substitute days, for every employee wherever they work. Before, the term was undefined, and the first audit pass could only assume Good Friday counted.
+- **Weekend and public holiday spend (§2.4).**
+  - Halden Group public holidays are now defined as the bank holidays of England and Wales, including substitute days, for every employee wherever they work. Before, the term was undefined, and the first audit pass could only assume Good Friday counted.
+  - Added after the third audit pass: "A deadline, or a date the work was needed by, is not enough on its own. The justification must also say why the work could not have been done on an earlier working day."
+    - Why: the first and third passes both named the open list of weekend reasons, blind. A bare deadline does not answer the clause's existing question of why the work could not take place on a working day, so the sentence applies that test to one common case rather than adding a rule.
+    - Effect: it sides with the existing labels, and it makes test-judgement-positive-01 and dev-judgement-positive-01 easier to get right.
 - **Receipts must match the claim (§3.2).**
   - Leaving out whole receipt lines the policy does not pay for (alcohol, room extras, personal items) is not a mismatch, provided the amount claimed equals the receipt total less those lines. Before, obeying the alcohol and hotel rules produced a mismatch under this clause.
   - Credit added to a travel card is a different item from the journeys it later pays for.
@@ -30,6 +34,9 @@ The changes come from two audit passes over the v1 test split's judgement labels
   - Its recommendation, recomputed by the recommendation function, moves from none to reject.
   - Audit support: the first pass raised it at medium confidence and marked it ambiguous. The second pass was shown a system's flag and classed it "defensible", siding with the system. Neither pass called the old label wrong outright.
 - **test-memory-follow-up-01** now says where the lunch took place, because the first pass noted that it did not. Its label is unchanged, but it counts as a changed case.
+  - After the third pass, its spend changed from preparing an executive strategy session to reviewing the quarter-end results for the quarter that ended on 31 March. The third pass found the precedent covered the strategy session only on balance, because the recorded fact names quarter-end reviews. The precedent, its paired case and the label are unchanged.
+- **dev-memory-follow-up-01**, after the third pass, now buys binders for report packs the team delivers to the client on Monday, instead of for an internal review meeting. The third pass found its precedent, about client deliverables with hard Monday deadlines, covered the internal meeting only on balance. The precedent, its paired case and the label are unchanged.
+- **Why these two edits, and what they cost.** The reason is the third pass's blind finding and the second review of the proposed fixes, not any system output; v2 has not been run. The edits still fit the facts to a label, and they make the memory slice easier for every system. The slice now tests use of a clearly fitting precedent and refusal of a clearly unfitting one. It does not test borderline fit.
 - **test-memory-follow-up-02 and -03** keep their content and are relabelled: the precedent does not apply, so the finding is expected. This follows the first pass's blind reading. They become controls for a precedent that does not fit.
 - **Recorded reasons.** Every scripted dismissal reason drops its ruling about future claims and keeps only the fact. This covers test-judgement-positive-01, -02 and -05 and dev-judgement-positive-01.
 - **New memory pairs.**
@@ -74,7 +81,7 @@ The changes come from two audit passes over the v1 test split's judgement labels
 - **Conditions with no finding code.** The meal and taxi conditions (§5.1 and §6.2) have no code. On test-judgement-positive-01, -03, -10 and test-memory-follow-up-01, a PURPOSE_UNCLEAR flag raised for those conditions counts as a false positive by design.
 - **Recommendations ignore fit.** A control's labelled recommendation is approve, because the recommendation function attaches a precedent by employee and code without testing fit.
 - **Gaps the audit found and v2 leaves open:**
-  - the open list of acceptable weekend reasons
+  - the open list of acceptable weekend reasons, now partly closed: a deadline alone is not enough
   - stays over several days
   - drinks of uncertain strength
   - receipts too vague to check for alcohol
@@ -90,4 +97,13 @@ The changes come from two audit passes over the v1 test split's judgement labels
 
 ### Blind check
 
-Not yet run. A fresh blind pass labels every changed or new case under the v2 policy before the freeze. The rounds it takes will be recorded here.
+A fresh blind pass labels every v2 case from the policy, the reference data and what the system sees, with no labels or results.
+
+- **Round 1 (third audit pass).**
+  - Its judgement findings matched the v2 labels on all 60 cases, and its reading of each follow-up's precedent matched `precedent_applies` on all six.
+  - Four changed cases were only medium confidence on their labelled answer: test-judgement-positive-01, dev-judgement-positive-01, test-memory-follow-up-01 and dev-memory-follow-up-01.
+  - These led to the §2.4 deadline sentence and the two follow-up edits above.
+- **Round 2 (fourth audit pass).** Not yet run.
+  - Stop rule: any of those four cases still at medium confidence on its labelled answer after the fourth pass is dropped, not edited again.
+  - A case whose inputs did not change but whose confidence falls counts only if the pass ties its doubt to the new §2.4 sentence.
+  - test-hard-negative-05 and dev-hard-negative-01 mention a renewal deadline beside a client-fixed day. The fourth pass's answer on them checks that the new sentence did not flip them.

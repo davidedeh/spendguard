@@ -83,7 +83,7 @@ def test_briefs_target_the_planned_codes_for_each_slice(split: Split) -> None:
     )
 
 
-def test_every_brief_not_targeting_or_cleared_of_the_weekend_code_falls_on_a_working_day() -> None:
+def test_briefs_off_the_weekend_code_and_its_follow_ups_fall_on_a_working_day() -> None:
     for brief in BRIEFS:
         targets_weekend = 'WEEKEND_SPEND_UNJUSTIFIED' in (
             *brief.intent.judgement_codes,

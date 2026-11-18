@@ -142,6 +142,10 @@ sections:
           that needed someone on site, or travel that could only be booked for that
           day. Convenience, catching up on work or a personal preference are not.
 
+          A deadline, or a date the work was needed by, is not enough on its own. The
+          justification must also say why the work could not have been done on an
+          earlier working day.
+
   - heading: Receipts and evidence
     clauses:
       - id: receipts_required

@@ -50,6 +50,10 @@ Acceptable reasons include a client event fixed for that day, an incident
 that needed someone on site, or travel that could only be booked for that
 day. Convenience, catching up on work or a personal preference are not.
 
+A deadline, or a date the work was needed by, is not enough on its own. The
+justification must also say why the work could not have been done on an
+earlier working day.
+
 ## 3. Receipts and evidence
 
 **§3.1 Receipts.** Every item of spend over £20 needs an itemised receipt

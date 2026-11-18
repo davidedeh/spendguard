@@ -775,7 +775,7 @@ def test_a_memory_pair_without_exactly_one_follow_up_is_reported() -> None:
     )
 
 
-def test_a_follow_up_whose_clearance_names_no_memory_pair_in_its_split_is_reported() -> None:
+def test_a_follow_up_whose_memory_block_names_no_memory_pair_in_its_split_is_reported() -> None:
     cases = fixture_cases()
     cases['test-memory-follow-up.yaml']['memory']['precedent_from'] = 'test-weekend'
 
@@ -856,7 +856,7 @@ def test_a_follow_up_whose_precedent_applies_expects_no_findings() -> None:
     )
 
 
-def test_a_follow_up_off_the_kind_of_day_its_cleared_code_needs_is_reported() -> None:
+def test_a_follow_up_off_the_kind_of_day_its_code_needs_is_reported() -> None:
     cases = fixture_cases()
     cases['test-memory-follow-up.yaml']['submission']['spent_on'] = '2026-10-17'
     cases['test-weekend.yaml']['scripted_review'] = WEEKEND_REVIEW

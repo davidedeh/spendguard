@@ -339,7 +339,7 @@ def computed_route_and_recommendation(
     policy: Policy,
 ) -> tuple[Route, Recommendation]:
     findings = [finding_for(finding.code, policy) for finding in expected_findings]
-    cleared_code = None if memory is None else memory.code
+    memory_code = None if memory is None else memory.code
     expected_route = route(
         findings=findings,
         cleared_by_precedent=memory is not None and memory.precedent_applies,
@@ -349,7 +349,7 @@ def computed_route_and_recommendation(
     )
     expected_recommendation = recommend(
         [
-            ReviewedFinding(finding, has_precedent=finding.code == cleared_code)
+            ReviewedFinding(finding, has_precedent=finding.code == memory_code)
             for finding in findings
         ]
     )

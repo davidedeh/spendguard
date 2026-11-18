@@ -605,17 +605,17 @@ def test_rule_findings_route_and_recommendation_are_computed_by_code(tmp_path: P
         assert labelled_rules == [finding.code for finding in computed]
         assert sorted(labelled_rules) == sorted(BRIEFS_BY_ID[case.id].intent.rule_codes)
         findings = [finding_for(finding.code, FIXTURE_POLICY) for finding in case.expected_findings]
-        cleared_code = None if case.memory is None else case.memory.code
+        memory_code = None if case.memory is None else case.memory.code
         assert case.expected_route == route(
             findings=findings,
-            cleared_by_precedent=cleared_code is not None,
+            cleared_by_precedent=memory_code is not None,
             base_amount=base_currency_amount(case.submission, DRAFTING_SEED, FIXTURE_POLICY),
             policy=FIXTURE_POLICY,
             force_human_review=False,
         )
         assert case.expected_recommendation == recommend(
             [
-                ReviewedFinding(finding, has_precedent=finding.code == cleared_code)
+                ReviewedFinding(finding, has_precedent=finding.code == memory_code)
                 for finding in findings
             ]
         )

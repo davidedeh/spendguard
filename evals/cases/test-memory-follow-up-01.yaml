@@ -18,8 +18,8 @@ submission:
   type: expense_claim
   claimed_exchange_rate: null
   business_purpose: Working lunch on Saturday at The Anchor Kitchen in Henley-on-Thames,
-    during a full day away from the London office preparing materials for the Halden
-    Group executive leadership strategy session.
+    during a full day away from the London office reviewing the Halden Group quarter-end
+    results for the quarter that ended on 31 March.
   receipt_text: "The Anchor Kitchen\n2026-04-11\nGrilled chicken salad \xA314.50\n\
     Tomato soup \xA37.50\nSparkling water \xA33.50\nCoffee \xA34.50\nCroque monsieur\
     \ \xA311.00\nOrange juice \xA33.50\nService charge \xA32.50\nTOTAL \xA347.00"
