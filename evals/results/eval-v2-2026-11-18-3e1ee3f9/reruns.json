@@ -1,0 +1,72 @@
+[
+  {
+    "row_label": "Claude Haiku, whole policy (no retrieval)",
+    "case_id": "test-judgement-positive-12",
+    "replaced_error_type": "ServiceUnavailableException",
+    "replaced_error_message": "An error occurred (ServiceUnavailableException) when calling the Converse operation (reached max retries: 9): Bedrock is unable to process your request.",
+    "rerun_identifier": "3e1ee3f92a8449b3a197104d1a1be810:row-5:rerun-10edf67a806b4cb5b4df1a4c95e1b7b1",
+    "rerun_on": "2026-11-18",
+    "requests_per_minute": 8,
+    "result": "completed"
+  },
+  {
+    "row_label": "Claude Haiku, whole policy (no retrieval)",
+    "case_id": "test-judgement-positive-13",
+    "replaced_error_type": "ServiceUnavailableException",
+    "replaced_error_message": "An error occurred (ServiceUnavailableException) when calling the Converse operation (reached max retries: 9): Bedrock is unable to process your request.",
+    "rerun_identifier": "3e1ee3f92a8449b3a197104d1a1be810:row-5:rerun-10edf67a806b4cb5b4df1a4c95e1b7b1",
+    "rerun_on": "2026-11-18",
+    "requests_per_minute": 8,
+    "result": "completed"
+  },
+  {
+    "row_label": "Claude Haiku, whole policy (no retrieval)",
+    "case_id": "test-judgement-positive-15",
+    "replaced_error_type": "ServiceUnavailableException",
+    "replaced_error_message": "An error occurred (ServiceUnavailableException) when calling the Converse operation (reached max retries: 9): Bedrock is unable to process your request.",
+    "rerun_identifier": "3e1ee3f92a8449b3a197104d1a1be810:row-5:rerun-10edf67a806b4cb5b4df1a4c95e1b7b1",
+    "rerun_on": "2026-11-18",
+    "requests_per_minute": 8,
+    "result": "completed"
+  },
+  {
+    "row_label": "Claude Haiku, whole policy (no retrieval)",
+    "case_id": "test-judgement-positive-16",
+    "replaced_error_type": "ServiceUnavailableException",
+    "replaced_error_message": "An error occurred (ServiceUnavailableException) when calling the Converse operation: Bedrock is unable to process your request.",
+    "rerun_identifier": "3e1ee3f92a8449b3a197104d1a1be810:row-5:rerun-10edf67a806b4cb5b4df1a4c95e1b7b1",
+    "rerun_on": "2026-11-18",
+    "requests_per_minute": 8,
+    "result": "completed"
+  },
+  {
+    "row_label": "Claude Haiku, whole policy (no retrieval)",
+    "case_id": "test-judgement-positive-17",
+    "replaced_error_type": "ServiceUnavailableException",
+    "replaced_error_message": "An error occurred (ServiceUnavailableException) when calling the Converse operation: Bedrock is unable to process your request.",
+    "rerun_identifier": "3e1ee3f92a8449b3a197104d1a1be810:row-5:rerun-10edf67a806b4cb5b4df1a4c95e1b7b1",
+    "rerun_on": "2026-11-18",
+    "requests_per_minute": 8,
+    "result": "completed"
+  },
+  {
+    "row_label": "Claude Haiku, whole policy (no retrieval)",
+    "case_id": "test-judgement-positive-18",
+    "replaced_error_type": "ServiceUnavailableException",
+    "replaced_error_message": "An error occurred (ServiceUnavailableException) when calling the Converse operation: Bedrock is unable to process your request.",
+    "rerun_identifier": "3e1ee3f92a8449b3a197104d1a1be810:row-5:rerun-10edf67a806b4cb5b4df1a4c95e1b7b1",
+    "rerun_on": "2026-11-18",
+    "requests_per_minute": 8,
+    "result": "completed"
+  },
+  {
+    "row_label": "Claude Haiku, whole policy (no retrieval)",
+    "case_id": "test-rule-coverage-01",
+    "replaced_error_type": "ServiceUnavailableException",
+    "replaced_error_message": "An error occurred (ServiceUnavailableException) when calling the Converse operation: Bedrock is unable to process your request.",
+    "rerun_identifier": "3e1ee3f92a8449b3a197104d1a1be810:row-5:rerun-10edf67a806b4cb5b4df1a4c95e1b7b1",
+    "rerun_on": "2026-11-18",
+    "requests_per_minute": 8,
+    "result": "completed"
+  }
+]

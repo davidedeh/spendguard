@@ -211,7 +211,7 @@ Overlapping 95% intervals are never claimed as a win.
 
 Production default: Haiku unless the eval shows it worse. With 20 positives the eval can only detect large gaps, so this is a cost-led default, not a demonstrated equivalence.
 
-The first eval-v2 run has three caveats. With memory on, Haiku cleared both memory controls, applying a precedent whose fact does not explain the spend, as well as the three follow-ups whose precedent fits. GPT OSS 120B failed 21 of 49 cases on replies that ran to the output limit, so its row mostly measures that failure. The whole-policy row lost 7 cases to Bedrock being briefly unavailable and is not comparable until they are rerun. [evals/CHANGELOG.md](evals/CHANGELOG.md) has the detail.
+The first eval-v2 run has three caveats. With memory on, Haiku cleared both memory controls, applying a precedent whose fact does not explain the spend, as well as the three follow-ups whose precedent fits. GPT OSS 120B failed 21 of 49 cases on replies that ran to the output limit, so its row mostly measures that failure. With all 49 cases completed, after rerunning 7 that Bedrock failed while briefly unavailable, the whole-policy row matches the retrieval row on judgement recall, route accuracy and recommendation accuracy, and its precision is within the retrieval row's interval. So retrieval's measured benefit here is cost, about 29% less per submission, not accuracy. The Halden policy fits in the prompt, and the eval does not test a policy too large for it. [evals/CHANGELOG.md](evals/CHANGELOG.md) has the detail.
 
 <!-- eval-results:start -->
 Measured on 2026-11-18 against eval-v2 (968c6684); test cases: 49.
@@ -222,7 +222,7 @@ Measured on 2026-11-18 against eval-v2 (968c6684); test cases: 49.
 | Claude Sonnet | `us.anthropic.claude-sonnet-4-6` | 20/34 = 0.59 (0.42 to 0.74) | 20/21 = 0.95 (0.77 to 0.99) | 44/49 = 0.90 | 36/49 = 0.73 | 2/46 = 0.04 | 4/4 = 1.00 | 24/25 = 0.96 | 30.7 s | $0.0700 | 0 failed |
 | GPT OSS 120B (OpenAI's open-weight model) | `openai.gpt-oss-120b-1:0` | 9/13 = 0.69 (0.42 to 0.87) | 9/21 = 0.43 (0.24 to 0.63) | 27/49 = 0.55 | 23/49 = 0.47 | 1/20 = 0.05 | 3/4 = 0.75 | 15/25 = 0.60 | 15.9 s | $0.0025 | 21 failed |
 | Nova Pro (AWS-native) | `us.amazon.nova-pro-v1:0` | 12/21 = 0.57 (0.37 to 0.76) | 12/21 = 0.57 (0.37 to 0.76) | 42/49 = 0.86 | 36/49 = 0.73 | 2/31 = 0.06 | 2/4 = 0.50 | 25/25 = 1.00 | 14.2 s | $0.0121 | 0 failed |
-| Claude Haiku, whole policy (no retrieval) | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | 12/22 = 0.55 (0.35 to 0.73) | 12/21 = 0.57 (0.37 to 0.76) | 39/49 = 0.80 | 35/49 = 0.71 | 0/35 = 0.00 | 4/4 = 1.00 | not applicable | 29.8 s | $0.0267 | 7 failed |
+| Claude Haiku, whole policy (no retrieval) | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | 18/30 = 0.60 (0.42 to 0.75) | 18/21 = 0.86 (0.65 to 0.95) | 46/49 = 0.94 | 40/49 = 0.82 | 0/43 = 0.00 | 4/4 = 1.00 | not applicable | 29.8 s | $0.0271 | 0 failed |
 
 Rule checks, the same for every row: precision 8/8 = 1.00, recall 8/8 = 1.00.
 <!-- eval-results:end -->
