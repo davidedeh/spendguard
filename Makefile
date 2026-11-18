@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down migrate lint format typecheck test check build-wheel build-image validate-template smoke run-api run-worker purge-queue reset-local index-policy demo seed smoke-providers draft-cases freeze issue-token eval bootstrap secrets deploy destroy destroy-bootstrap
+.PHONY: help install up down migrate lint format typecheck test check build-wheel build-image validate-template smoke run-api run-worker purge-queue reset-local index-policy demo record-demo render-demo seed smoke-providers draft-cases freeze issue-token eval bootstrap secrets deploy destroy destroy-bootstrap
 
 not_built_yet = @echo "make $@ is not built yet ($(1))" >&2; exit 1
 
@@ -58,6 +58,12 @@ index-policy: ## Embed changed policy clauses into this branch's index (calls th
 
 demo: ## Post signed sample submissions to a running API and show a pending finding (TOKEN=approver token, URL=base URL, DECIDE=1 to also decide them)
 	uv run python -m spendguard.demo $(or $(URL),http://localhost:8000) $(TOKEN) $(if $(DECIDE),--decide)
+
+record-demo: ## Record a demo take on a stack of its own and render the demo videos in docs/media (calls the configured models and Langfuse)
+	scripts/record-demo/record-demo.sh
+
+render-demo: ## Re-render the demo videos in docs/media from the last take, narrated too when recordings/narration has clips (no model calls)
+	scripts/record-demo/render-demo.sh
 
 validate-template: ## Validate the SAM template with sam validate and cfn-lint (offline)
 	sam validate --lint --template template.yaml --region us-east-1

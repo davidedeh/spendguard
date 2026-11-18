@@ -105,7 +105,7 @@ def _with_redacted_status_and_events(span: ReadableSpan) -> ReadableSpan:
     )
 
 
-def _langfuse_otlp_exporter(public_key: str, secret_key: str, base_url: str) -> SpanExporter:
+def langfuse_otlp_exporter(public_key: str, secret_key: str, base_url: str) -> SpanExporter:
     # Langfuse skips building its own exporter once one is supplied, so this mirrors its defaults.
     credentials = base64.b64encode(f'{public_key}:{secret_key}'.encode()).decode('ascii')
     traces_export_path = os.environ.get(LANGFUSE_OTEL_TRACES_EXPORT_PATH)
@@ -147,7 +147,7 @@ def create_tracing(
         base_url=settings.langfuse_host,
         mask_otel_spans=mask_span_attributes,
         span_exporter=RedactingSpanExporter(
-            span_exporter or _langfuse_otlp_exporter(public_key, secret_key, settings.langfuse_host)
+            span_exporter or langfuse_otlp_exporter(public_key, secret_key, settings.langfuse_host)
         ),
         tracer_provider=tracer_provider,
     )
