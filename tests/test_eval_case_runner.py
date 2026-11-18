@@ -36,11 +36,13 @@ from spendguard.eval.case_runner import (
     run_eval,
 )
 from spendguard.eval.cases import EvalCase
+from spendguard.eval.dataset_runs import case_failure
 from spendguard.eval.metrics import CaseOutcome, CaseResult, Proportion
 from spendguard.graph.nodes.plan import RetrievalPlan
 from spendguard.graph.nodes.run_judgement_checks import CheckVerdict, JudgementReport, QuotedText
 from spendguard.models.factory import build_embedder
 from spendguard.models.fake import FakeChatModel, structured_response
+from spendguard.models.structured_output import StructuredOutputError
 from spendguard.observability.tracing import Tracing, create_tracing
 from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.retrieval.policy_index import index_policy
@@ -853,6 +855,24 @@ def failing_on_clean_invoice() -> FailingOnTextEvalModel:
 FAILING_AND_PASSING_CASES = ('dev-clean-01', PAIR_ID)
 
 
+@pytest.mark.parametrize(
+    ('error', 'reason'),
+    [
+        (
+            StructuredOutputError('Invalid json output: PUR{', stop_reason='max_tokens'),
+            'malformed reply: max_tokens',
+        ),
+        (StructuredOutputError('the reply holds no object', stop_reason=None), 'malformed reply'),
+        (RuntimeError('the provider is unavailable'), 'RuntimeError'),
+    ],
+    ids=['cut off', 'no stop reason', 'other error'],
+)
+def test_a_failed_case_s_reason_names_a_malformed_reply_and_its_stop_reason(
+    error: Exception, reason: str
+) -> None:
+    assert case_failure(dataset_case('dev-clean-01'), error).reason == reason
+
+
 @pytest.mark.parametrize('traced', [False, True], ids=['plain run', 'Langfuse dataset run'])
 async def test_a_case_that_raises_is_recorded_as_failed_and_the_row_carries_on(
     connection_pool: ConnectionPool, exporter: InMemorySpanExporter, tmp_path: Path, traced: bool
@@ -876,7 +896,7 @@ async def test_a_case_that_raises_is_recorded_as_failed_and_the_row_carries_on(
     )
 
     [primary] = results.rows
-    assert primary.metrics.failed_case_count == 1
+    assert len(primary.metrics.failed_cases) == 1
     assert counts(primary.metrics.judgement_recall) == (1, 1)
     assert counts(primary.metrics.route_accuracy) == (1, 2)
     saved = json.loads((tmp_path / 'row-1.json').read_text())
@@ -916,7 +936,7 @@ async def test_rule_metrics_take_each_case_from_its_first_completed_row_and_miss
         run_options(tmp_path),
     )
 
-    assert [result.metrics.failed_case_count for result in results.rows] == [2, 1, 2]
+    assert [len(result.metrics.failed_cases) for result in results.rows] == [2, 1, 2]
     rule_metrics = results.rule_metrics
     assert counts(rule_metrics.recall) == (1, 2)
     assert counts(rule_metrics.precision) == (1, 1)

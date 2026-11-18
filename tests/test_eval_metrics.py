@@ -223,7 +223,10 @@ def test_latency_is_the_median_and_cost_is_tokens_times_prices_per_submission() 
 
 def test_a_failed_case_counts_as_missed_and_wrong_but_adds_no_findings_latency_or_cost() -> None:
     failure = CaseFailure(
-        case_id='test-alcohol', error_type='RuntimeError', error_message='provider down'
+        case_id='test-alcohol',
+        error_type='RuntimeError',
+        error_message='provider down',
+        reason='RuntimeError',
     )
 
     metrics = row_metrics(CASES, (failure, *OUTCOMES[1:]), FIXTURE_POLICY, price=PRICE)
@@ -237,12 +240,17 @@ def test_a_failed_case_counts_as_missed_and_wrong_but_adds_no_findings_latency_o
     assert counts(metrics.retrieval_recall) == (1, 3)
     assert metrics.p50_latency_seconds == 3.5
     assert metrics.cost_per_submission_usd == Decimal('0.001625')
-    assert metrics.failed_case_count == 1
+    assert len(metrics.failed_cases) == 1
 
 
 def test_a_row_whose_every_case_failed_has_no_latency_or_cost() -> None:
     failures = tuple(
-        CaseFailure(case_id=case.id, error_type='RuntimeError', error_message='provider down')
+        CaseFailure(
+            case_id=case.id,
+            error_type='RuntimeError',
+            error_message='provider down',
+            reason='RuntimeError',
+        )
         for case in CASES
     )
 
@@ -250,7 +258,7 @@ def test_a_row_whose_every_case_failed_has_no_latency_or_cost() -> None:
 
     assert metrics.p50_latency_seconds is None
     assert metrics.cost_per_submission_usd is None
-    assert metrics.failed_case_count == 5
+    assert len(metrics.failed_cases) == 5
     assert counts(metrics.route_accuracy) == (0, 5)
 
 
@@ -336,8 +344,18 @@ def test_a_failed_follow_up_is_counted_as_failed_and_disagreeing_not_as_a_silent
         for case_id in ('failed', 'failed-again', 'not-flagged')
     )
     results = (
-        CaseFailure(case_id='failed', error_type='RuntimeError', error_message='provider down'),
-        CaseFailure(case_id='failed-again', error_type='TimeoutError', error_message='timed out'),
+        CaseFailure(
+            case_id='failed',
+            error_type='RuntimeError',
+            error_message='provider down',
+            reason='RuntimeError',
+        ),
+        CaseFailure(
+            case_id='failed-again',
+            error_type='TimeoutError',
+            error_message='timed out',
+            reason='TimeoutError',
+        ),
         follow_up_outcome('not-flagged', 'approve'),
     )
 

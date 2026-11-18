@@ -66,6 +66,7 @@ class CaseFailure:
     case_id: str
     error_type: str
     error_message: str
+    reason: str
 
 
 type CaseResult = CaseOutcome | CaseFailure
@@ -84,7 +85,7 @@ class RowMetrics:
     retrieval_recall: Proportion
     p50_latency_seconds: float | None
     cost_per_submission_usd: Decimal | None
-    failed_case_count: int
+    failed_cases: tuple[CaseFailure, ...]
 
 
 @dataclass(frozen=True)
@@ -248,7 +249,7 @@ def row_metrics(
             statistics.median(outcome.latency_seconds for outcome in outcomes) if outcomes else None
         ),
         cost_per_submission_usd=_cost_per_submission(outcomes, price),
-        failed_case_count=len(results) - len(outcomes),
+        failed_cases=tuple(result for result in results if isinstance(result, CaseFailure)),
     )
 
 

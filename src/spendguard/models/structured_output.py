@@ -16,7 +16,9 @@ UNLOCKABLE_KEYWORDS = frozenset(
 
 
 class StructuredOutputError(ValueError):
-    pass
+    def __init__(self, message: str, stop_reason: str | None) -> None:
+        super().__init__(message)
+        self.stop_reason = stop_reason
 
 
 def output_schema(model_class: type[BaseModel]) -> dict[str, Any]:
@@ -43,12 +45,17 @@ def structured_reply(
         schema_for_method(schema, method), method=method, include_raw=True
     ).invoke(list(messages))
     if not isinstance(result, dict):
-        raise StructuredOutputError(f'expected a reply, the model returned {type(result).__name__}')
+        raise StructuredOutputError(
+            f'expected a reply, the model returned {type(result).__name__}', stop_reason=None
+        )
     output = result['parsed']
     if output is None:
         output = _json_object_in(result['raw'])
     if not isinstance(output, dict):
-        raise StructuredOutputError(str(result['parsing_error'] or 'the reply holds no object'))
+        raise StructuredOutputError(
+            str(result['parsing_error'] or 'the reply holds no object'),
+            stop_reason=_stop_reason(result['raw']),
+        )
     filled: dict[str, Any] = _with_nulls_filled_in(output, schema)
     return filled
 
@@ -114,6 +121,13 @@ def _object_schema_for(value: dict[str, Any], schema: dict[str, Any]) -> dict[st
 
 def _allows_null(schema: dict[str, Any]) -> bool:
     return any(option.get('type') == 'null' for option in schema.get('anyOf', [schema]))
+
+
+def _stop_reason(message: object) -> str | None:
+    if not isinstance(message, BaseMessage):
+        return None
+    stop_reason = message.response_metadata.get('stopReason')
+    return stop_reason if isinstance(stop_reason, str) else None
 
 
 def _json_object_in(message: object) -> object:

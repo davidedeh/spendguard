@@ -11,6 +11,7 @@ from langfuse.experiment import ExperimentItem
 from spendguard.eval.cases import EvalCase
 from spendguard.eval.metrics import CaseFailure, CaseOutcome, CaseResult
 from spendguard.eval.report import DATASET_HASH_PREFIX_LENGTH, DATASET_NAME
+from spendguard.models.structured_output import StructuredOutputError
 
 type CaseRun = Callable[[EvalCase], Coroutine[Any, Any, CaseOutcome]]
 
@@ -20,7 +21,20 @@ def dataset_name(dataset_hash: str) -> str:
 
 
 def case_failure(case: EvalCase, error: Exception) -> CaseFailure:
-    return CaseFailure(case_id=case.id, error_type=type(error).__name__, error_message=str(error))
+    return CaseFailure(
+        case_id=case.id,
+        error_type=type(error).__name__,
+        error_message=str(error),
+        reason=_failure_reason(error),
+    )
+
+
+def _failure_reason(error: Exception) -> str:
+    if not isinstance(error, StructuredOutputError):
+        return type(error).__name__
+    if error.stop_reason is None:
+        return 'malformed reply'
+    return f'malformed reply: {error.stop_reason}'
 
 
 @dataclass(frozen=True)

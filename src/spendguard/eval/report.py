@@ -113,7 +113,7 @@ def _table_row(result: RowResult) -> str:
         _retrieval_recall_cell(result),
         _latency(metrics.p50_latency_seconds),
         _cost(metrics.cost_per_submission_usd),
-        f'{metrics.failed_case_count} failed',
+        f'{len(metrics.failed_cases)} failed',
     )
     return '| ' + ' | '.join(cells) + ' |'
 
@@ -210,6 +210,17 @@ def _rule_code_table(rule_metrics: RuleMetrics) -> list[str]:
     ]
 
 
+def _failed_cases_section(results: EvalResults) -> list[str]:
+    failed_rows = [
+        f'| {result.row.label} | {failure.case_id} | {failure.reason} |'
+        for result in results.rows
+        for failure in result.metrics.failed_cases
+    ]
+    if not failed_rows:
+        return ['No failed cases.']
+    return ['| Row | Case | Reason |', '| --- | --- | --- |', *failed_rows]
+
+
 def _pre_flight_note(results: EvalResults) -> list[str]:
     if results.cases_per_row is None:
         return []
@@ -249,6 +260,10 @@ def results_file_text(results: EvalResults) -> str:
             '## Memory on versus off',
             '',
             *_memory_section(results.memory_comparison),
+            '',
+            '## Failed cases',
+            '',
+            *_failed_cases_section(results),
             '',
         ]
     )
@@ -298,6 +313,7 @@ def _case_result_record(result: CaseResult) -> dict[str, object]:
             'failed': True,
             'error_type': result.error_type,
             'error_message': result.error_message,
+            'reason': result.reason,
         }
     fields = {field.name: getattr(result, field.name) for field in dataclasses.fields(result)}
     return {

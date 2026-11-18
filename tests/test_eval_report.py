@@ -49,7 +49,9 @@ Kept as it was.
 """
 
 
-def metrics(precision: Proportion, cost: Decimal | None, failed_case_count: int = 0) -> RowMetrics:
+def metrics(
+    precision: Proportion, cost: Decimal | None, failed_cases: tuple[CaseFailure, ...] = ()
+) -> RowMetrics:
     return RowMetrics(
         judgement_precision=precision,
         judgement_recall=Proportion(1, 3),
@@ -61,7 +63,13 @@ def metrics(precision: Proportion, cost: Decimal | None, failed_case_count: int 
         retrieval_recall=Proportion(2, 3),
         p50_latency_seconds=None if cost is None else 3.0,
         cost_per_submission_usd=cost,
-        failed_case_count=failed_case_count,
+        failed_cases=failed_cases,
+    )
+
+
+def failure(case_id: str, reason: str) -> CaseFailure:
+    return CaseFailure(
+        case_id=case_id, error_type='ValueError', error_message='unused', reason=reason
     )
 
 
@@ -109,7 +117,14 @@ RESULTS = EvalResults(
                 output_per_million_tokens_usd=Decimal('10.00'),
                 priced_on=datetime.date(2026, 11, 3),
             ),
-            metrics=metrics(Proportion(3, 4), None, failed_case_count=5),
+            metrics=metrics(
+                Proportion(3, 4),
+                None,
+                failed_cases=(
+                    failure('test-clean', 'malformed reply: max_tokens'),
+                    failure('test-alcohol', 'ThrottlingException'),
+                ),
+            ),
         ),
     ),
     rule_metrics=RuleMetrics(
@@ -139,7 +154,7 @@ def test_the_readme_table_gets_one_row_per_model_row_between_the_markers(tmp_pat
     assert '$0.0016' in haiku_row
     gemini_row = table_row(readme, 'Gemini Pro')
     assert '3/4 = 0.75 (0.30 to 0.95)' in gemini_row
-    assert gemini_row.endswith(' | not measured | not measured | 5 failed |')
+    assert gemini_row.endswith(' | not measured | not measured | 2 failed |')
     assert haiku_row.endswith(' | 3.0 s | $0.0016 | 0 failed |')
     assert '| Retrieval recall (top 4 per query) |' in readme
     assert 'No results yet.' not in readme
@@ -264,6 +279,37 @@ def test_the_results_file_reports_memory_on_and_off_for_the_primary_model(tmp_pa
     assert 'Memory on versus off' not in readme_path.read_text()
 
 
+def test_the_results_file_lists_each_row_s_failed_cases_with_their_reasons(
+    tmp_path: Path,
+) -> None:
+    readme_path = tmp_path / 'README.md'
+    readme_path.write_text(README_BEFORE)
+
+    results_path = write_results(RESULTS, tmp_path / 'results', readme_path)
+
+    section = results_path.read_text().split('## Failed cases\n\n')[1].split('\n\n')[0]
+    assert section.splitlines() == [
+        '| Row | Case | Reason |',
+        '| --- | --- | --- |',
+        '| Gemini Pro | test-clean | malformed reply: max_tokens |',
+        '| Gemini Pro | test-alcohol | ThrottlingException |',
+    ]
+
+
+def test_the_results_file_says_when_no_case_failed(tmp_path: Path) -> None:
+    rows_without_failures = tuple(
+        dataclasses.replace(result, metrics=dataclasses.replace(result.metrics, failed_cases=()))
+        for result in RESULTS.rows
+    )
+    results = dataclasses.replace(RESULTS, rows=rows_without_failures)
+    readme_path = tmp_path / 'README.md'
+    readme_path.write_text(README_BEFORE)
+
+    results_path = write_results(results, tmp_path / 'results', readme_path)
+
+    assert '## Failed cases\n\nNo failed cases.\n' in results_path.read_text()
+
+
 def test_the_results_file_says_when_memory_was_not_compared(tmp_path: Path) -> None:
     readme_path = tmp_path / 'README.md'
     readme_path.write_text(README_BEFORE)
@@ -359,7 +405,10 @@ def test_a_finished_row_is_saved_with_its_case_results_and_token_totals(tmp_path
         completed, case_id='test-weekend', input_tokens=300, output_tokens=7
     )
     failure = CaseFailure(
-        case_id='test-injection', error_type='RuntimeError', error_message='provider down'
+        case_id='test-injection',
+        error_type='RuntimeError',
+        error_message='provider down',
+        reason='RuntimeError',
     )
 
     path = write_row_results(
@@ -386,6 +435,7 @@ def test_a_finished_row_is_saved_with_its_case_results_and_token_totals(tmp_path
         'failed': True,
         'error_type': 'RuntimeError',
         'error_message': 'provider down',
+        'reason': 'RuntimeError',
     }
     assert saved['cases'][0]['judgement_codes'] == ['ALCOHOL_NOT_PERMITTED', 'PURPOSE_UNCLEAR']
     assert saved['cases'][0]['failed'] is False
