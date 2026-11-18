@@ -122,12 +122,18 @@ def verified_findings(
     return VerificationResult(findings=findings, drops=drops)
 
 
-def verified_clearances(
-    outcomes: Sequence[JudgementOutcome], evidence: JudgementEvidence, policy: Policy
+def verified_outcomes(
+    outcomes: Sequence[JudgementOutcome],
+    findings: Sequence[RecordedFinding],
+    evidence: JudgementEvidence,
+    policy: Policy,
 ) -> tuple[list[JudgementOutcome], list[VerificationDrop]]:
+    found_codes = {finding['code'] for finding in findings}
     kept: list[JudgementOutcome] = []
     drops: list[VerificationDrop] = []
     for outcome in outcomes:
+        if outcome['outcome'] == 'flagged' and outcome['code'] not in found_codes:
+            continue
         reason: DropReason | None = None
         if outcome['outcome'] == 'cleared_by_precedent':
             if outcome['code'] not in evidence.judgement_checks:
@@ -162,7 +168,9 @@ def verify(state: ReviewState, graph_config: GraphConfig) -> ReviewState:
         evidence,
         graph_config.policy,
     )
-    kept_outcomes, clearance_drops = verified_clearances(outcomes, evidence, graph_config.policy)
+    kept_outcomes, clearance_drops = verified_outcomes(
+        outcomes, verification.findings, evidence, graph_config.policy
+    )
     audit: list[AuditEntry] = [
         {
             'node': 'verify',

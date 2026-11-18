@@ -6,10 +6,10 @@ from spendguard.graph.nodes.verify import (
     DropReason,
     JudgementEvidence,
     VerificationDrop,
-    verified_clearances,
     verified_findings,
+    verified_outcomes,
 )
-from spendguard.graph.state import CandidateFinding, JudgementOutcome, Quote
+from spendguard.graph.state import CandidateFinding, FlaggedOutcome, JudgementOutcome, Quote
 from spendguard.policy.loader import POLICY_PATH, FindingCode, load_policy
 
 POLICY = load_policy(POLICY_PATH)
@@ -214,13 +214,14 @@ def test_a_clearance_is_kept_only_for_a_check_run_and_a_precedent_supplied() -> 
         'candidate': None,
     }
 
-    kept, drops = verified_clearances(
+    kept, drops = verified_outcomes(
         [
             supported,
             clearance('PURPOSE_UNCLEAR', 'PRECEDENT-2'),
             not_flagged,
             clearance('WEEKEND_SPEND_UNJUSTIFIED', 'PRECEDENT-1'),
         ],
+        [],
         evidence(supplied_precedent_ids=['PRECEDENT-1']),
         POLICY,
     )
@@ -236,3 +237,44 @@ def test_a_clearance_is_kept_only_for_a_check_run_and_a_precedent_supplied() -> 
             reason='code_not_judgement',
         ),
     ]
+
+
+def flag(code: FindingCode, candidate: CandidateFinding) -> FlaggedOutcome:
+    return {
+        'code': code,
+        'outcome': 'flagged',
+        'precedent_id': None,
+        'candidate': candidate,
+    }
+
+
+def test_a_flag_is_kept_only_while_a_verified_finding_for_its_code_survives() -> None:
+    kept_alcohol = alcohol_candidate()
+    duplicate_alcohol = alcohol_candidate(
+        quotes=[{'field': 'receipt_text', 'text': 'Pint of   lager'}]
+    )
+    paraphrased_purpose = alcohol_candidate(
+        code='PURPOSE_UNCLEAR',
+        clause_reference=PURPOSE_CLAUSE,
+        quotes=[{'field': 'business_purpose', 'text': 'a dinner with no stated reason'}],
+    )
+    verification = verified_findings(
+        [kept_alcohol, duplicate_alcohol, paraphrased_purpose], evidence(), POLICY
+    )
+
+    kept, drops = verified_outcomes(
+        [
+            flag('ALCOHOL_NOT_PERMITTED', kept_alcohol),
+            flag('ALCOHOL_NOT_PERMITTED', duplicate_alcohol),
+            flag('PURPOSE_UNCLEAR', paraphrased_purpose),
+        ],
+        verification.findings,
+        evidence(),
+        POLICY,
+    )
+
+    assert kept == [
+        flag('ALCOHOL_NOT_PERMITTED', kept_alcohol),
+        flag('ALCOHOL_NOT_PERMITTED', duplicate_alcohol),
+    ]
+    assert drops == []

@@ -1298,7 +1298,7 @@ PURPOSE_QUOTE = QuotedText(field='business_purpose', text='visiting the Leeds of
     ],
     ids=['an unretrieved clause', 'a quote not in the submission', 'an unsupplied precedent'],
 )
-async def test_a_judgement_finding_failing_verification_is_dropped_and_audited(
+async def test_a_judgement_finding_failing_verification_is_dropped_audited_and_sent_for_review(
     application: Application, verdict: CheckVerdict, reason: str, log_stream: io.StringIO
 ) -> None:
     application.chat_model.verdicts = [verdict]
@@ -1323,7 +1323,9 @@ async def test_a_judgement_finding_failing_verification_is_dropped_and_audited(
             'reason': reason,
         },
     } in state['audit']
-    assert await application.status_of(submission_id) == 'complete'
+    assert state['unanswered_checks'] == [verdict.code]
+    assert await application.status_of(submission_id) == 'pending_review'
+    assert await application.recorded_events(submission_id) == []
     assert [
         (line['submission_id'], line['code'], line['reason'])
         for line in map(json.loads, log_stream.getvalue().splitlines())
