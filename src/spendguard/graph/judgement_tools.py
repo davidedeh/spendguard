@@ -6,6 +6,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 
 from spendguard.graph.state import SuppliedPrecedent
 from spendguard.policy.loader import FindingCode
+from spendguard.privacy.redaction import redact
 from spendguard.seed.schema import SeedData
 from spendguard.submission import ExpenseClaim, Submission
 
@@ -101,7 +102,11 @@ def submission_tools(
         )
 
     def get_precedents(code: FindingCode) -> str:
-        found = [precedent for precedent in available_precedents if precedent['code'] == code]
+        found: list[SuppliedPrecedent] = [
+            precedent | {'reason': redact(precedent['reason'])}
+            for precedent in available_precedents
+            if precedent['code'] == code
+        ]
         supplied_precedents.extend(found)
         return json.dumps(found)
 
