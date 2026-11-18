@@ -309,11 +309,16 @@ def test_a_pre_flight_writes_its_own_results_file_and_leaves_the_readme_alone(
     readme_path.write_text(README_BEFORE)
 
     results_path = write_results(
-        dataclasses.replace(RESULTS, cases_per_row=2), tmp_path / 'results', readme_path
+        dataclasses.replace(RESULTS, cases_per_row=2, case_count=6),
+        tmp_path / 'results',
+        readme_path,
     )
 
     assert results_path == tmp_path / 'results' / 'eval-v1-2026-11-20-5c0ffee1-preflight.md'
-    assert 'Pre-flight: 2 cases per row, not reported.' in results_path.read_text()
+    assert (
+        'Pre-flight: a sample of 6 cases per row, at least one from every slice; not reported.'
+        in results_path.read_text()
+    )
     assert readme_path.read_text() == README_BEFORE
 
 

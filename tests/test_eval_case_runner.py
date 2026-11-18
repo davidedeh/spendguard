@@ -404,7 +404,7 @@ async def test_each_row_is_saved_as_it_finishes_before_the_next_row_starts(
     assert len(second_row['cases']) == 3
 
 
-async def test_a_pre_flight_runs_only_the_first_cases_of_every_row(
+async def test_a_pre_flight_runs_one_round_of_every_slice_in_every_row(
     connection_pool: ConnectionPool, tmp_path: Path
 ) -> None:
     settings = two_row_settings()
@@ -414,16 +414,25 @@ async def test_a_pre_flight_runs_only_the_first_cases_of_every_row(
     }
 
     results = await run_eval(
-        (dataset_case('dev-clean-01'), dataset_case(PAIR_ID), dataset_case('dev-hard-negative-01')),
+        (
+            dataset_case('dev-clean-01'),
+            dataset_case(PAIR_ID),
+            dataset_case('dev-judgement-positive-02'),
+            dataset_case('dev-hard-negative-01'),
+        ),
         EvalResources(settings, POLICY, SEED_DATA, connection_pool, build_embedder(settings), None),
         lambda row: models[row.model_key],
         run_options(tmp_path, cases_per_row=2),
     )
 
-    assert (results.case_count, results.cases_per_row) == (2, 2)
+    assert (results.case_count, results.cases_per_row) == (3, 2)
     for row_number in (1, 2):
         saved = json.loads((tmp_path / f'row-{row_number}.json').read_text())
-        assert [case['case_id'] for case in saved['cases']] == ['dev-clean-01', PAIR_ID]
+        assert [case['case_id'] for case in saved['cases']] == [
+            'dev-clean-01',
+            PAIR_ID,
+            'dev-hard-negative-01',
+        ]
 
 
 class PrecedentAwareEvalModel(FakeChatModel):

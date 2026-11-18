@@ -210,10 +210,14 @@ def _rule_code_table(rule_metrics: RuleMetrics) -> list[str]:
     ]
 
 
-def _pre_flight_note(cases_per_row: int | None) -> list[str]:
-    if cases_per_row is None:
+def _pre_flight_note(results: EvalResults) -> list[str]:
+    if results.cases_per_row is None:
         return []
-    return [f'Pre-flight: {counted(cases_per_row, "case")} per row, not reported.', '']
+    return [
+        f'Pre-flight: a sample of {counted(results.case_count, "case")} per row,'
+        ' at least one from every slice; not reported.',
+        '',
+    ]
 
 
 def results_file_text(results: EvalResults) -> str:
@@ -221,7 +225,7 @@ def results_file_text(results: EvalResults) -> str:
         [
             f'# {DATASET_NAME} results, {results.measured_on.isoformat()}',
             '',
-            *_pre_flight_note(results.cases_per_row),
+            *_pre_flight_note(results),
             OVERLAP_WORDING,
             '',
             production_default_wording(results.judgement_positive_count),

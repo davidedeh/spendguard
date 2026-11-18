@@ -3,11 +3,14 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 import pytest
+import yaml
 
 import spendguard.eval.runner
 import spendguard.settings
 from settings_factory import make_test_settings
-from spendguard.eval.cases import load_slice_plan
+from spendguard.eval.case_runner import pre_flight_cases
+from spendguard.eval.cases import EvalCase, load_slice_plan
+from spendguard.eval.freeze import CASE_DIRECTORY as FROZEN_CASE_DIRECTORY
 from spendguard.eval.freeze import main as freeze
 from spendguard.eval.runner import DatasetRefusedError, frozen_cases
 from spendguard.eval.runner import main as run_eval_command
@@ -200,7 +203,15 @@ def test_a_pre_flight_writes_its_row_files_and_results_but_leaves_the_readme_alo
     [results_file] = (tmp_path / 'results').glob('*.md')
     assert results_file.name.endswith('-preflight.md')
     [row_file] = (tmp_path / 'results' / results_file.stem).glob('*.json')
-    assert len(json.loads(row_file.read_text())['cases']) == 2
+    assert sorted(case['case_id'] for case in json.loads(row_file.read_text())['cases']) == [
+        'test-alcohol',
+        'test-clean',
+        'test-hard-negative',
+        'test-injection',
+        'test-memory-follow-up',
+        'test-missing-po',
+        'test-purpose-unclear',
+    ]
     assert readme_path.read_text() == 'unchanged\n'
     assert 'the README is unchanged' in capsys.readouterr().out
 
@@ -227,3 +238,33 @@ def test_two_pre_flights_on_the_same_day_keep_each_runs_results_and_row_files(
         assert results_file.stem.endswith(f'-{run_identifier[:8]}-preflight')
         run_identifiers.add(run_identifier)
     assert len(run_identifiers) == 2
+
+
+def frozen_test_split() -> list[EvalCase]:
+    cases = [
+        EvalCase.model_validate(yaml.safe_load(path.read_text()))
+        for path in sorted(FROZEN_CASE_DIRECTORY.glob('*.yaml'))
+    ]
+    return [case for case in cases if case.split == 'test']
+
+
+def test_a_pre_flight_takes_whole_rounds_of_one_case_per_slice_with_each_follow_up_s_pair() -> None:
+    cases = frozen_test_split()
+
+    one_round = [case.id for case in pre_flight_cases(cases, 2)]
+    two_rounds = [case.id for case in pre_flight_cases(cases, 7)]
+    three_rounds = [case.id for case in pre_flight_cases(cases, 13)]
+
+    assert one_round == [
+        'test-clean-01',
+        'test-hard-negative-01',
+        'test-injection-01',
+        'test-judgement-positive-01',
+        'test-memory-follow-up-01',
+        'test-rule-coverage-01',
+    ]
+    assert len(two_rounds) == 12
+    assert {'test-memory-follow-up-02', 'test-judgement-positive-02'} <= set(two_rounds)
+    assert {'test-memory-follow-up-03', 'test-judgement-positive-05'} <= set(three_rounds)
+    assert 'test-judgement-positive-04' not in three_rounds
+    assert {case.slice for case in pre_flight_cases(cases, 2)} == {case.slice for case in cases}

@@ -329,6 +329,24 @@ def _first_completed_results(results_by_row: Sequence[Sequence[CaseResult]]) -> 
     return list(first_results.values())
 
 
+def pre_flight_cases(cases: Sequence[EvalCase], minimum_case_count: int) -> list[EvalCase]:
+    cases_by_slice: dict[str, list[EvalCase]] = {}
+    for case in cases:
+        cases_by_slice.setdefault(case.slice, []).append(case)
+    chosen_case_ids: set[str] = set()
+    for round_index in range(max(len(slice_cases) for slice_cases in cases_by_slice.values())):
+        for slice_cases in cases_by_slice.values():
+            if round_index >= len(slice_cases):
+                continue
+            case = slice_cases[round_index]
+            chosen_case_ids.add(case.id)
+            if case.expected_clearance is not None:
+                chosen_case_ids.add(case.expected_clearance.precedent_from)
+        if len(chosen_case_ids) >= minimum_case_count:
+            break
+    return [case for case in cases if case.id in chosen_case_ids]
+
+
 @dataclass(frozen=True)
 class EvalRunOptions:
     measured_on: datetime.date
@@ -346,7 +364,11 @@ async def run_eval(
 ) -> EvalResults:
     settings = resources.settings
     measured_on = options.measured_on
-    row_cases = cases[: options.cases_per_row]
+    row_cases = (
+        list(cases)
+        if options.cases_per_row is None
+        else pre_flight_cases(cases, options.cases_per_row)
+    )
     chat_models = [chat_model_for(row) for row in settings.eval_rows]
     run_identifier = options.run_identifier
     rows_directory = RowsDirectory(options.rows_directory, run_identifier)
