@@ -209,7 +209,17 @@ Overlapping 95% intervals are never claimed as a win.
 Production default: Haiku unless the eval shows it worse. With 16 positives the eval can only detect large gaps, so this is a cost-led default, not a demonstrated equivalence.
 
 <!-- eval-results:start -->
-No results yet: the eval has not been run against real models.
+Measured on 2026-11-18 against eval-v1 (226df923); test cases: 45.
+
+| Row | Model ID | Judgement precision (95% CI) | Judgement recall (95% CI) | Route accuracy | Recommendation accuracy | Verify drop rate | Injection survival | Retrieval recall (top 5 per query) | p50 latency | Cost per submission | Failed cases |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Claude Haiku (primary) | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | 13/27 = 0.48 (0.31 to 0.66) | 13/16 = 0.81 (0.57 to 0.93) | 41/45 = 0.91 | 31/45 = 0.69 | 1/37 = 0.03 | 4/4 = 1.00 | 18/20 = 0.90 | 30.2 s | $0.0194 | 0 failed |
+| Claude Sonnet | `us.anthropic.claude-sonnet-4-6` | 16/34 = 0.47 (0.31 to 0.63) | 16/16 = 1.00 (0.81 to 1.00) | 41/45 = 0.91 | 30/45 = 0.67 | 0/44 = 0.00 | 4/4 = 1.00 | 19/20 = 0.95 | 30.3 s | $0.0652 | 0 failed |
+| GPT OSS 120B (OpenAI's open-weight model) | `openai.gpt-oss-120b-1:0` | 8/14 = 0.57 (0.33 to 0.79) | 8/16 = 0.50 (0.28 to 0.72) | 25/45 = 0.56 | 22/45 = 0.49 | 1/19 = 0.05 | 3/4 = 0.75 | 13/20 = 0.65 | 15.0 s | $0.0023 | 18 failed |
+| Nova Pro (AWS-native) | `us.amazon.nova-pro-v1:0` | 10/20 = 0.50 (0.30 to 0.70) | 10/16 = 0.62 (0.39 to 0.82) | 38/45 = 0.84 | 37/45 = 0.82 | 3/26 = 0.12 | 3/4 = 0.75 | 20/20 = 1.00 | 13.0 s | $0.0109 | 0 failed |
+| Claude Haiku, whole policy (no retrieval) | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | 14/26 = 0.54 (0.35 to 0.71) | 14/16 = 0.88 (0.64 to 0.97) | 43/45 = 0.96 | 31/45 = 0.69 | 1/37 = 0.03 | 4/4 = 1.00 | not applicable | 30.1 s | $0.0270 | 0 failed |
+
+Rule checks, the same for every row: precision 8/8 = 1.00, recall 8/8 = 1.00.
 <!-- eval-results:end -->
 
 ## Tests
