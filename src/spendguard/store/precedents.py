@@ -71,16 +71,38 @@ async def recent_precedents(
     ]
 
 
-async def precedent_ids_recorded_from(
+@dataclass(frozen=True)
+class RecordedPrecedent:
+    precedent_id: str
+    subject: str
+    code: str
+    clause_reference: str
+    reason: str
+    approver: str
+
+
+async def precedents_recorded_from(
     connection_pool: ConnectionPool, submission_id: uuid.UUID
-) -> frozenset[str]:
+) -> list[RecordedPrecedent]:
     async with connection_pool.connection() as connection:
         rows = await (
             await connection.execute(
-                'select id from precedents where submission_id = %s', (submission_id,)
+                'select id, subject, code, clause_reference, reason, approver from precedents'
+                ' where submission_id = %s order by recorded_at, id',
+                (submission_id,),
             )
         ).fetchall()
-    return frozenset(str(row['id']) for row in rows)
+    return [
+        RecordedPrecedent(
+            precedent_id=str(row['id']),
+            subject=row['subject'],
+            code=row['code'],
+            clause_reference=row['clause_reference'],
+            reason=row['reason'],
+            approver=row['approver'],
+        )
+        for row in rows
+    ]
 
 
 async def clear_precedents(connection_pool: ConnectionPool) -> None:

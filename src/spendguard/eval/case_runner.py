@@ -213,7 +213,10 @@ async def _apply_scripted_review(
         QueueMessage(type='resume', submission_id=submission_id, thread_id=idempotency_key),
         WorkerRuntime(graph=graph, connection_pool=connection_pool, tracing=resources.tracing),
     )
-    return await precedents.precedent_ids_recorded_from(connection_pool, submission_id)
+    return frozenset(
+        precedent.precedent_id
+        for precedent in await precedents.precedents_recorded_from(connection_pool, submission_id)
+    )
 
 
 @dataclass(frozen=True)

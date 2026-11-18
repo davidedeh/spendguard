@@ -56,8 +56,8 @@ reset-local: ## Drop and rebuild this branch's local database, seed it and empty
 index-policy: ## Embed changed policy clauses into this branch's index (calls the configured embedding model)
 	uv run python -m spendguard.deployment.preparation
 
-demo: ## Post signed sample submissions to a running API and show a pending finding (TOKEN=approver token, URL=base URL)
-	uv run python -m spendguard.demo $(or $(URL),http://localhost:8000) $(TOKEN)
+demo: ## Post signed sample submissions to a running API and show a pending finding (TOKEN=approver token, URL=base URL, DECIDE=1 to also decide them)
+	uv run python -m spendguard.demo $(or $(URL),http://localhost:8000) $(TOKEN) $(if $(DECIDE),--decide)
 
 validate-template: ## Validate the SAM template with sam validate and cfn-lint (offline)
 	sam validate --lint --template template.yaml --region us-east-1
