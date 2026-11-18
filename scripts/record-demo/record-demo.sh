@@ -52,7 +52,7 @@ curl -sf "http://localhost:$port/health" >/dev/null || { echo 'The API did not s
 token="$(uv run python -m spendguard.security.approver_tokens EMP-001 2>>"$logs/setup.log")"
 
 echo 'Running the presentation demo'
-uv run python "$scripts/capture_demo.py" "http://localhost:$port" "$token" "$take/capture.json"
+APPROVER_TOKEN="$token" uv run python "$scripts/capture_demo.py" "http://localhost:$port" "$take/capture.json"
 
 echo 'Sharing the demo traces'
 uv run python "$scripts/share_traces.py" "$logs/worker.log" >"$logs/traces.json"

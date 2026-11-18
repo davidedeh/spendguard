@@ -6,13 +6,15 @@ from pathlib import Path
 
 
 def main() -> None:
-    if len(sys.argv) != 4:
-        sys.exit('usage: capture_demo.py <api base URL> <approver token> <capture JSON>')
-    base_url, token, capture_path = sys.argv[1], sys.argv[2], Path(sys.argv[3])
+    if len(sys.argv) != 3:
+        sys.exit(
+            'usage: APPROVER_TOKEN=<approver token> capture_demo.py <api base URL> <capture JSON>'
+        )
+    base_url, capture_path = sys.argv[1], Path(sys.argv[2])
     started = time.monotonic()
     lines: list[dict[str, object]] = []
     with subprocess.Popen(
-        [sys.executable, '-m', 'spendguard.demo_presentation', base_url, token],
+        [sys.executable, '-m', 'spendguard.demo_presentation', base_url],
         stdout=subprocess.PIPE,
         text=True,
     ) as process:
