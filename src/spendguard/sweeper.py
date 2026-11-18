@@ -1,12 +1,16 @@
 import datetime
-from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Callable
 
 from fastapi import FastAPI
 
 from spendguard import settings
-from spendguard.api.app import Lifespan
-from spendguard.db.database import ConnectionPool, async_connection_pool, branch_connection_info
+from spendguard.db.database import (
+    ConnectionPool,
+    Lifespan,
+    async_connection_pool,
+    branch_connection_info,
+    pool_lifespan,
+)
 from spendguard.queue.messages import STATUS_EXPECTED_BY, MessageQueue, MessageType, QueueMessage
 from spendguard.queue.sqs import SqsQueue, ensure_branch_queue, sqs_client
 from spendguard.settings import Settings
@@ -69,10 +73,6 @@ def create_production_sweeper_app() -> FastAPI:
         client=sqs_client(loaded_settings), queue_url=ensure_branch_queue(loaded_settings)
     )
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        await connection_pool.open(wait=True)
-        yield
-        await connection_pool.close()
-
-    return create_sweeper_app(connection_pool, queue, loaded_settings, lifespan=lifespan)
+    return create_sweeper_app(
+        connection_pool, queue, loaded_settings, lifespan=pool_lifespan(connection_pool)
+    )

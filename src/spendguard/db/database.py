@@ -1,4 +1,6 @@
 import contextlib
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 import psycopg
 from langgraph.checkpoint.postgres import PostgresSaver
@@ -15,6 +17,7 @@ CONNECT_TIMEOUT_SECONDS = 3
 MAXIMUM_POOLED_CONNECTIONS = 4
 
 type ConnectionPool = AsyncConnectionPool[AsyncConnection[DictRow]]
+type Lifespan = Callable[[object], AbstractAsyncContextManager[None]]
 
 
 class DatabaseUnreachableError(RuntimeError):
@@ -109,3 +112,21 @@ def async_connection_pool(connection_info: str) -> ConnectionPool:
         check=AsyncConnectionPool.check_connection,
         open=False,
     )
+
+
+@asynccontextmanager
+async def opened_pool(connection_pool: ConnectionPool) -> AsyncIterator[ConnectionPool]:
+    await connection_pool.open(wait=True)
+    try:
+        yield connection_pool
+    finally:
+        await connection_pool.close()
+
+
+def pool_lifespan(connection_pool: ConnectionPool) -> Lifespan:
+    @asynccontextmanager
+    async def lifespan(app: object) -> AsyncIterator[None]:
+        async with opened_pool(connection_pool):
+            yield
+
+    return lifespan

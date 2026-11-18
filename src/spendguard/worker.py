@@ -1,7 +1,6 @@
 import asyncio
 import sys
-from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TypedDict
 
@@ -12,12 +11,18 @@ from langgraph.types import Command
 from pydantic import BaseModel, Field
 
 from spendguard import settings
-from spendguard.api.app import Lifespan
-from spendguard.db.database import ConnectionPool, async_connection_pool, branch_connection_info
+from spendguard.db.database import (
+    ConnectionPool,
+    Lifespan,
+    async_connection_pool,
+    branch_connection_info,
+    opened_pool,
+    pool_lifespan,
+)
 from spendguard.graph.build import ReviewGraph, build_graph
 from spendguard.graph.config import GraphConfig, thread_config
 from spendguard.graph.nodes.execute import SignedDecisionEventSender
-from spendguard.graph.state import ReviewState
+from spendguard.graph.state import initial_review_state
 from spendguard.models.factory import build_chat_model, build_embedder
 from spendguard.observability.tracing import (
     Tracing,
@@ -66,12 +71,9 @@ async def process_message(message: QueueMessage, runtime: WorkerRuntime) -> None
     if snapshot.next:
         await traced_advance(runtime.tracing, runtime.graph, None, thread, str(submission.id))
         return
-    initial_state: ReviewState = {
-        'submission_id': str(submission.id),
-        'idempotency_key': submission.idempotency_key,
-        'submission_type': submission.submission_type,
-        'submission': submission.payload,
-    }
+    initial_state = initial_review_state(
+        submission.id, submission.idempotency_key, submission.submission_type, submission.payload
+    )
     await traced_advance(runtime.tracing, runtime.graph, initial_state, thread, str(submission.id))
 
 
@@ -175,13 +177,7 @@ def create_production_worker_app() -> FastAPI:
     configure_logging(loaded_settings.log_level)
     runtime = build_worker_runtime(loaded_settings)
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        await runtime.connection_pool.open(wait=True)
-        yield
-        await runtime.connection_pool.close()
-
-    return create_worker_app(runtime, lifespan=lifespan)
+    return create_worker_app(runtime, lifespan=pool_lifespan(runtime.connection_pool))
 
 
 async def _run_local_worker() -> None:
@@ -193,13 +189,10 @@ async def _run_local_worker() -> None:
     queue = SqsQueue(
         client=sqs_client(loaded_settings), queue_url=ensure_branch_queue(loaded_settings)
     )
-    await runtime.connection_pool.open(wait=True)
-    try:
+    async with opened_pool(runtime.connection_pool):
         while True:
             if await process_available_messages(queue, runtime) == 0:
                 await asyncio.sleep(IDLE_POLL_SECONDS)
-    finally:
-        await runtime.connection_pool.close()
 
 
 if __name__ == '__main__':

@@ -22,6 +22,12 @@ async def prepare_database(loaded_settings: Settings, policy: Policy, embedder: 
         await index_policy(connection, policy, embedder, loaded_settings.embedding_model.model_id)
 
 
+async def prepare_and_log(loaded_settings: Settings) -> None:
+    policy = load_policy(POLICY_PATH)
+    await prepare_database(loaded_settings, policy, build_embedder(loaded_settings))
+    log_event('database_prepared', policy_version=policy.version)
+
+
 def create_production_preparation_app() -> FastAPI:
     loaded_settings = settings.load_settings()
     configure_logging(loaded_settings.log_level)
@@ -29,9 +35,7 @@ def create_production_preparation_app() -> FastAPI:
 
     @app.post('/events')
     async def events() -> dict[str, str]:
-        policy = load_policy(POLICY_PATH)
-        await prepare_database(loaded_settings, policy, build_embedder(loaded_settings))
-        log_event('database_prepared', policy_version=policy.version)
+        await prepare_and_log(loaded_settings)
         return {'status': 'prepared'}
 
     return app
@@ -40,9 +44,7 @@ def create_production_preparation_app() -> FastAPI:
 async def _prepare_local_database() -> None:
     loaded_settings = settings.load_settings()
     configure_logging(loaded_settings.log_level)
-    policy = load_policy(POLICY_PATH)
-    await prepare_database(loaded_settings, policy, build_embedder(loaded_settings))
-    log_event('database_prepared', policy_version=policy.version)
+    await prepare_and_log(loaded_settings)
 
 
 if __name__ == '__main__':

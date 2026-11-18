@@ -4,11 +4,13 @@ import pytest
 from network import closed_port
 from settings_factory import make_test_settings
 from spendguard.db.database import (
+    ConnectionPool,
     DatabaseUnreachableError,
     NotALocalDatabaseError,
     async_connection_pool,
     drop_branch_database,
     ensure_branch_database,
+    pool_lifespan,
 )
 
 
@@ -79,3 +81,32 @@ async def test_an_open_pool_holds_one_idle_connection(branch_database: str) -> N
         assert pool.get_stats()['pool_size'] == 1
     finally:
         await pool.close()
+
+
+async def test_the_pool_lifespan_opens_the_pool_for_its_duration_and_closes_it_after(
+    branch_database: str,
+) -> None:
+    pool = async_connection_pool(branch_database)
+
+    async with pool_lifespan(pool)(object()), pool.connection() as connection:
+        row = await (await connection.execute('select 1 as answer')).fetchone()
+
+    assert row == {'answer': 1}
+    assert pool.closed
+
+
+async def fail_inside_the_pool_lifespan(pool: ConnectionPool) -> None:
+    async with pool_lifespan(pool)(object()):
+        assert not pool.closed
+        raise RuntimeError('the app failed')
+
+
+async def test_the_pool_lifespan_closes_the_pool_when_the_app_raises(
+    branch_database: str,
+) -> None:
+    pool = async_connection_pool(branch_database)
+
+    with pytest.raises(RuntimeError, match='the app failed'):
+        await fail_inside_the_pool_lifespan(pool)
+
+    assert pool.closed

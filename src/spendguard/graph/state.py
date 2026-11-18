@@ -1,4 +1,5 @@
 import operator
+import uuid
 from collections.abc import Iterable
 from typing import Annotated, Any, Literal, TypedDict
 
@@ -126,3 +127,17 @@ class ReviewState(TypedDict, total=False):
 
 def precedent_clearances(outcomes: Iterable[JudgementOutcome]) -> list[PrecedentClearance]:
     return [outcome for outcome in outcomes if outcome['outcome'] == 'cleared_by_precedent']
+
+
+def initial_review_state(
+    submission_id: uuid.UUID,
+    idempotency_key: str,
+    submission_type: SubmissionType,
+    payload: dict[str, Any],
+) -> ReviewState:
+    return {
+        'submission_id': str(submission_id),
+        'idempotency_key': idempotency_key,
+        'submission_type': submission_type,
+        'submission': payload,
+    }
