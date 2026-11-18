@@ -58,8 +58,8 @@ bootstrap_output() {
     --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
 }
 
-echo "Set these repository variables so deploy.yml can assume the pipeline role:"
+echo "Set these repository variables and the alarm email secret, which deploy.yml reads:"
 echo "  gh variable set AWS_REGION --body '$AWS_REGION'"
-echo "  gh variable set ALARM_EMAIL --body '<address for dead-letter alarms>'"
+echo "  gh secret set ALARM_EMAIL   # paste the address for dead-letter alarms"
 echo "  gh variable set PIPELINE_EXECUTION_ROLE_ARN --body '$(bootstrap_output PipelineExecutionRole)'"
 echo "  gh variable set CLOUDFORMATION_EXECUTION_ROLE_ARN --body '$(bootstrap_output CloudFormationExecutionRole)'"

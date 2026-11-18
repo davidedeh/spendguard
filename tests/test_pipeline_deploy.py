@@ -106,6 +106,12 @@ def test_the_deploy_workflow_runs_only_on_a_push_to_main() -> None:
     assert triggers == {'push': {'branches': ['main']}}
 
 
+def test_the_deploy_workflow_reads_the_alarm_email_from_a_secret_so_run_logs_mask_it() -> None:
+    environment = deploy_workflow()['jobs']['deploy']['env']
+
+    assert environment['ALARM_EMAIL'] == '${{ secrets.ALARM_EMAIL }}'
+
+
 @pytest.mark.parametrize(
     'origin_url', ['https://github.com/an-owner/a-repo.git', 'git@github.com:an-owner/a-repo.git']
 )
@@ -139,6 +145,9 @@ def test_bootstrap_trusts_only_this_repositorys_main_branch_without_prompting(
         '--deployment-branch': 'main',
         '--image-repository': 'arn:aws:ecr:eu-west-2:111122223333:repository/a-stack',
     }
+    printed_commands = [line.split()[:4] for line in completed.stdout.splitlines()]
+    assert ['gh', 'secret', 'set', 'ALARM_EMAIL'] in printed_commands
+    assert ['gh', 'variable', 'set', 'ALARM_EMAIL'] not in printed_commands
 
 
 def test_bootstrap_trusts_the_immutable_subject_github_issues_for_the_repository(
