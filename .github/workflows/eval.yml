@@ -1,0 +1,50 @@
+name: Eval
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  eval:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: spendguard
+          POSTGRES_PASSWORD: spendguard
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U spendguard -d postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: 0.13.7
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_EVAL_ROLE_ARN }}
+          aws-region: us-east-1
+      - run: uv sync --frozen
+      - run: cp .env.example .env
+      - run: make migrate
+      - name: Run the eval
+        run: make eval
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          MODEL_PRICES: ${{ vars.MODEL_PRICES }}
+          EVAL_REQUESTS_PER_MINUTE: ${{ vars.EVAL_REQUESTS_PER_MINUTE }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: |
+            evals/results/
+            README.md

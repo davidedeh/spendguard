@@ -39,7 +39,7 @@ expected_findings: []
 expected_route: auto_approve
 expected_recommendation: approve
 scripted_review: null
-expected_clearance: null
+memory: null
 drafted_by:
   provider: bedrock
   model_id: openai.gpt-oss-120b-1:0

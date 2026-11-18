@@ -20,12 +20,18 @@ def make_test_settings(**overrides: Any) -> Settings:
         'allowed_providers': ('fake',),
         'chat_models': {
             'fake_primary': ChatModelSettings(
-                provider='fake', model_id='fake-chat', structured_output_method='function_calling'
+                provider='fake',
+                model_id='fake-chat',
+                structured_output_method='function_calling',
+                temperature=0.0,
             ),
         },
         'primary_model_key': 'fake_primary',
         'drafting_model_keys': ('fake_primary',),
         'embedding_model': ModelSettings(provider='fake', model_id='fake-embedder'),
+        'model_prices': {},
+        'eval_requests_per_minute': {},
+        'eval_rows': (),
         'google_api_key': None,
         'langfuse_public_key': None,
         'langfuse_secret_key': None,
@@ -35,6 +41,7 @@ def make_test_settings(**overrides: Any) -> Settings:
         'decision_event_url': 'http://testserver/mock-erp/decision-events',
         'signature_tolerance_seconds': 300,
         'force_human_review': False,
+        'maximum_field_length': 2000,
         'judgement_max_tool_calls': 6,
         'retrieval_top_k': 5,
         'worker_timeout_seconds': 120,
@@ -42,5 +49,5 @@ def make_test_settings(**overrides: Any) -> Settings:
         'sweeper_stuck_after_seconds': 900,
     }
     if 'branch_name' not in overrides:
-        fields['branch_name'] = current_branch_name()
+        fields['branch_name'] = f'{current_branch_name()}-tests'
     return Settings(**(fields | overrides))

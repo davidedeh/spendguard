@@ -34,16 +34,8 @@ expected_findings:
   - "\xA72.4"
 expected_route: human_review
 expected_recommendation: none
-scripted_review:
-  approver: EMP-002
-  dispositions:
-  - code: WEEKEND_SPEND_UNJUSTIFIED
-    disposition: dismissed
-    reason: EMP-015 regularly works weekends as part of their role supporting CC-200
-      client deliverables that have hard Monday deadlines; weekend stationery purchases
-      to prepare materials ahead of the working week are a standing expectation of
-      this position and do not require individual justification.
-expected_clearance: null
+scripted_review: null
+memory: null
 drafted_by:
   provider: bedrock
   model_id: us.anthropic.claude-sonnet-4-6

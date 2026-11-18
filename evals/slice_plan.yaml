@@ -1,13 +1,17 @@
 test:
   slices:
-    judgement_positive: 16
+    judgement_positive: 18
     hard_negative: 8
     rule_coverage: 8
     clean: 6
     injection: 4
-    memory_follow_up: 3
-  judgement_positives_per_code: 4
-  memory_pairs: 3
+    memory_follow_up: 5
+  judgement_positives_per_code:
+    WEEKEND_SPEND_UNJUSTIFIED: 6
+    PURPOSE_UNCLEAR: 4
+    RECEIPT_MISMATCH: 5
+    ALCOHOL_NOT_PERMITTED: 4
+  memory_pairs: 5
   supplier_invoices: 10 # gut pick
   foreign_currency: 6 # gut pick
 dev:
@@ -17,8 +21,12 @@ dev:
     rule_coverage: 2
     clean: 1
     injection: 1
-    memory_follow_up: 1
-  judgement_positives_per_code: 1
-  memory_pairs: 1
+    memory_follow_up: 0
+  judgement_positives_per_code:
+    WEEKEND_SPEND_UNJUSTIFIED: 1
+    PURPOSE_UNCLEAR: 1
+    RECEIPT_MISMATCH: 1
+    ALCOHOL_NOT_PERMITTED: 1
+  memory_pairs: 0
   supplier_invoices: 1 # gut pick
   foreign_currency: 1 # gut pick

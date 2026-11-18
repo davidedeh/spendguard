@@ -6,7 +6,11 @@ test:
     clean: 1
     injection: 1
     memory_follow_up: 1
-  judgement_positives_per_code: 1
+  judgement_positives_per_code:
+    WEEKEND_SPEND_UNJUSTIFIED: 1
+    PURPOSE_UNCLEAR: 1
+    RECEIPT_MISMATCH: 1
+    ALCOHOL_NOT_PERMITTED: 1
   memory_pairs: 1
   supplier_invoices: 1
   foreign_currency: 1
@@ -18,7 +22,11 @@ dev:
     clean: 1
     injection: 0
     memory_follow_up: 0
-  judgement_positives_per_code: 0
+  judgement_positives_per_code:
+    WEEKEND_SPEND_UNJUSTIFIED: 0
+    PURPOSE_UNCLEAR: 0
+    RECEIPT_MISMATCH: 0
+    ALCOHOL_NOT_PERMITTED: 0
   memory_pairs: 0
   supplier_invoices: 0
   foreign_currency: 0

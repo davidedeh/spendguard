@@ -9,3 +9,6 @@ dist/
 build/
 .aws-sam/
 evals/drafts/
+recordings/
+.DS_Store
+evals/results/*-preflight*

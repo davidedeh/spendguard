@@ -20,7 +20,7 @@ Python 3.12 with uv. LangGraph with an async Postgres checkpointer. FastAPI behi
 ## Tests
 
 - Build settings with `make_test_settings(**overrides)` from `tests/settings_factory.py`. Calling `load_settings` inside a test raises.
-- Fixtures in `tests/conftest.py`: `database_connection` (branch database, migrated, rolled back after each test) and `branch_queue` (branch FIFO queue on ElasticMQ, purged before each test). Both raise when compose is down.
+- Tests run against the branch's own test database and queue (`<branch>-tests`), so `make seed` and local runs never meet test data. Fixtures in `tests/conftest.py`: `database_connection` (migrated, rolled back after each test) and `branch_queue` (FIFO queue on ElasticMQ, purged before each test). Both raise when compose is down. Load seed data in tests with `replace_seed_data` (`tests/seeding.py`), which replaces the seed tables' contents exactly.
 - Any skipped test fails the run.
 - Never call a real model or AWS service.
 

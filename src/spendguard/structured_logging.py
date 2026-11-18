@@ -32,9 +32,14 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(line)
 
 
+def _is_event_or_library_warning(record: logging.LogRecord) -> bool:
+    return hasattr(record, EVENT_ATTRIBUTE) or record.levelno >= logging.WARNING
+
+
 def configure_logging(level: str, stream: TextIO = sys.stderr) -> None:
     handler = logging.StreamHandler(stream)
     handler.setFormatter(JsonFormatter())
+    handler.addFilter(_is_event_or_library_warning)
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(level)

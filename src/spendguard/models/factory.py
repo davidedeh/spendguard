@@ -2,16 +2,18 @@ from typing import assert_never
 
 from botocore.config import Config
 from langchain_aws import BedrockEmbeddings, ChatBedrockConverse
-from langchain_core.embeddings import DeterministicFakeEmbedding, Embeddings
+from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseChatModel
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from spendguard.models.fake import FakeChatModel
+from spendguard.models.fake import FakeChatModel, KeywordFakeEmbedder
 from spendguard.settings import Settings
 
 EMBEDDING_DIMENSIONS = 1024
 # Bedrock compiles a new output schema for up to about 90 seconds on first use.
 BEDROCK_READ_TIMEOUT_SECONDS = 120
+# Bedrock token quotas refill each minute; nine retries back off for up to about 110 seconds.
+BEDROCK_MAX_ATTEMPTS = 10
 
 
 def build_chat_model(settings: Settings, model_key: str) -> BaseChatModel:
@@ -21,11 +23,17 @@ def build_chat_model(settings: Settings, model_key: str) -> BaseChatModel:
             return ChatBedrockConverse(
                 model=model.model_id,
                 region_name=settings.aws_region,
-                config=Config(read_timeout=BEDROCK_READ_TIMEOUT_SECONDS),
+                temperature=model.temperature,
+                config=Config(
+                    read_timeout=BEDROCK_READ_TIMEOUT_SECONDS,
+                    retries={'mode': 'adaptive', 'total_max_attempts': BEDROCK_MAX_ATTEMPTS},
+                ),
             )
         case 'google_genai':
             return ChatGoogleGenerativeAI(
-                model=model.model_id, google_api_key=settings.google_api_key
+                model=model.model_id,
+                google_api_key=settings.google_api_key,
+                temperature=model.temperature,
             )
         case 'fake':
             return FakeChatModel(model_id=model.model_id)
@@ -45,6 +53,6 @@ def build_embedder(settings: Settings) -> Embeddings:
         case 'google_genai':
             raise ValueError('Embeddings are served by bedrock, or fake in tests, not google_genai')
         case 'fake':
-            return DeterministicFakeEmbedding(size=EMBEDDING_DIMENSIONS)
+            return KeywordFakeEmbedder(size=EMBEDDING_DIMENSIONS)
         case _:
             assert_never(model.provider)

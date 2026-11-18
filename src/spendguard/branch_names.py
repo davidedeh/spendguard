@@ -6,6 +6,7 @@ import subprocess
 POSTGRES_IDENTIFIER_LIMIT = 63
 SQS_QUEUE_NAME_LIMIT = 80
 FIFO_SUFFIX = '.fifo'
+DEAD_LETTER_SUFFIX = '-dead-letter'
 DIGEST_LENGTH = 8
 
 disallowed_character_pattern = re.compile(r'[^a-z0-9]+')
@@ -29,7 +30,7 @@ def _bounded_name(prefix: str, branch_name: str, separator: str, limit: int) -> 
 
 
 def current_branch_name() -> str:
-    for variable in ('GITHUB_HEAD_REF', 'GITHUB_REF_NAME'):
+    for variable in ('BRANCH_NAME', 'GITHUB_HEAD_REF', 'GITHUB_REF_NAME'):
         if branch_name := os.environ.get(variable):
             return branch_name
     completed = subprocess.run(
@@ -46,5 +47,9 @@ def database_name_for_branch(branch_name: str) -> str:
 
 
 def queue_name_for_branch(branch_name: str) -> str:
-    limit = SQS_QUEUE_NAME_LIMIT - len(FIFO_SUFFIX)
+    limit = SQS_QUEUE_NAME_LIMIT - len(FIFO_SUFFIX) - len(DEAD_LETTER_SUFFIX)
     return _bounded_name('spendguard', branch_name, '-', limit) + FIFO_SUFFIX
+
+
+def dead_letter_queue_name_for(queue_name: str) -> str:
+    return queue_name.removesuffix(FIFO_SUFFIX) + DEAD_LETTER_SUFFIX + FIFO_SUFFIX

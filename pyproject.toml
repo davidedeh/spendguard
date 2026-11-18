@@ -5,7 +5,6 @@ description = "Reviews expense claims and supplier invoices for the fictional Ha
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "awslambdaric>=4.2.3",
     "boto3>=1.44.3",
     "fastapi>=0.162.7",
     "httpx>=0.28.1",
@@ -13,13 +12,14 @@ dependencies = [
     "langchain-aws>=1.9.3",
     "langchain-core>=1.8.0",
     "langchain-google-genai>=4.5.0",
-    "langfuse>=5.2.0",
+    "langfuse>=5.2.0,<6",
     "langgraph>=1.2.22",
     "langgraph-checkpoint-postgres>=3.2.1",
     "pgvector>=0.5.1",
     "psycopg[binary,pool]>=3.3.9",
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.3",
+    "python-dotenv>=1.0",
     "pyyaml>=6.0.3",
     "uvicorn>=0.54.0",
 ]
@@ -53,12 +53,17 @@ python_version = "3.12"
 mypy_path = ["src", "tests"]
 files = ["src", "tests"]
 
+[[tool.mypy.overrides]]
+module = ["cfnlint.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]
 addopts = "-p safeguards -p pytester --strict-markers"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 
 [dependency-groups]
 dev = [

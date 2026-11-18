@@ -68,6 +68,22 @@ def test_a_case_without_drafted_by_is_reported() -> None:
     assert report.problems == ('test-weekend.yaml: drafted_by: Field required',)
 
 
+def test_a_case_written_in_an_audit_session_names_the_model_and_the_audit() -> None:
+    cases = fixture_cases()
+    cases['test-weekend.yaml']['drafted_by'] = {
+        'provider': 'claude_code',
+        'model_id': 'claude-opus-5-5',
+        'drafted_during': 'eval-v2 audit',
+    }
+    unattributed = copy.deepcopy(cases)
+    del unattributed['test-weekend.yaml']['drafted_by']['drafted_during']
+
+    assert validate(cases).problems == ()
+    assert validate(unattributed).problems == (
+        'test-weekend.yaml: drafted_by.claude_code.drafted_during: Field required',
+    )
+
+
 @pytest.mark.parametrize(
     ('quantity', 'problem'),
     [
@@ -541,6 +557,29 @@ def test_judgement_positives_off_the_plan_for_a_code_are_reported() -> None:
     )
 
 
+def test_the_plan_sets_the_judgement_positive_count_for_each_code_separately() -> None:
+    plan = SlicePlan.model_validate(
+        FIXTURE_SLICE_PLAN.model_dump()
+        | {
+            'test': FIXTURE_SLICE_PLAN.test.model_dump()
+            | {
+                'judgement_positives_per_code': {
+                    'WEEKEND_SPEND_UNJUSTIFIED': 1,
+                    'PURPOSE_UNCLEAR': 1,
+                    'RECEIPT_MISMATCH': 2,
+                    'ALCOHOL_NOT_PERMITTED': 1,
+                }
+            }
+        }
+    )
+
+    report = validate_dataset(fixture_cases(), FIXTURE_POLICY, FIXTURE_SEED_DATA, plan)
+
+    assert report.problems == (
+        'the test split has 1 judgement_positive cases for RECEIPT_MISMATCH, the plan says 2',
+    )
+
+
 def test_a_rule_coverage_case_without_one_rule_finding_is_reported() -> None:
     cases = fixture_cases()
     cases['test-missing-po.yaml']['expected_findings'].append(
@@ -651,11 +690,34 @@ def test_a_judgement_positive_without_one_judgement_finding_is_reported() -> Non
     report = validate(cases)
 
     assert without_label_problems(report.problems) == (
-        'test-weekend.yaml: a judgement_positive case needs exactly one judgement finding,'
-        ' it has 0',
+        'test-weekend.yaml: a judgement_positive case needs at least one judgement finding',
         'the test split has 0 judgement_positive cases for WEEKEND_SPEND_UNJUSTIFIED,'
         ' the plan says 1',
     )
+
+
+def test_a_judgement_positive_may_expect_a_second_judgement_finding_its_brief_names() -> None:
+    cases = fixture_cases()
+    weekend = cases['test-weekend.yaml']
+    weekend['intent']['judgement_codes'].append('RECEIPT_MISMATCH')
+    weekend['expected_findings'].append(
+        {'id': 'RECEIPT_MISMATCH', 'code': 'RECEIPT_MISMATCH', 'gold_clauses': ['§1.2']}
+    )
+    weekend['expected_recommendation'] = 'reject'
+    plan = SlicePlan.model_validate(
+        FIXTURE_SLICE_PLAN.model_dump()
+        | {
+            'test': FIXTURE_SLICE_PLAN.test.model_dump()
+            | {
+                'judgement_positives_per_code': FIXTURE_SLICE_PLAN.test.judgement_positives_per_code
+                | {'RECEIPT_MISMATCH': 2}
+            }
+        }
+    )
+
+    report = validate_dataset(cases, FIXTURE_POLICY, FIXTURE_SEED_DATA, plan)
+
+    assert report.problems == ()
 
 
 def test_memory_pairs_off_the_plan_are_reported() -> None:
@@ -666,7 +728,7 @@ def test_memory_pairs_off_the_plan_are_reported() -> None:
 
     assert report.problems == (
         'the test split has 0 memory pairs, the plan says 1',
-        'test-memory-follow-up.yaml: its expected clearance names test-purpose-unclear, which is'
+        'test-memory-follow-up.yaml: its memory block names test-purpose-unclear, which is'
         ' not a memory pair in the test split',
     )
 
@@ -713,14 +775,14 @@ def test_a_memory_pair_without_exactly_one_follow_up_is_reported() -> None:
     )
 
 
-def test_a_follow_up_whose_clearance_names_no_memory_pair_in_its_split_is_reported() -> None:
+def test_a_follow_up_whose_memory_block_names_no_memory_pair_in_its_split_is_reported() -> None:
     cases = fixture_cases()
-    cases['test-memory-follow-up.yaml']['expected_clearance']['precedent_from'] = 'test-weekend'
+    cases['test-memory-follow-up.yaml']['memory']['precedent_from'] = 'test-weekend'
 
     report = validate(cases)
 
     assert report.problems == (
-        'test-memory-follow-up.yaml: its expected clearance names test-weekend, which is not a'
+        'test-memory-follow-up.yaml: its memory block names test-weekend, which is not a'
         ' memory pair in the test split',
         'test-purpose-unclear.yaml: memory pair has no follow-up',
     )
@@ -750,15 +812,60 @@ def test_a_follow_up_dated_on_or_before_its_memory_pair_is_reported() -> None:
     )
 
 
-def test_a_follow_up_off_the_kind_of_day_its_cleared_code_needs_is_reported() -> None:
+def test_a_follow_up_whose_precedent_does_not_apply_needs_that_code_and_no_other_findings() -> None:
+    cases = fixture_cases()
+    cases['test-memory-follow-up.yaml']['memory']['precedent_applies'] = False
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-memory-follow-up.yaml: the route rule gives auto_approve, not human_review',
+        'test-memory-follow-up.yaml: its precedent does not apply, so it needs a PURPOSE_UNCLEAR'
+        ' finding and no other',
+    )
+
+
+def test_a_follow_up_whose_precedent_does_not_apply_expects_its_code_with_the_precedent_noted() -> (
+    None
+):
+    cases = fixture_cases()
+    control = cases['test-memory-follow-up.yaml']
+    control['memory']['precedent_applies'] = False
+    control['intent']['judgement_codes'] = ['PURPOSE_UNCLEAR']
+    control['expected_findings'] = [
+        {'id': 'PURPOSE_UNCLEAR', 'code': 'PURPOSE_UNCLEAR', 'gold_clauses': ['§1.1']}
+    ]
+
+    report = validate(cases)
+
+    assert report.problems == ()
+
+
+def test_a_follow_up_whose_precedent_applies_expects_no_findings() -> None:
+    cases = fixture_cases()
+    follow_up = cases['test-memory-follow-up.yaml']
+    follow_up['intent']['judgement_codes'] = ['PURPOSE_UNCLEAR']
+    follow_up['expected_findings'] = [
+        {'id': 'PURPOSE_UNCLEAR', 'code': 'PURPOSE_UNCLEAR', 'gold_clauses': ['§1.1']}
+    ]
+
+    report = validate(cases)
+
+    assert report.problems == (
+        'test-memory-follow-up.yaml: its precedent applies, so it expects no findings',
+    )
+
+
+def test_a_follow_up_off_the_kind_of_day_its_code_needs_is_reported() -> None:
     cases = fixture_cases()
     cases['test-memory-follow-up.yaml']['submission']['spent_on'] = '2026-10-17'
     cases['test-weekend.yaml']['scripted_review'] = WEEKEND_REVIEW
     weekend_follow_up = second_follow_up(cases)
     weekend_follow_up['submission'].update({'claimant': 'EMP-002', 'spent_on': '2026-10-16'})
-    weekend_follow_up['expected_clearance'] = {
-        'code': 'WEEKEND_SPEND_UNJUSTIFIED',
+    weekend_follow_up['memory'] = {
         'precedent_from': 'test-weekend',
+        'code': 'WEEKEND_SPEND_UNJUSTIFIED',
+        'precedent_applies': True,
     }
     cases['test-memory-follow-up-2.yaml'] = weekend_follow_up
 
@@ -767,9 +874,9 @@ def test_a_follow_up_off_the_kind_of_day_its_cleared_code_needs_is_reported() ->
     )
 
     assert report.problems == (
-        'test-memory-follow-up.yaml: a follow-up cleared of PURPOSE_UNCLEAR needs a working day,'
+        'test-memory-follow-up.yaml: a follow-up on PURPOSE_UNCLEAR needs a working day,'
         ' and 2026-10-17 is a weekend or public holiday',
-        'test-memory-follow-up-2.yaml: a follow-up cleared of WEEKEND_SPEND_UNJUSTIFIED needs a'
+        'test-memory-follow-up-2.yaml: a follow-up on WEEKEND_SPEND_UNJUSTIFIED needs a'
         ' weekend or public holiday, and 2026-10-16 is a working day',
     )
 
@@ -783,22 +890,6 @@ def test_a_follow_up_for_the_same_amount_as_its_memory_pair_is_reported() -> Non
     assert report.problems == (
         'test-memory-follow-up.yaml: its amount 31.20 is the amount of memory pair'
         ' test-purpose-unclear',
-    )
-
-
-def test_a_follow_up_whose_intent_names_a_finding_is_reported() -> None:
-    cases = fixture_cases()
-    follow_up = cases['test-memory-follow-up.yaml']
-    follow_up['intent']['judgement_codes'] = ['PURPOSE_UNCLEAR']
-    follow_up['expected_findings'] = [
-        {'id': 'purpose', 'code': 'PURPOSE_UNCLEAR', 'gold_clauses': ['§1.1']}
-    ]
-
-    report = validate(cases)
-
-    assert report.problems == (
-        'test-memory-follow-up.yaml: a follow-up targets no findings, its intent names'
-        ' PURPOSE_UNCLEAR',
     )
 
 
@@ -885,7 +976,7 @@ def test_an_upheld_disposition_needs_no_reason_but_gives_its_follow_up_no_preced
     report = validate(cases)
 
     assert report.problems == (
-        'test-memory-follow-up.yaml: its clearance is for PURPOSE_UNCLEAR, which memory pair'
+        'test-memory-follow-up.yaml: its memory block names PURPOSE_UNCLEAR, which memory pair'
         ' test-purpose-unclear does not dismiss',
     )
 
@@ -963,21 +1054,27 @@ def test_the_hash_changes_when_any_label_changes(
     assert relabelled.dataset_hash != original.dataset_hash
 
 
-def test_the_committed_slice_plan_is_the_one_in_the_spec() -> None:
+def test_the_committed_slice_plan_is_the_eval_v2_plan() -> None:
     plan = load_slice_plan(Path(__file__).parents[1] / 'evals' / 'slice_plan.yaml')
 
     assert plan.test.slices.model_dump() == {
-        'judgement_positive': 16,
+        'judgement_positive': 18,
         'hard_negative': 8,
         'rule_coverage': 8,
         'clean': 6,
         'injection': 4,
-        'memory_follow_up': 3,
+        'memory_follow_up': 5,
     }
-    assert (plan.test.judgement_positives_per_code, plan.test.memory_pairs) == (4, 3)
+    assert plan.test.judgement_positives_per_code == {
+        'WEEKEND_SPEND_UNJUSTIFIED': 6,
+        'PURPOSE_UNCLEAR': 4,
+        'RECEIPT_MISMATCH': 5,
+        'ALCOHOL_NOT_PERMITTED': 4,
+    }
+    assert plan.test.memory_pairs == 5
     dev_counts = plan.dev.slices.model_dump()
-    assert dev_counts['memory_follow_up'] == plan.dev.memory_pairs == 1
-    assert sum(dev_counts.values()) - dev_counts['memory_follow_up'] == 10
+    assert dev_counts.pop('memory_follow_up') == plan.dev.memory_pairs == 0
+    assert sum(dev_counts.values()) == 10
     assert min(dev_counts.values()) >= 1
 
 

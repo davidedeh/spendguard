@@ -42,9 +42,17 @@ and needs a written justification in the submission explaining why the work
 could not take place on a working day. A justification that only restates
 the purpose does not meet this requirement.
 
+Halden Group public holidays are the bank holidays of England and Wales,
+including substitute days, and they apply to every employee wherever they
+work. The finance team publishes their dates.
+
 Acceptable reasons include a client event fixed for that day, an incident
 that needed someone on site, or travel that could only be booked for that
 day. Convenience, catching up on work or a personal preference are not.
+
+A deadline, or a date the work was needed by, is not enough on its own. The
+justification must also say why the work could not have been done on an
+earlier working day.
 
 ## 3. Receipts and evidence
 
@@ -60,8 +68,16 @@ the spend. The approver decides whether to pay it.
 the items on the receipt must be the items claimed for. A receipt for a
 different amount, date, supplier or purpose does not support the claim.
 
-Where a receipt also covers personal items, the claimant marks the business
-items and claims only those.
+Where a receipt also covers items this policy does not pay for, such as
+alcohol, extras charged to a hotel room or personal items, the claimant leaves
+those lines out and claims the rest. The difference from the receipt total is
+not a mismatch, provided the amount claimed equals the receipt total less
+those whole lines. Where the receipt itemises them, no further marking is
+needed.
+
+Credit added to a travel card or a similar account is a different item from
+the journeys it later pays for. A claim for a journey is supported by the fare
+for that journey, not by credit bought at the same time.
 
 **§3.3 Claiming once.** Each item of spend is claimed or invoiced once only. An employee must not claim spend already paid by a company card, by a supplier invoice or by another claim, and a supplier must not invoice twice for the same goods or services.
 
@@ -144,7 +160,22 @@ has added it to the list, even while its assessment is under way.
 
 **§10.5 Standing approvals.** Some spend recurs on the same terms, such as a monthly travel pass for a role that visits sites every week. A manager may give a standing approval for it, and each later claim then quotes the standing approval instead of restating the business purpose.
 
-**§10.6 Standing reasons recorded by approvers.** An approver decides each submission on its own facts. When an approver accepts a submission because of a lasting fact about a supplier or an employee, such as a supplier that is part way through being approved, or an employee whose role routinely involves weekend work or recurring site visits, that reason may be shown to approvers of later submissions from the same supplier or employee. It informs their decision and never makes it.
+**§10.6 Standing reasons recorded by approvers.** An approver decides each submission on its own facts. When an approver
+accepts a submission because of a lasting fact about a supplier or an
+employee, such as a supplier that is part way through being approved, or an
+employee whose role routinely involves weekend work or recurring site
+visits, they record that fact as the reason. A recorded reason states the
+fact and makes no ruling on later submissions.
+
+A recorded reason covers a later submission only where it concerns the same
+employee or supplier and the same requirement, and the fact it records
+explains that submission's spend, not only spend of the same type. Where a
+recorded reason covers a later submission's business purpose or its weekend
+or public holiday spend, the finance team notes the reason against that
+requirement instead of recording the requirement as not met. A supplier that
+is not on the approved list is still recorded as not approved, with the reason
+noted beside it. Either way the submission goes to an approver whatever its
+amount, and the reason informs the approver's decision and never makes it.
 
 ## 11. Booking travel
 

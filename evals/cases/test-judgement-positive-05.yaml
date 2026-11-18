@@ -35,10 +35,8 @@ scripted_review:
   - code: PURPOSE_UNCLEAR
     disposition: dismissed
     reason: EMP-003's role as cost-centre manager for CC-300 regularly involves hosting
-      client contacts at working lunches; brief purpose statements of this kind are
-      consistent with that standing pattern and are accepted for this and future submissions
-      from EMP-003 of the same character.
-expected_clearance: null
+      client contacts at working lunches.
+memory: null
 drafted_by:
   provider: bedrock
   model_id: us.anthropic.claude-sonnet-4-6

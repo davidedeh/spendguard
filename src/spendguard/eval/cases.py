@@ -4,7 +4,7 @@ from typing import Annotated, Literal, Self
 import yaml
 from pydantic import Field, StringConstraints, model_validator
 
-from spendguard.policy.loader import CheckKind, FindingCode
+from spendguard.policy.loader import FindingCode
 from spendguard.rules.decisions import Recommendation, Route
 from spendguard.seed.schema import EmployeeReference
 from spendguard.settings import Provider
@@ -24,10 +24,6 @@ ReceiptDifference = Literal['receipt_mismatch', 'tip', 'alcohol_removed', 'room_
 NonEmptyText = Annotated[str, StringConstraints(min_length=1)]
 Count = Annotated[int, Field(ge=0)]
 HISTORY_CODES: frozenset[FindingCode] = frozenset({'DUPLICATE_SUBMISSION', 'SPLIT_PURCHASE'})
-SINGLE_FINDING_SLICES: dict[Slice, CheckKind] = {
-    'judgement_positive': 'judgement',
-    'rule_coverage': 'rule',
-}
 
 
 class ExpectedFinding(StrictModel):
@@ -36,9 +32,10 @@ class ExpectedFinding(StrictModel):
     gold_clauses: Annotated[tuple[NonEmptyText, ...], Field(min_length=1)]
 
 
-class ExpectedClearance(StrictModel):
-    code: FindingCode
+class MemoryCheck(StrictModel):
     precedent_from: NonEmptyText
+    code: FindingCode
+    precedent_applies: bool
 
 
 class ScriptedDisposition(StrictModel):
@@ -82,9 +79,18 @@ class CaseIntent(StrictModel):
         return frozenset((*self.rule_codes, *self.judgement_codes, *lookalike_codes))
 
 
-class DraftedBy(StrictModel):
+class PipelineDraft(StrictModel):
     provider: Provider
     model_id: NonEmptyText
+
+
+class AuditSessionDraft(StrictModel):
+    provider: Literal['claude_code']
+    model_id: NonEmptyText
+    drafted_during: NonEmptyText
+
+
+DraftedBy = Annotated[PipelineDraft | AuditSessionDraft, Field(discriminator='provider')]
 
 
 class EvalCase(StrictModel):
@@ -97,7 +103,7 @@ class EvalCase(StrictModel):
     expected_route: Route
     expected_recommendation: Recommendation
     scripted_review: ScriptedReview | None = None
-    expected_clearance: ExpectedClearance | None
+    memory: MemoryCheck | None
     drafted_by: DraftedBy
 
 
@@ -112,7 +118,7 @@ class SliceCounts(StrictModel):
 
 class SplitPlan(StrictModel):
     slices: SliceCounts
-    judgement_positives_per_code: Count
+    judgement_positives_per_code: dict[FindingCode, Count]
     memory_pairs: Count
     supplier_invoices: Count
     foreign_currency: Count

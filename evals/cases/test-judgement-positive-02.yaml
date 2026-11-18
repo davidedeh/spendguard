@@ -34,10 +34,8 @@ scripted_review:
   dispositions:
   - code: WEEKEND_SPEND_UNJUSTIFIED
     disposition: dismissed
-    reason: "EMP-002 is on a standing weekend on\u2011call schedule, a fact that justifies\
-      \ weekend accommodation without an additional justification and also covers\
-      \ any later weekend accommodation claims."
-expected_clearance: null
+    reason: EMP-002 is on a standing weekend on-call schedule.
+memory: null
 drafted_by:
   provider: bedrock
   model_id: openai.gpt-oss-120b-1:0

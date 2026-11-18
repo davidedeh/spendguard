@@ -9,10 +9,10 @@ from typing import assert_never, get_args
 from spendguard.eval.cases import (
     HISTORY_CODES,
     CaseIntent,
-    ExpectedClearance,
     InjectionField,
     InjectionKind,
     InjectionPlan,
+    MemoryCheck,
     ReceiptDifference,
     Slice,
     SlicePlan,
@@ -103,7 +103,7 @@ class CaseBrief(StrictModel):
     claimed_rate_must_deviate: bool
     receipt: ReceiptPlan | None
     memory_pair: bool
-    clearance: ExpectedClearance | None
+    memory: MemoryCheck | None
     history_claims: tuple[HistoricalClaim, ...]
     history_invoices: tuple[HistoricalInvoice, ...]
 
@@ -172,14 +172,18 @@ def _spread_days(days: list[datetime.date], count: int) -> list[datetime.date]:
 def _targets(split_plan: SplitPlan, policy: Policy) -> list[_Target]:
     judgement_codes = policy.codes_with_check('judgement')
     rule_codes = policy.codes_with_check('rule')
-    per_code = max(split_plan.judgement_positives_per_code, 1)
+    planned_positive_codes = [
+        code
+        for code in judgement_codes
+        for _ in range(split_plan.judgement_positives_per_code.get(code, 0))
+    ] or list(judgement_codes)
     slice_counts = split_plan.slices.model_dump()
     targets: list[_Target] = []
     for slice_name in SLICES:
         for index in range(slice_counts[slice_name]):
             match slice_name:
                 case 'judgement_positive':
-                    code = judgement_codes[(index // per_code) % len(judgement_codes)]
+                    code = planned_positive_codes[index % len(planned_positive_codes)]
                     targets.append(_target(slice_name, judgement_codes=(code,)))
                 case 'hard_negative':
                     code = judgement_codes[index % len(judgement_codes)]
@@ -384,7 +388,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate=False,
             receipt=ReceiptPlan(present=True),
             memory_pair=False,
-            clearance=ExpectedClearance(code=code, precedent_from=pair.case_id),
+            memory=MemoryCheck(precedent_from=pair.case_id, code=code, precedent_applies=True),
             history_claims=(),
             history_invoices=(),
         )
@@ -548,7 +552,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate='CURRENCY_ANOMALY' in target.intent.rule_codes,
             receipt=ReceiptPlan(present='MISSING_RECEIPT' not in target.intent.rule_codes),
             memory_pair=memory_pair,
-            clearance=None,
+            memory=None,
             history_claims=(),
             history_invoices=(),
         )
@@ -618,7 +622,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate=False,
             receipt=ReceiptPlan(present=True),
             memory_pair=memory_pair,
-            clearance=None,
+            memory=None,
             history_claims=(prior,),
             history_invoices=(),
         )
@@ -710,7 +714,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate='CURRENCY_ANOMALY' in codes,
             receipt=None,
             memory_pair=memory_pair,
-            clearance=None,
+            memory=None,
             history_claims=(),
             history_invoices=(),
         )
@@ -774,7 +778,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate=False,
             receipt=None,
             memory_pair=memory_pair,
-            clearance=None,
+            memory=None,
             history_claims=(),
             history_invoices=window_history,
         )
@@ -812,7 +816,7 @@ class _BriefBuilder:
             claimed_rate_must_deviate=False,
             receipt=None,
             memory_pair=memory_pair,
-            clearance=None,
+            memory=None,
             history_claims=(),
             history_invoices=(prior,),
         )

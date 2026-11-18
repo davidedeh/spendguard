@@ -1,21 +1,10 @@
 import io
 import json
 import logging
-from collections.abc import Iterator
 
 import pytest
 
-from spendguard.structured_logging import configure_logging, log_event
-
-
-@pytest.fixture
-def log_stream() -> Iterator[io.StringIO]:
-    root = logging.getLogger()
-    original_handlers, original_level = root.handlers[:], root.level
-    stream = io.StringIO()
-    configure_logging('INFO', stream)
-    yield stream
-    root.handlers, root.level = original_handlers, original_level
+from spendguard.structured_logging import log_event
 
 
 def test_an_event_is_one_json_line_carrying_its_identifiers(log_stream: io.StringIO) -> None:
@@ -64,3 +53,16 @@ def test_a_library_log_record_is_json_without_its_message_text(log_stream: io.St
         'logger': 'uvicorn.error',
         'exception_type': 'KeyError',
     }
+
+
+def test_library_records_below_warning_are_left_out_while_events_stay(
+    log_stream: io.StringIO,
+) -> None:
+    logging.getLogger('httpx').info('HTTP Request: POST %s', 'http://localhost:8000')
+    logging.getLogger('botocore.credentials').warning('Refreshing temporary credentials')
+    log_event('submission_recorded', submission_id='S-1')
+
+    assert [json.loads(line)['event'] for line in log_stream.getvalue().splitlines()] == [
+        'library_record',
+        'submission_recorded',
+    ]

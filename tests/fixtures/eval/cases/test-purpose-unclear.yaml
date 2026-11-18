@@ -35,7 +35,7 @@ scripted_review:
     - code: PURPOSE_UNCLEAR
       disposition: dismissed
       reason: Standing weekly client catch-up agreed with the manager.
-expected_clearance: null
+memory: null
 drafted_by:
   provider: fake
   model_id: fake-drafter-a

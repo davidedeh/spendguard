@@ -1,0 +1,42 @@
+id: test-judgement-positive-18
+split: test
+slice: judgement_positive
+intent:
+  rule_codes: []
+  judgement_codes:
+  - WEEKEND_SPEND_UNJUSTIFIED
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-012
+  spent_on: '2026-07-05'
+  category: public_transport
+  quantity: 1
+  merchant: Tramlink
+  amount: '6.80'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Return tram fare from Wimbledon to the Croydon data centre on Sunday
+    to check the finance systems' backup servers.
+  receipt_text: "Tramlink\n2026-07-05\nReturn Wimbledon to East Croydon 6.80\nTOTAL 6.80"
+expected_findings:
+- id: WEEKEND_SPEND_UNJUSTIFIED
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  gold_clauses:
+  - "\xA72.4"
+expected_route: human_review
+expected_recommendation: none
+scripted_review:
+  approver: EMP-005
+  dispositions:
+  - code: WEEKEND_SPEND_UNJUSTIFIED
+    disposition: dismissed
+    reason: EMP-012 is on the standing weekend on-call rota for the Croydon data centre
+      that hosts Halden Group's finance systems.
+memory: null
+drafted_by:
+  provider: claude_code
+  model_id: claude-opus-5-5
+  drafted_during: eval-v2 audit

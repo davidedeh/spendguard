@@ -1,5 +1,4 @@
 import itertools
-import json
 import sys
 from collections import Counter
 from collections.abc import Callable, Iterator
@@ -10,8 +9,7 @@ from typing import Any, TypeGuard, assert_never
 
 import yaml
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
-from langchain_core.utils.json_schema import dereference_refs
+from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
 
 from spendguard import settings
@@ -20,6 +18,7 @@ from spendguard.eval.cases import (
     DraftedBy,
     EvalCase,
     ExpectedFinding,
+    PipelineDraft,
     ScriptedReview,
     load_slice_plan,
 )
@@ -36,6 +35,11 @@ from spendguard.eval.validator import (
     validate_dataset,
 )
 from spendguard.models.factory import build_chat_model
+from spendguard.models.structured_output import (
+    StructuredOutputError,
+    output_schema,
+    structured_reply,
+)
 from spendguard.policy.loader import Policy, load_policy
 from spendguard.rules.checks import (
     MissingCompanyRateError,
@@ -44,7 +48,6 @@ from spendguard.rules.checks import (
 )
 from spendguard.seed.loader import read_seed_directory
 from spendguard.seed.schema import SeedData
-from spendguard.settings import StructuredOutputMethod
 from spendguard.strict_model import StrictModel
 from spendguard.submission import ExpenseClaim, Submission
 
@@ -100,62 +103,8 @@ class DraftedPair(StrictModel):
     follow_up: DraftedCase
 
 
-def _with_enum_tags(schema: Any) -> Any:
-    if isinstance(schema, list):
-        return [_with_enum_tags(value) for value in schema]
-    if not isinstance(schema, dict):
-        return schema
-    converted: dict[str, Any] = {}
-    for key, value in schema.items():
-        if key == 'const':
-            converted['enum'] = [value]
-        elif key == 'oneOf':
-            converted['anyOf'] = _with_enum_tags(value)
-        elif key != 'discriminator':
-            converted[key] = _with_enum_tags(value)
-    return converted
-
-
-def _inline_references(schema: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in dereference_refs(schema).items() if key != '$defs'}
-
-
-DRAFTED_CASE_SCHEMA: dict[str, Any] = _inline_references(
-    _with_enum_tags(DraftedCase.model_json_schema())
-)
-DRAFTED_PAIR_SCHEMA: dict[str, Any] = _inline_references(
-    _with_enum_tags(DraftedPair.model_json_schema())
-)
-
-UNLOCKABLE_KEYWORDS = frozenset(
-    {'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'}
-    | {'minLength', 'maxLength'}
-)
-
-
-def _lockable(schema: Any) -> Any:
-    if isinstance(schema, list):
-        return [_lockable(value) for value in schema]
-    if not isinstance(schema, dict):
-        return schema
-    lockable = {
-        key: _lockable(value)
-        for key, value in schema.items()
-        if key not in UNLOCKABLE_KEYWORDS and not (key == 'minItems' and value > 1)
-    }
-    if 'properties' in lockable:
-        lockable['additionalProperties'] = False
-    return lockable
-
-
-DRAFTED_CASE_SCHEMAS: dict[StructuredOutputMethod, dict[str, Any]] = {
-    'function_calling': DRAFTED_CASE_SCHEMA,
-    'json_schema': _lockable(DRAFTED_CASE_SCHEMA),
-}
-DRAFTED_PAIR_SCHEMAS: dict[StructuredOutputMethod, dict[str, Any]] = {
-    'function_calling': DRAFTED_PAIR_SCHEMA,
-    'json_schema': _lockable(DRAFTED_PAIR_SCHEMA),
-}
+DRAFTED_CASE_SCHEMA: dict[str, Any] = output_schema(DraftedCase)
+DRAFTED_PAIR_SCHEMA: dict[str, Any] = output_schema(DraftedPair)
 DraftingUnit = tuple[CaseBrief] | tuple[CaseBrief, CaseBrief]
 
 
@@ -173,34 +122,34 @@ class _Drafter:
     model_settings: settings.ChatModelSettings
 
     @property
-    def drafted_by(self) -> DraftedBy:
-        return DraftedBy(
+    def drafted_by(self) -> PipelineDraft:
+        return PipelineDraft(
             provider=self.model_settings.provider, model_id=self.model_settings.model_id
         )
 
 
 def drafting_units(briefs: list[CaseBrief]) -> list[DraftingUnit]:
     follow_ups = {
-        brief.clearance.precedent_from: brief for brief in briefs if brief.clearance is not None
+        brief.memory.precedent_from: brief for brief in briefs if brief.memory is not None
     }
     return [
         (brief, follow_ups[brief.case_id]) if brief.case_id in follow_ups else (brief,)
         for brief in briefs
-        if brief.clearance is None
+        if brief.memory is None
     ]
 
 
 def assign_drafters(briefs: list[CaseBrief], drafter_keys: tuple[str, ...]) -> list[str]:
     drafters = itertools.cycle(drafter_keys)
     assigned: dict[str, str] = {}
-    briefs_without_follow_ups = [brief for brief in briefs if brief.clearance is None]
+    briefs_without_follow_ups = [brief for brief in briefs if brief.memory is None]
     for _, slice_briefs in itertools.groupby(
         briefs_without_follow_ups, key=lambda brief: (brief.split, brief.slice)
     ):
         for brief in sorted(slice_briefs, key=lambda brief: not brief.memory_pair):
             assigned[brief.case_id] = next(drafters)
     return [
-        assigned[brief.case_id if brief.clearance is None else brief.clearance.precedent_from]
+        assigned[brief.case_id if brief.memory is None else brief.memory.precedent_from]
         for brief in briefs
     ]
 
@@ -225,25 +174,18 @@ def draft_unit(
         SystemMessage(content=instructions(inputs.policy)),
         HumanMessage(content=request_text),
     ]
-    method = drafter.model_settings.structured_output_method
-    schemas = DRAFTED_CASE_SCHEMAS if len(unit) == 1 else DRAFTED_PAIR_SCHEMAS
-    result = drafter.model.with_structured_output(
-        schemas[method], method=method, include_raw=True
-    ).invoke(prompt)
-    if not isinstance(result, dict):
-        raise DraftFailedError(f'expected a reply, the model returned {type(result).__name__}')
-    output = result['parsed']
-    if output is None:
-        output = _json_object_in(result['raw'])
-    if not isinstance(output, dict):
-        raise DraftFailedError(str(result['parsing_error'] or 'the reply holds no draft'))
+    schema = DRAFTED_CASE_SCHEMA if len(unit) == 1 else DRAFTED_PAIR_SCHEMA
+    try:
+        output = structured_reply(
+            drafter.model, drafter.model_settings.structured_output_method, schema, prompt
+        )
+    except StructuredOutputError as error:
+        raise DraftFailedError(str(error)) from error
     try:
         if len(unit) == 1:
-            drafts: tuple[DraftedCase, ...] = (
-                DraftedCase.model_validate(_with_nulls_filled_in(output, DRAFTED_CASE_SCHEMA)),
-            )
+            drafts: tuple[DraftedCase, ...] = (DraftedCase.model_validate(output),)
         else:
-            pair = DraftedPair.model_validate(_with_nulls_filled_in(output, DRAFTED_PAIR_SCHEMA))
+            pair = DraftedPair.model_validate(output)
             drafts = (pair.first_case, pair.follow_up)
     except ValidationError as error:
         raise DraftFailedError(
@@ -271,7 +213,7 @@ def _labelled_case(
     )
     expected_findings = drafted.judgement_findings + rule_expected_findings
     expected_route, expected_recommendation = computed_route_and_recommendation(
-        expected_findings, brief.clearance, drafted.submission, inputs.seed_data, inputs.policy
+        expected_findings, brief.memory, drafted.submission, inputs.seed_data, inputs.policy
     )
     return EvalCase(
         id=brief.case_id,
@@ -283,7 +225,7 @@ def _labelled_case(
         expected_route=expected_route,
         expected_recommendation=expected_recommendation,
         scripted_review=drafted.scripted_review if brief.memory_pair else None,
-        expected_clearance=brief.clearance,
+        memory=brief.memory,
         drafted_by=drafter.drafted_by,
     )
 
@@ -453,7 +395,7 @@ def _receipt_problems(brief: CaseBrief, claim: ExpenseClaim) -> Iterator[str]:
 def describe_brief(brief: CaseBrief, policy: Policy) -> str:
     shown = brief.model_dump(
         mode='json',
-        exclude={'case_id', 'split', 'clearance'},
+        exclude={'case_id', 'split', 'memory'},
         exclude_none=True,
     )
     notes = list(_brief_notes(brief, policy))
@@ -517,9 +459,9 @@ def _judgement_note(brief: CaseBrief, policy: Policy) -> str:
                 f' {intent.judgement_codes[0]}; label that one judgement finding.'
             )
         case 'memory_follow_up':
-            if brief.clearance is None:
-                raise BriefError(f'{brief.case_id}: a follow-up brief needs a clearance')
-            code = brief.clearance.code
+            if brief.memory is None:
+                raise BriefError(f'{brief.case_id}: a follow-up brief needs a memory block')
+            code = brief.memory.code
             return (
                 f'A later submission from the same {policy.finding_codes[code].precedent_scope}'
                 f' that raises the same {code} concern as the first case, in a way its dismissal'
@@ -672,7 +614,9 @@ def _run_summary(
     outcomes: dict[str, EvalCase | DraftFailedError],
     drafters: dict[str, _Drafter],
 ) -> str:
-    keys_by_model = {drafter.drafted_by: key for key, drafter in drafters.items()}
+    keys_by_model: dict[DraftedBy, str] = {
+        drafter.drafted_by: key for key, drafter in drafters.items()
+    }
     drafted_by_key: Counter[str] = Counter()
     fallbacks: list[str] = []
     for brief, assigned_key in zip(briefs, assigned, strict=True):
@@ -689,50 +633,6 @@ def _run_summary(
         f'Fallbacks: {len(fallbacks)}' + (f' ({", ".join(fallbacks)})' if fallbacks else '')
     )
     return '\n'.join(lines)
-
-
-def _with_nulls_filled_in(value: Any, schema: dict[str, Any]) -> Any:
-    if isinstance(value, list):
-        return [_with_nulls_filled_in(item, schema.get('items', {})) for item in value]
-    if not isinstance(value, dict):
-        return value
-    properties = _object_schema_for(value, schema).get('properties', {})
-    filled = {
-        key: None
-        if item == '' and _allows_null(properties.get(key, {}))
-        else _with_nulls_filled_in(item, properties.get(key, {}))
-        for key, item in value.items()
-    }
-    for key, property_schema in properties.items():
-        if key not in filled and _allows_null(property_schema):
-            filled[key] = None
-    return filled
-
-
-def _object_schema_for(value: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
-    options: list[dict[str, Any]] = [
-        option for option in schema.get('anyOf', [schema]) if 'properties' in option
-    ]
-    for option in options:
-        if value.get('type') in option['properties'].get('type', {}).get('enum', []):
-            return option
-    return options[0] if options else {}
-
-
-def _allows_null(schema: dict[str, Any]) -> bool:
-    return any(option.get('type') == 'null' for option in schema.get('anyOf', [schema]))
-
-
-def _json_object_in(message: object) -> object:
-    if not isinstance(message, BaseMessage):
-        return None
-    start, end = message.text.find('{'), message.text.rfind('}')
-    if start == -1 or end < start:
-        return None
-    try:
-        return json.loads(message.text[start : end + 1])
-    except json.JSONDecodeError:
-        return None
 
 
 def _write_case(path: Path, case: EvalCase) -> None:

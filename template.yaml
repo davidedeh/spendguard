@@ -1,0 +1,334 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SpendGuard API, queue worker and database preparation from one container image.
+
+Parameters:
+  ImageTag:
+    Type: String
+    Default: ''
+    Description: Tag of the image in this stack's repository. Empty creates everything except the functions, so a first deploy can create the repository before any image exists.
+  PipelineExecutionRoleArn:
+    Type: String
+    Default: ''
+    Description: Role deploy.yml assumes, allowed to run the preparation function after each deploy. Empty grants nothing.
+  AlarmEmail:
+    Type: String
+    AllowedPattern: '.+@.+'
+    Description: Address emailed when a message reaches the dead-letter queue.
+  ParameterPath:
+    Type: String
+    Default: spendguard
+    AllowedPattern: '[a-z0-9-]+'
+    Description: SSM path, without slashes, holding the SecureString parameters written by make secrets.
+  PrimaryModelId:
+    Type: String
+    Default: us.anthropic.claude-haiku-4-5-20251001-v1:0
+  PrimaryStructuredOutputMethod:
+    Type: String
+    Default: function_calling
+    AllowedValues: [function_calling, json_schema]
+  EmbeddingModelId:
+    Type: String
+    Default: amazon.titan-embed-text-v2:0
+  LangfuseHost:
+    Type: String
+    Default: https://cloud.langfuse.com
+  WorkerTimeoutSeconds:
+    Type: Number
+    Default: 120
+  QueueVisibilityTimeoutSeconds:
+    Type: Number
+    Default: 720
+    Description: At least six times WorkerTimeoutSeconds, which the settings check at start-up.
+
+Conditions:
+  HasImage: !Not [!Equals [!Ref ImageTag, '']]
+  GrantsPipelinePreparation: !And
+    - !Condition HasImage
+    - !Not [!Equals [!Ref PipelineExecutionRoleArn, '']]
+
+Globals:
+  Function:
+    Architectures: [arm64]
+    MemorySize: 1024
+    Environment:
+      Variables:
+        APP_ENVIRONMENT: deployed
+        LOG_LEVEL: INFO
+        BRANCH_NAME: !Ref AWS::StackName
+        POSTGRES_HOST: ''
+        POSTGRES_PORT: ''
+        POSTGRES_USER: ''
+        POSTGRES_PASSWORD: ''
+        DATABASE_URL: ''
+        SQS_ENDPOINT_URL: ''
+        QUEUE_URL: !Ref SubmissionQueue
+        SSM_PARAMETER_PREFIX: !Sub '/${ParameterPath}'
+        ALLOWED_PROVIDERS: '["bedrock"]'
+        CHAT_MODELS__PRIMARY__PROVIDER: bedrock
+        CHAT_MODELS__PRIMARY__MODEL_ID: !Ref PrimaryModelId
+        CHAT_MODELS__PRIMARY__STRUCTURED_OUTPUT_METHOD: !Ref PrimaryStructuredOutputMethod
+        CHAT_MODELS__PRIMARY__TEMPERATURE: '0'
+        PRIMARY_MODEL_KEY: primary
+        DRAFTING_MODEL_KEYS: '["primary"]'
+        EMBEDDING_MODEL__PROVIDER: bedrock
+        EMBEDDING_MODEL__MODEL_ID: !Ref EmbeddingModelId
+        MODEL_PRICES: '{}'
+        EVAL_REQUESTS_PER_MINUTE: '{}'
+        EVAL_ROWS: '[]'
+        GOOGLE_API_KEY: ''
+        LANGFUSE_PUBLIC_KEY: ''
+        LANGFUSE_SECRET_KEY: ''
+        LANGFUSE_HOST: !Ref LangfuseHost
+        WEBHOOK_SIGNING_KEY: ''
+        DECISION_EVENT_SIGNING_KEY: ''
+        DECISION_EVENT_URL: ''
+        SIGNATURE_TOLERANCE_SECONDS: '300'
+        FORCE_HUMAN_REVIEW: 'false'
+        MAXIMUM_FIELD_LENGTH: '2000'
+        JUDGEMENT_MAX_TOOL_CALLS: '6'
+        RETRIEVAL_TOP_K: '5'
+        WORKER_TIMEOUT_SECONDS: !Ref WorkerTimeoutSeconds
+        QUEUE_VISIBILITY_TIMEOUT_SECONDS: !Ref QueueVisibilityTimeoutSeconds
+        SWEEPER_STUCK_AFTER_SECONDS: '900'
+
+Resources:
+  ImageRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref AWS::StackName
+      EmptyOnDelete: true
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep the five newest images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 5
+                },
+                "action": {"type": "expire"}
+              }
+            ]
+          }
+
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      FifoQueue: true
+      MessageRetentionPeriod: 1209600
+
+  SubmissionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      FifoQueue: true
+      VisibilityTimeout: !Ref QueueVisibilityTimeoutSeconds
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlarmEmail
+
+  DeadLetterQueueAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: A submission message failed three times and reached the dead-letter queue.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/spendguard/${AWS::StackName}/api'
+      RetentionInDays: 14
+
+  WorkerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/spendguard/${AWS::StackName}/worker'
+      RetentionInDays: 14
+
+  PreparationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/spendguard/${AWS::StackName}/preparation'
+      RetentionInDays: 14
+
+  SweeperLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/spendguard/${AWS::StackName}/sweeper'
+      RetentionInDays: 14
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Condition: HasImage
+    Properties:
+      PackageType: Image
+      ImageUri: !Sub '${ImageRepository.RepositoryUri}:${ImageTag}'
+      Timeout: 30
+      LoggingConfig:
+        LogGroup: !Ref ApiLogGroup
+      FunctionUrlConfig:
+        AuthType: NONE
+      Environment:
+        Variables:
+          AWS_LWA_READINESS_CHECK_PATH: /health
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt SubmissionQueue.QueueName
+        - SSMParameterReadPolicy:
+            ParameterName: !Ref ParameterPath
+
+  WorkerFunction:
+    Type: AWS::Serverless::Function
+    Condition: HasImage
+    Properties:
+      PackageType: Image
+      ImageUri: !Sub '${ImageRepository.RepositoryUri}:${ImageTag}'
+      Timeout: !Ref WorkerTimeoutSeconds
+      ImageConfig:
+        Command:
+          - uvicorn
+          - spendguard.worker:create_production_worker_app
+          - --factory
+          - --host
+          - 127.0.0.1
+          - --port
+          - '8000'
+      LoggingConfig:
+        LogGroup: !Ref WorkerLogGroup
+      Environment:
+        Variables:
+          AWS_LWA_READINESS_CHECK_PROTOCOL: tcp
+          AWS_LWA_ERROR_STATUS_CODES: 500-599
+          DECISION_EVENT_URL: !Sub '${ApiFunctionUrl.FunctionUrl}mock-erp/decision-events'
+      Events:
+        Submissions:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt SubmissionQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: !Ref ParameterPath
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - arn:aws:bedrock:*::foundation-model/*
+                - !Sub 'arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*'
+
+  PreparationFunction:
+    Type: AWS::Serverless::Function
+    Condition: HasImage
+    Properties:
+      PackageType: Image
+      ImageUri: !Sub '${ImageRepository.RepositoryUri}:${ImageTag}'
+      Timeout: 300
+      ImageConfig:
+        Command:
+          - uvicorn
+          - spendguard.deployment.preparation:create_production_preparation_app
+          - --factory
+          - --host
+          - 127.0.0.1
+          - --port
+          - '8000'
+      LoggingConfig:
+        LogGroup: !Ref PreparationLogGroup
+      Environment:
+        Variables:
+          AWS_LWA_READINESS_CHECK_PROTOCOL: tcp
+          AWS_LWA_ERROR_STATUS_CODES: 500-599
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: !Ref ParameterPath
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: arn:aws:bedrock:*::foundation-model/*
+
+  SweeperFunction:
+    Type: AWS::Serverless::Function
+    Condition: HasImage
+    Properties:
+      PackageType: Image
+      ImageUri: !Sub '${ImageRepository.RepositoryUri}:${ImageTag}'
+      Timeout: 60
+      ImageConfig:
+        Command:
+          - uvicorn
+          - spendguard.sweeper:create_production_sweeper_app
+          - --factory
+          - --host
+          - 127.0.0.1
+          - --port
+          - '8000'
+      LoggingConfig:
+        LogGroup: !Ref SweeperLogGroup
+      Environment:
+        Variables:
+          AWS_LWA_READINESS_CHECK_PROTOCOL: tcp
+          AWS_LWA_ERROR_STATUS_CODES: 500-599
+      Events:
+        EveryFiveMinutes:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: rate(5 minutes)
+            Input: '{}'
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt SubmissionQueue.QueueName
+        - SSMParameterReadPolicy:
+            ParameterName: !Ref ParameterPath
+  PipelinePreparationGrant:
+    Type: AWS::IAM::Policy
+    Condition: GrantsPipelinePreparation
+    Properties:
+      PolicyName: !Sub '${AWS::StackName}-invoke-preparation'
+      Roles:
+        - !Select [1, !Split ['/', !Ref PipelineExecutionRoleArn]]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource: !GetAtt PreparationFunction.Arn
+
+Outputs:
+  ImageRepositoryUri:
+    Value: !GetAtt ImageRepository.RepositoryUri
+  ApiUrl:
+    Condition: HasImage
+    Value: !GetAtt ApiFunctionUrl.FunctionUrl
+  PreparationFunctionName:
+    Condition: HasImage
+    Value: !Ref PreparationFunction
+  QueueUrl:
+    Value: !Ref SubmissionQueue
+  DeadLetterQueueUrl:
+    Value: !Ref DeadLetterQueue

@@ -5,10 +5,18 @@ from typing import Any
 
 import pytest
 
-from spendguard.policy.loader import FindingCode, load_policy
-from spendguard.rules.checks import Finding, falls_on_weekend_or_holiday, rule_findings
+from spendguard.policy.loader import POLICY_PATH, FindingCode, load_policy
+from spendguard.rules.checks import (
+    EXPENSE_CLAIM_CHECKS,
+    EXPENSE_CLAIM_JUDGEMENT_GATES,
+    SUPPLIER_INVOICE_CHECKS,
+    Finding,
+    falls_on_weekend_or_holiday,
+    judgement_checks,
+    rule_findings,
+)
 from spendguard.seed.schema import SeedData
-from spendguard.submission import ExpenseClaim, SupplierInvoice
+from spendguard.submission import ExpenseClaim, SubmissionType, SupplierInvoice
 
 FIXTURES = Path(__file__).parent / 'fixtures'
 POLICY = load_policy(FIXTURES / 'policy' / 'valid_policy.yaml')
@@ -411,3 +419,54 @@ def test_only_the_codes_the_applicability_table_lists_for_invoices_run() -> None
     unapproved = invoice(supplier='SUP-002')
 
     assert codes(rule_findings(unapproved, seed_data(), policy_without_supplier_check)) == ()
+
+
+def test_judgement_checks_run_only_where_the_applicability_table_lists_them() -> None:
+    policy_judging_purpose_on_claims_and_alcohol_on_invoices = dataclasses.replace(
+        POLICY,
+        applicability={
+            'expense_claim': (*POLICY.applicability['expense_claim'], 'PURPOSE_UNCLEAR'),
+            'supplier_invoice': (
+                *POLICY.applicability['supplier_invoice'],
+                'ALCOHOL_NOT_PERMITTED',
+            ),
+        },
+    )
+    saturday_claim = claim(spent_on='2026-10-10')
+
+    assert judgement_checks(
+        invoice(), seed_data(), policy_judging_purpose_on_claims_and_alcohol_on_invoices
+    ) == ['ALCOHOL_NOT_PERMITTED']
+    assert judgement_checks(
+        saturday_claim, seed_data(), policy_judging_purpose_on_claims_and_alcohol_on_invoices
+    ) == [
+        'WEEKEND_SPEND_UNJUSTIFIED',
+        'PURPOSE_UNCLEAR',
+    ]
+
+
+@pytest.mark.parametrize(
+    ('submission_type', 'registered_codes'),
+    [
+        ('expense_claim', set(EXPENSE_CLAIM_CHECKS)),
+        ('supplier_invoice', set(SUPPLIER_INVOICE_CHECKS)),
+    ],
+)
+def test_every_rule_code_the_halden_policy_applies_has_a_registered_rule_function(
+    submission_type: SubmissionType, registered_codes: set[FindingCode]
+) -> None:
+    halden_policy = load_policy(POLICY_PATH)
+    applicable_rule_codes = {
+        code
+        for code in halden_policy.applicability[submission_type]
+        if halden_policy.finding_codes[code].check == 'rule'
+    }
+
+    assert applicable_rule_codes - registered_codes == set()
+
+
+def test_the_weekend_gate_is_registered_for_weekend_spend_on_claims() -> None:
+    gate = EXPENSE_CLAIM_JUDGEMENT_GATES['WEEKEND_SPEND_UNJUSTIFIED']
+
+    assert gate(claim(spent_on='2026-10-10'), seed_data(), POLICY) is True
+    assert gate(claim(spent_on='2026-10-09'), seed_data(), POLICY) is False

@@ -1,0 +1,36 @@
+id: test-memory-follow-up-04
+split: test
+slice: memory_follow_up
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-013
+  spent_on: '2026-08-08'
+  category: subsistence
+  quantity: 1
+  merchant: Junction Café
+  amount: '26.80'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Lunch on Saturday during the stock count at Calloway Retail's Reading
+    distribution centre, on site from 7am to 5pm, away from the London office.
+  receipt_text: "Junction Café\n2026-08-08\nChicken and bacon baguette 7.90\nTomato soup\
+    \ 5.40\nSparkling water 2.20\nLatte 3.60\nCarrot cake 3.70\nFruit pot 4.00\nTOTAL\
+    \ 26.80"
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+memory:
+  precedent_from: test-judgement-positive-17
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  precedent_applies: true
+drafted_by:
+  provider: claude_code
+  model_id: claude-opus-5-5
+  drafted_during: eval-v2 audit

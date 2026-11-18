@@ -190,6 +190,10 @@ def _duplicate_invoice(invoice: SupplierInvoice, seed_data: SeedData, policy: Po
     )
 
 
+def _weekend_gate(claim: ExpenseClaim, seed_data: SeedData, policy: Policy) -> bool:
+    return falls_on_weekend_or_holiday(claim.spent_on, seed_data)
+
+
 ClaimCheck = Callable[[ExpenseClaim, SeedData, Policy], bool]
 InvoiceCheck = Callable[[SupplierInvoice, SeedData, Policy], bool]
 
@@ -199,6 +203,9 @@ EXPENSE_CLAIM_CHECKS: Mapping[FindingCode, ClaimCheck] = {
     'DUPLICATE_SUBMISSION': _duplicate_claim,
     'BUDGET_EXCEEDED': _claim_budget_exceeded,
     'CURRENCY_ANOMALY': _currency_anomaly,
+}
+EXPENSE_CLAIM_JUDGEMENT_GATES: Mapping[FindingCode, ClaimCheck] = {
+    WEEKEND_CODE: _weekend_gate,
 }
 SUPPLIER_INVOICE_CHECKS: Mapping[FindingCode, InvoiceCheck] = {
     'DUPLICATE_SUBMISSION': _duplicate_invoice,
@@ -229,6 +236,22 @@ def rule_findings(
             and SUPPLIER_INVOICE_CHECKS[code](invoice, seed_data, policy)
         ]
     return tuple(finding_for(code, policy) for code in raised)
+
+
+def judgement_checks(
+    submission: Submission, seed_data: SeedData, policy: Policy
+) -> list[FindingCode]:
+    applicable = policy.applicability[submission.type]
+    return [
+        code
+        for code in policy.codes_with_check('judgement')
+        if code in applicable
+        and (
+            not isinstance(submission, ExpenseClaim)
+            or code not in EXPENSE_CLAIM_JUDGEMENT_GATES
+            or EXPENSE_CLAIM_JUDGEMENT_GATES[code](submission, seed_data, policy)
+        )
+    ]
 
 
 def raised_rule_codes(

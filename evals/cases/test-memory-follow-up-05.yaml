@@ -1,0 +1,35 @@
+id: test-memory-follow-up-05
+split: test
+slice: memory_follow_up
+intent:
+  rule_codes: []
+  judgement_codes: []
+  lookalike_code: null
+  injection: null
+  receipt_total_differs_because: null
+submission:
+  claimant: EMP-012
+  spent_on: '2026-08-02'
+  category: public_transport
+  quantity: 1
+  merchant: Tramlink
+  amount: '5.40'
+  currency: GBP
+  type: expense_claim
+  claimed_exchange_rate: null
+  business_purpose: Return tram fare from Mitcham Junction to the Croydon data centre
+    on Sunday to check the finance systems' backup servers.
+  receipt_text: "Tramlink\n2026-08-02\nReturn Mitcham Junction to East Croydon 5.40\n\
+    TOTAL 5.40"
+expected_findings: []
+expected_route: human_review
+expected_recommendation: approve
+scripted_review: null
+memory:
+  precedent_from: test-judgement-positive-18
+  code: WEEKEND_SPEND_UNJUSTIFIED
+  precedent_applies: true
+drafted_by:
+  provider: claude_code
+  model_id: claude-opus-5-5
+  drafted_during: eval-v2 audit

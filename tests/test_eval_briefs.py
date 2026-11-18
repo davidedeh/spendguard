@@ -58,7 +58,11 @@ def test_briefs_target_the_planned_codes_for_each_slice(split: Split) -> None:
     judgement_targets = Counter(
         code for brief in by_slice['judgement_positive'] for code in brief.intent.judgement_codes
     )
-    assert set(judgement_targets.values()) <= {split_plan.judgement_positives_per_code}
+    assert all(
+        count <= split_plan.judgement_positives_per_code[code]
+        for code, count in judgement_targets.items()
+    )
+    assert judgement_targets.total() == split_plan.slices.judgement_positive
     assert all(
         len(brief.intent.judgement_codes) == 1 and not brief.intent.rule_codes
         for brief in by_slice['judgement_positive'] + by_slice['injection']
@@ -79,12 +83,12 @@ def test_briefs_target_the_planned_codes_for_each_slice(split: Split) -> None:
     )
 
 
-def test_every_brief_not_targeting_or_cleared_of_the_weekend_code_falls_on_a_working_day() -> None:
+def test_briefs_off_the_weekend_code_and_its_follow_ups_fall_on_a_working_day() -> None:
     for brief in BRIEFS:
         targets_weekend = 'WEEKEND_SPEND_UNJUSTIFIED' in (
             *brief.intent.judgement_codes,
             brief.intent.lookalike_code,
-            None if brief.clearance is None else brief.clearance.code,
+            None if brief.memory is None else brief.memory.code,
         )
         assert falls_on_weekend_or_holiday(brief.dated_on, SEED) is targets_weekend, brief.case_id
 
@@ -177,8 +181,8 @@ def follow_ups_by_pair() -> dict[str, list[CaseBrief]]:
         brief.case_id: [] for brief in BRIEFS if brief.memory_pair
     }
     for brief in BRIEFS:
-        if brief.clearance is not None:
-            follow_ups[brief.clearance.precedent_from].append(brief)
+        if brief.memory is not None:
+            follow_ups[brief.memory.precedent_from].append(brief)
     return follow_ups
 
 
@@ -191,8 +195,8 @@ def test_each_memory_pair_has_one_follow_up_for_the_same_subject_code_and_split(
         follow_up = follow_ups[0]
         assert follow_up.slice == 'memory_follow_up'
         assert (follow_up.party, follow_up.split) == (pair.party, pair.split)
-        assert follow_up.clearance is not None
-        assert (follow_up.clearance.code,) == pair.intent.judgement_codes
+        assert follow_up.memory is not None
+        assert (follow_up.memory.code,) == pair.intent.judgement_codes
         assert follow_up.intent.judgement_codes == ()
 
 
@@ -220,7 +224,12 @@ FEW_CLAIMANT_BRIEFS = generate_briefs(
                     'injection': 4,
                     'memory_follow_up': 2,
                 },
-                'judgement_positives_per_code': 2,
+                'judgement_positives_per_code': {
+                    'WEEKEND_SPEND_UNJUSTIFIED': 2,
+                    'PURPOSE_UNCLEAR': 2,
+                    'RECEIPT_MISMATCH': 2,
+                    'ALCOHOL_NOT_PERMITTED': 2,
+                },
                 'memory_pairs': 2,
                 'supplier_invoices': 0,
                 'foreign_currency': 0,
