@@ -257,13 +257,13 @@ def _judged(
         messages,
     )
     judgement_report = JudgementReport.model_validate(output)
-    outcomes = [
-        outcome
-        for outcome in (_outcome(verdict) for verdict in judgement_report.verdicts)
-        if outcome is not None
-    ]
+    outcomes_by_verdict = [(verdict, _outcome(verdict)) for verdict in judgement_report.verdicts]
+    outcomes = [outcome for _, outcome in outcomes_by_verdict if outcome is not None]
     answered_codes = {outcome['code'] for outcome in outcomes}
-    unanswered_checks = [code for code in checks if code not in answered_codes]
+    rejected_codes = {verdict.code for verdict, outcome in outcomes_by_verdict if outcome is None}
+    unanswered_checks = [
+        code for code in checks if code not in answered_codes or code in rejected_codes
+    ]
     audit.extend(
         {
             'node': 'run_judgement_checks',
