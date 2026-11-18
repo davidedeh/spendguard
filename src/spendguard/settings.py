@@ -6,7 +6,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self
 
 import boto3
-from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    PositiveInt,
+    SecretStr,
+    ValidationError,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from spendguard.branch_names import current_branch_name
@@ -81,6 +88,7 @@ class Settings(BaseSettings):
     drafting_model_keys: tuple[str, ...]
     embedding_model: ModelSettings
     model_prices: dict[str, ModelPrice]
+    eval_requests_per_minute: dict[str, PositiveInt]
     eval_rows: tuple[EvalRow, ...]
     google_api_key: SecretStr | None
 

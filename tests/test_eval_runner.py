@@ -4,6 +4,7 @@ from typing import Any, NoReturn
 
 import pytest
 import yaml
+from langchain_core.rate_limiters import InMemoryRateLimiter
 
 import spendguard.eval.runner
 import spendguard.settings
@@ -12,11 +13,11 @@ from spendguard.eval.case_runner import pre_flight_cases
 from spendguard.eval.cases import EvalCase, load_slice_plan
 from spendguard.eval.freeze import CASE_DIRECTORY as FROZEN_CASE_DIRECTORY
 from spendguard.eval.freeze import main as freeze
-from spendguard.eval.runner import DatasetRefusedError, frozen_cases
+from spendguard.eval.runner import DatasetRefusedError, frozen_cases, paced_chat_models
 from spendguard.eval.runner import main as run_eval_command
 from spendguard.policy.loader import load_policy
 from spendguard.seed.loader import read_seed_directory
-from spendguard.settings import ChatModelSettings
+from spendguard.settings import ChatModelSettings, EvalRow
 
 FIXTURES = Path(__file__).parent / 'fixtures'
 CASE_DIRECTORY = FIXTURES / 'eval' / 'cases'
@@ -130,6 +131,7 @@ PRICE = {
     'output_per_million_tokens_usd': '5.00',
     'priced_on': '2026-11-02',
 }
+UNPACED_REQUESTS_PER_MINUTE = 600_000
 SECOND_MODEL = ChatModelSettings(
     provider='fake',
     model_id='fake-second',
@@ -152,12 +154,20 @@ TWO_ROWS = [
         (
             {
                 'model_prices': {'fake_primary': PRICE, 'fake_second': PRICE},
+                'eval_requests_per_minute': {'fake_primary': 8},
+            },
+            "Eval row 'Second' uses chat model 'fake_second', which has no rate in"
+            ' EVAL_REQUESTS_PER_MINUTE',
+        ),
+        (
+            {
+                'model_prices': {'fake_primary': PRICE, 'fake_second': PRICE},
                 'database_url': 'postgresql://someone@pooler.invalid:5432/postgres',
             },
             'DATABASE_URL is set',
         ),
     ],
-    ids=['a row without a price', 'a database given by URL'],
+    ids=['a row without a price', 'a row without a request rate', 'a database given by URL'],
 )
 def test_the_eval_command_refuses_unsafe_settings_before_any_model_call(
     tmp_path: Path,
@@ -186,13 +196,37 @@ def test_the_eval_command_refuses_unsafe_settings_before_any_model_call(
     assert readme_path.read_text() == 'unchanged\n'
 
 
+def test_rows_sharing_a_chat_model_share_one_limiter_at_that_model_s_rate() -> None:
+    settings = make_test_settings(
+        chat_models=make_test_settings().chat_models | {'fake_second': SECOND_MODEL},
+        eval_requests_per_minute={'fake_primary': 8, 'fake_second': 30},
+    )
+    chat_model_for = paced_chat_models(settings)
+
+    primary, second, primary_again = (
+        chat_model_for(EvalRow.model_validate(row)) for row in [*TWO_ROWS, TWO_ROWS[0]]
+    )
+
+    assert isinstance(primary.rate_limiter, InMemoryRateLimiter)
+    assert isinstance(second.rate_limiter, InMemoryRateLimiter)
+    assert primary_again.rate_limiter is primary.rate_limiter
+    assert second.rate_limiter is not primary.rate_limiter
+    assert primary.rate_limiter.requests_per_second == 8 / 60
+    assert second.rate_limiter.requests_per_second == 30 / 60
+    assert primary.rate_limiter.max_bucket_size == 1
+
+
 def test_a_pre_flight_writes_its_row_files_and_results_but_leaves_the_readme_alone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     lock_path = locked_fixture_dataset(tmp_path / 'dataset.lock.json')
     readme_path = tmp_path / 'README.md'
     readme_path.write_text('unchanged\n')
-    settings = make_test_settings(eval_rows=TWO_ROWS[:1], model_prices={'fake_primary': PRICE})
+    settings = make_test_settings(
+        eval_rows=TWO_ROWS[:1],
+        model_prices={'fake_primary': PRICE},
+        eval_requests_per_minute={'fake_primary': UNPACED_REQUESTS_PER_MINUTE},
+    )
     monkeypatch.setattr(spendguard.settings, 'load_settings', lambda: settings)
 
     exit_code = run_eval_command(
@@ -222,7 +256,11 @@ def test_two_pre_flights_on_the_same_day_keep_each_runs_results_and_row_files(
     lock_path = locked_fixture_dataset(tmp_path / 'dataset.lock.json')
     readme_path = tmp_path / 'README.md'
     readme_path.write_text('unchanged\n')
-    settings = make_test_settings(eval_rows=TWO_ROWS[:1], model_prices={'fake_primary': PRICE})
+    settings = make_test_settings(
+        eval_rows=TWO_ROWS[:1],
+        model_prices={'fake_primary': PRICE},
+        eval_requests_per_minute={'fake_primary': UNPACED_REQUESTS_PER_MINUTE},
+    )
     monkeypatch.setattr(spendguard.settings, 'load_settings', lambda: settings)
     arguments = [*eval_command_arguments(lock_path, tmp_path, readme_path), '--cases-per-row', '1']
 

@@ -2,7 +2,11 @@ import asyncio
 import datetime
 import sys
 import uuid
+from collections.abc import Callable
 from pathlib import Path
+
+from langchain_core.language_models import BaseChatModel
+from langchain_core.rate_limiters import InMemoryRateLimiter
 
 from spendguard import settings
 from spendguard.db.database import async_connection_pool, branch_connection_info, opened_pool
@@ -17,11 +21,12 @@ from spendguard.policy.loader import Policy, load_policy
 from spendguard.retrieval.policy_index import index_policy
 from spendguard.seed.loader import read_seed_directory
 from spendguard.seed.schema import SeedData
-from spendguard.settings import Settings
+from spendguard.settings import EvalRow, Settings
 
 RESULTS_DIRECTORY = Path('evals/results')
 README_PATH = Path('README.md')
 REPORTED_SPLIT = 'test'
+SECONDS_PER_MINUTE = 60
 
 
 class EvalRefusedError(Exception):
@@ -54,19 +59,34 @@ def refuse_unsafe_settings(loaded_settings: Settings) -> None:
             'DATABASE_URL is set: the eval deletes every precedent in the database it runs'
             ' against, so it runs only against the local branch database'
         )
-    unpriced_rows = [
-        row
-        for row in loaded_settings.eval_rows
-        if row.model_key not in loaded_settings.model_prices
-    ]
-    if unpriced_rows:
-        raise EvalRefusedError(
-            '; '.join(
-                f'Eval row {row.label!r} uses chat model {row.model_key!r}, which has no price in'
-                ' MODEL_PRICES'
-                for row in unpriced_rows
-            )
+    missing_settings = [
+        f'Eval row {row.label!r} uses chat model {row.model_key!r}, which has no {noun} in'
+        f' {setting_name}'
+        for noun, setting_name, configured_keys in (
+            ('price', 'MODEL_PRICES', loaded_settings.model_prices.keys()),
+            ('rate', 'EVAL_REQUESTS_PER_MINUTE', loaded_settings.eval_requests_per_minute.keys()),
         )
+        for row in loaded_settings.eval_rows
+        if row.model_key not in configured_keys
+    ]
+    if missing_settings:
+        raise EvalRefusedError('; '.join(missing_settings))
+
+
+def paced_chat_models(loaded_settings: Settings) -> Callable[[EvalRow], BaseChatModel]:
+    rate_limiters = {
+        model_key: InMemoryRateLimiter(
+            requests_per_second=requests_per_minute / SECONDS_PER_MINUTE, max_bucket_size=1
+        )
+        for model_key, requests_per_minute in loaded_settings.eval_requests_per_minute.items()
+    }
+
+    def chat_model_for(row: EvalRow) -> BaseChatModel:
+        return build_chat_model(loaded_settings, row.model_key).model_copy(
+            update={'rate_limiter': rate_limiters[row.model_key]}
+        )
+
+    return chat_model_for
 
 
 async def _measure(
@@ -94,7 +114,7 @@ async def _measure(
                 embedder,
                 create_tracing(loaded_settings),
             ),
-            lambda row: build_chat_model(loaded_settings, row.model_key),
+            paced_chat_models(loaded_settings),
             options,
         )
 

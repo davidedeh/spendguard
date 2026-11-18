@@ -30,6 +30,7 @@ def make_test_settings(**overrides: Any) -> Settings:
         'drafting_model_keys': ('fake_primary',),
         'embedding_model': ModelSettings(provider='fake', model_id='fake-embedder'),
         'model_prices': {},
+        'eval_requests_per_minute': {},
         'eval_rows': (),
         'google_api_key': None,
         'langfuse_public_key': None,

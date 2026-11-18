@@ -74,6 +74,7 @@ Globals:
         EMBEDDING_MODEL__PROVIDER: bedrock
         EMBEDDING_MODEL__MODEL_ID: !Ref EmbeddingModelId
         MODEL_PRICES: '{}'
+        EVAL_REQUESTS_PER_MINUTE: '{}'
         EVAL_ROWS: '[]'
         GOOGLE_API_KEY: ''
         LANGFUSE_PUBLIC_KEY: ''
