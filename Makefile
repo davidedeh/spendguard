@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down migrate lint format typecheck test check build-wheel build-image validate-template smoke run-api run-worker purge-queue reset-local index-policy demo record-demo render-demo seed smoke-providers draft-cases freeze issue-token eval bootstrap secrets deploy destroy destroy-bootstrap
+.PHONY: help install up down migrate lint format typecheck test check build-wheel build-image validate-template smoke run-api run-worker purge-queue reset-local index-policy demo record-demo render-demo seed smoke-providers draft-cases freeze issue-token eval eval-rerun bootstrap secrets deploy destroy destroy-bootstrap
 
 not_built_yet = @echo "make $@ is not built yet ($(1))" >&2; exit 1
 
@@ -86,6 +86,9 @@ issue-token: ## Issue an approver bearer token and print it once (APPROVER=emplo
 
 eval: ## Run every eval row against the frozen dataset (calls the real models; CASES_PER_ROW=n for a pre-flight sampling every slice that leaves the README alone)
 	uv run python -m spendguard.eval.runner $(if $(CASES_PER_ROW),--cases-per-row $(CASES_PER_ROW))
+
+eval-rerun: ## Rerun the cases of a finished run that failed on the provider's side, then rewrite its results (calls the real models; RUN=<results file name without .md>)
+	uv run python -m spendguard.eval.rerun --run $(RUN)
 
 bootstrap: ## Set up the GitHub OIDC pipeline role for this repository's main branch
 	scripts/bootstrap.sh

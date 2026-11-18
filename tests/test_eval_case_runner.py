@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Iterator, Sequence
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 import yaml
@@ -13,19 +13,11 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langfuse._client.resource_manager import LangfuseResourceManager
-from langfuse.api import (
-    Dataset,
-    DatasetItem,
-    LangfuseAPI,
-    NotFoundError,
-    PaginatedDatasetItems,
-    Projects,
-)
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from pydantic import Field, SecretStr
 
+from fake_langfuse import FakeLangfuseApi, attribute, trace_id_of, tracing_into
 from settings_factory import make_test_settings
 from spendguard.db.database import ConnectionPool
 from spendguard.eval.case_runner import (
@@ -43,13 +35,13 @@ from spendguard.eval.case_runner import (
 from spendguard.eval.cases import EvalCase
 from spendguard.eval.dataset_runs import case_failure
 from spendguard.eval.metrics import CaseOutcome, CaseResult, Proportion
+from spendguard.eval.report import MemoryComparison
 from spendguard.graph.config import thread_config
 from spendguard.graph.nodes.plan import RetrievalPlan
 from spendguard.graph.nodes.run_judgement_checks import CheckVerdict, JudgementReport, QuotedText
 from spendguard.models.factory import build_embedder
 from spendguard.models.fake import FakeChatModel, structured_response
 from spendguard.models.structured_output import StructuredOutputError
-from spendguard.observability.tracing import Tracing, create_tracing
 from spendguard.policy.loader import POLICY_PATH, load_policy
 from spendguard.retrieval.policy_index import index_policy
 from spendguard.seed.loader import SEED_DIRECTORY, read_seed_directory
@@ -798,7 +790,7 @@ async def test_an_eval_run_compares_memory_on_and_off_on_the_primary_model_only(
     )
 
     comparison = results.memory_comparison
-    assert comparison is not None
+    assert isinstance(comparison, MemoryComparison)
     assert comparison.row == PRIMARY_ROW
     assert counts(comparison.memory_on.raised_any_judgement_code) == (0, 1)
     assert counts(comparison.memory_off.raised_any_judgement_code) == (1, 1)
@@ -825,7 +817,7 @@ async def test_the_memory_comparison_runs_only_the_follow_ups_with_their_seeded_
     )
 
     comparison = results.memory_comparison
-    assert comparison is not None
+    assert isinstance(comparison, MemoryComparison)
     assert counts(comparison.memory_on.cleared_with_pair_precedent) == (1, 1)
     checkpoints = AsyncPostgresSaver(connection_pool)
     for setting in ('memory-on', 'memory-off'):
@@ -861,110 +853,10 @@ async def test_the_memory_comparison_reuses_the_model_built_for_its_row(
     assert rows_built == [PRIMARY_ROW]
 
 
-class FakeLangfuseProjects:
-    def get(self, **keyword_arguments: Any) -> Projects:
-        return Projects.model_validate(
-            {
-                'data': [
-                    {
-                        'id': 'project-1',
-                        'name': 'SpendGuard',
-                        'organization': {'id': 'organisation-1', 'name': 'Halden'},
-                        'metadata': {},
-                    }
-                ]
-            }
-        )
-
-
-class FakeLangfuseDatasets:
-    def __init__(self) -> None:
-        self.created: dict[str, Dataset] = {}
-
-    def get(self, dataset_name: str, **keyword_arguments: Any) -> Dataset:
-        if dataset_name not in self.created:
-            raise NotFoundError(body={'message': 'Dataset not found'})
-        return self.created[dataset_name]
-
-    def create(self, *, name: str, **keyword_arguments: Any) -> Dataset:
-        moment = datetime.datetime(2026, 11, 20, tzinfo=datetime.UTC).isoformat()
-        self.created[name] = Dataset.model_validate(
-            {
-                'id': f'dataset-{len(self.created) + 1}',
-                'name': name,
-                'metadata': None,
-                'project_id': 'project-1',
-                'created_at': moment,
-                'updated_at': moment,
-            }
-        )
-        return self.created[name]
-
-
-class FakeLangfuseDatasetItems:
-    def __init__(self, datasets: FakeLangfuseDatasets) -> None:
-        self.datasets = datasets
-        self.items: dict[str, DatasetItem] = {}
-
-    def create(
-        self, *, dataset_name: str, id: str, input: Any, metadata: Any, **keyword_arguments: Any
-    ) -> DatasetItem:
-        moment = datetime.datetime(2026, 11, 20, tzinfo=datetime.UTC).isoformat()
-        self.items[id] = DatasetItem.model_validate(
-            {
-                'id': id,
-                'status': 'ACTIVE',
-                'input': input,
-                'expected_output': keyword_arguments.get('expected_output'),
-                'metadata': metadata,
-                'dataset_id': self.datasets.get(dataset_name).id,
-                'dataset_name': dataset_name,
-                'media_references': [],
-                'created_at': moment,
-                'updated_at': moment,
-            }
-        )
-        return self.items[id]
-
-    def list(self, *, dataset_name: str, **keyword_arguments: Any) -> PaginatedDatasetItems:
-        items = [item for item in self.items.values() if item.dataset_name == dataset_name]
-        return PaginatedDatasetItems.model_validate(
-            {
-                'data': [item.model_dump() for item in items],
-                'meta': {'page': 1, 'limit': 50, 'total_items': len(items), 'total_pages': 1},
-            }
-        )
-
-
-class FakeLangfuseApi:
-    def __init__(self) -> None:
-        self.projects = FakeLangfuseProjects()
-        self.datasets = FakeLangfuseDatasets()
-        self.dataset_items = FakeLangfuseDatasetItems(self.datasets)
-
-
 @pytest.fixture
 def exporter() -> Iterator[InMemorySpanExporter]:
     yield InMemorySpanExporter()
     LangfuseResourceManager.reset()
-
-
-def attribute(span: ReadableSpan, name: str) -> str:
-    return str((span.attributes or {})[name])
-
-
-def trace_id_of(span: ReadableSpan) -> int:
-    assert span.context is not None
-    return int(span.context.trace_id)
-
-
-def tracing_into(
-    exporter: InMemorySpanExporter, langfuse_api: FakeLangfuseApi, settings: Settings
-) -> Tracing:
-    tracing = create_tracing(settings, span_exporter=exporter, tracer_provider=TracerProvider())
-    assert tracing is not None
-    tracing.client.api = cast(LangfuseAPI, langfuse_api)
-    return tracing
 
 
 class FailingOnTextEvalModel(ScriptedEvalModel):

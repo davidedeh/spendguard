@@ -2,7 +2,8 @@ import asyncio
 import datetime
 import sys
 import uuid
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from langchain_core.language_models import BaseChatModel
@@ -89,13 +90,10 @@ def paced_chat_models(loaded_settings: Settings) -> Callable[[EvalRow], BaseChat
     return chat_model_for
 
 
-async def _measure(
-    loaded_settings: Settings,
-    cases: tuple[EvalCase, ...],
-    policy: Policy,
-    seed_data: SeedData,
-    options: EvalRunOptions,
-) -> EvalResults:
+@asynccontextmanager
+async def indexed_eval_resources(
+    loaded_settings: Settings, policy: Policy, seed_data: SeedData
+) -> AsyncIterator[EvalResources]:
     async with opened_pool(
         async_connection_pool(branch_connection_info(loaded_settings))
     ) as connection_pool:
@@ -104,19 +102,25 @@ async def _measure(
             await index_policy(
                 connection, policy, embedder, loaded_settings.embedding_model.model_id
             )
-        return await run_eval(
-            cases,
-            EvalResources(
-                loaded_settings,
-                policy,
-                seed_data,
-                connection_pool,
-                embedder,
-                create_tracing(loaded_settings),
-            ),
-            paced_chat_models(loaded_settings),
-            options,
+        yield EvalResources(
+            loaded_settings,
+            policy,
+            seed_data,
+            connection_pool,
+            embedder,
+            create_tracing(loaded_settings),
         )
+
+
+async def _measure(
+    loaded_settings: Settings,
+    cases: tuple[EvalCase, ...],
+    policy: Policy,
+    seed_data: SeedData,
+    options: EvalRunOptions,
+) -> EvalResults:
+    async with indexed_eval_resources(loaded_settings, policy, seed_data) as resources:
+        return await run_eval(cases, resources, paced_chat_models(loaded_settings), options)
 
 
 def main(arguments: list[str]) -> int:

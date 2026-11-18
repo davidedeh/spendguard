@@ -8,41 +8,27 @@ from langchain_core.rate_limiters import InMemoryRateLimiter
 
 import spendguard.eval.runner
 import spendguard.settings
+from eval_commands import (
+    CASE_DIRECTORY,
+    FIXTURES,
+    PRICE,
+    UNPACED_REQUESTS_PER_MINUTE,
+    eval_command_arguments,
+    locked_fixture_dataset,
+)
 from settings_factory import make_test_settings
 from spendguard.eval.case_runner import pre_flight_cases
 from spendguard.eval.cases import EvalCase, load_slice_plan
 from spendguard.eval.freeze import CASE_DIRECTORY as FROZEN_CASE_DIRECTORY
-from spendguard.eval.freeze import main as freeze
 from spendguard.eval.runner import DatasetRefusedError, frozen_cases, paced_chat_models
 from spendguard.eval.runner import main as run_eval_command
 from spendguard.policy.loader import load_policy
 from spendguard.seed.loader import read_seed_directory
 from spendguard.settings import ChatModelSettings, EvalRow
 
-FIXTURES = Path(__file__).parent / 'fixtures'
-CASE_DIRECTORY = FIXTURES / 'eval' / 'cases'
 FIXTURE_POLICY = load_policy(FIXTURES / 'policy' / 'valid_policy.yaml')
 FIXTURE_SEED = read_seed_directory(FIXTURES / 'seed')
 FIXTURE_PLAN = load_slice_plan(FIXTURES / 'eval' / 'slice_plan.yaml')
-
-
-def locked_fixture_dataset(lock_path: Path) -> Path:
-    exit_code = freeze(
-        [
-            '--cases',
-            str(CASE_DIRECTORY),
-            '--plan',
-            str(FIXTURES / 'eval' / 'slice_plan.yaml'),
-            '--policy',
-            str(FIXTURES / 'policy' / 'valid_policy.yaml'),
-            '--seed',
-            str(FIXTURES / 'seed'),
-            '--lock',
-            str(lock_path),
-        ]
-    )
-    assert exit_code == 0
-    return lock_path
 
 
 def test_the_runner_refuses_a_dataset_whose_hash_differs_from_the_lock(tmp_path: Path) -> None:
@@ -103,35 +89,10 @@ def test_the_eval_command_on_a_changed_dataset_exits_1_and_writes_no_results(
     assert readme_path.read_text() == 'unchanged\n'
 
 
-def eval_command_arguments(lock_path: Path, tmp_path: Path, readme_path: Path) -> list[str]:
-    return [
-        '--cases',
-        str(CASE_DIRECTORY),
-        '--plan',
-        str(FIXTURES / 'eval' / 'slice_plan.yaml'),
-        '--policy',
-        str(FIXTURES / 'policy' / 'valid_policy.yaml'),
-        '--seed',
-        str(FIXTURES / 'seed'),
-        '--lock',
-        str(lock_path),
-        '--results',
-        str(tmp_path / 'results'),
-        '--readme',
-        str(readme_path),
-    ]
-
-
 def refuse_model_calls(*arguments: object) -> NoReturn:
     raise AssertionError('the eval built a model before refusing')
 
 
-PRICE = {
-    'input_per_million_tokens_usd': '1.00',
-    'output_per_million_tokens_usd': '5.00',
-    'priced_on': '2026-11-02',
-}
-UNPACED_REQUESTS_PER_MINUTE = 600_000
 SECOND_MODEL = ChatModelSettings(
     provider='fake',
     model_id='fake-second',

@@ -433,7 +433,7 @@ async def _compare_memory(
     )
 
 
-def _first_completed_results(results_by_row: Sequence[Sequence[CaseResult]]) -> list[CaseResult]:
+def first_completed_results(results_by_row: Sequence[Sequence[CaseResult]]) -> list[CaseResult]:
     first_results: dict[str, CaseResult] = {}
     for results in results_by_row:
         for result in results:
@@ -544,7 +544,7 @@ async def run_eval(
         judgement_max_tool_calls=settings.judgement_max_tool_calls,
         rows=tuple(row_results),
         rule_metrics=rule_metrics(
-            row_cases, _first_completed_results(results_by_row), resources.policy
+            row_cases, first_completed_results(results_by_row), resources.policy
         ),
         memory_comparison=(
             None
@@ -557,4 +557,5 @@ async def run_eval(
                 run_identifier,
             )
         ),
+        reruns=(),
     )

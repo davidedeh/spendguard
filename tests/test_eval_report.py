@@ -133,6 +133,7 @@ RESULTS = EvalResults(
         per_code={'MISSING_PO': Proportion(2, 2)},
     ),
     memory_comparison=None,
+    reruns=(),
 )
 
 

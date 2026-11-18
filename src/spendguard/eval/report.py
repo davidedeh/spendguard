@@ -1,13 +1,16 @@
 import dataclasses
 import datetime
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import assert_never
+from typing import Literal, assert_never
+
+from pydantic import TypeAdapter
 
 from spendguard.eval.metrics import (
+    CaseFailure,
     CaseOutcome,
     CaseResult,
     MemoryMetrics,
@@ -26,6 +29,8 @@ DATASET_HASH_PREFIX_LENGTH = 8
 RUN_IDENTIFIER_PREFIX_LENGTH = 8
 OVERLAP_WORDING = 'Overlapping 95% intervals are never claimed as a win.'
 NOT_MEASURED = 'not measured'
+CASE_OUTCOME_RECORD = TypeAdapter(CaseOutcome)
+CASE_FAILURE_RECORD = TypeAdapter(CaseFailure)
 
 
 def production_default_wording(judgement_positive_count: int) -> str:
@@ -53,6 +58,23 @@ class MemoryComparison:
 
 
 @dataclass(frozen=True)
+class CarriedMemorySection:
+    lines: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RerunRecord:
+    row_label: str
+    case_id: str
+    replaced_error_type: str
+    replaced_error_message: str
+    rerun_identifier: str
+    rerun_on: datetime.date
+    requests_per_minute: int
+    result: str
+
+
+@dataclass(frozen=True)
 class EvalResults:
     measured_on: datetime.date
     dataset_hash: str
@@ -64,7 +86,8 @@ class EvalResults:
     judgement_max_tool_calls: int
     rows: tuple[RowResult, ...]
     rule_metrics: RuleMetrics
-    memory_comparison: MemoryComparison | None
+    memory_comparison: MemoryComparison | CarriedMemorySection | None
+    reruns: tuple[RerunRecord, ...]
 
 
 def _rate(proportion: Proportion) -> str:
@@ -265,8 +288,37 @@ def results_file_text(results: EvalResults) -> str:
             '',
             *_failed_cases_section(results),
             '',
+            *_reruns_section(results.reruns),
         ]
     )
+
+
+def _reruns_section(reruns: Sequence[RerunRecord]) -> list[str]:
+    if not reruns:
+        return []
+    return [
+        '## Reruns',
+        '',
+        "These cases failed on the provider's side, not the model's, and were rerun against the"
+        ' same frozen dataset. Each rerun result replaces the earlier result in the tables above.',
+        '',
+        '| Row | Case | Rerun because of | Rerun on | Requests a minute | Rerun result |',
+        _markdown_row(['---'] * 6),
+        *(
+            _markdown_row(
+                [
+                    rerun.row_label,
+                    rerun.case_id,
+                    rerun.replaced_error_type,
+                    rerun.rerun_on.isoformat(),
+                    str(rerun.requests_per_minute),
+                    rerun.result,
+                ]
+            )
+            for rerun in reruns
+        ),
+        '',
+    ]
 
 
 def _markdown_row(cells: Sequence[str]) -> str:
@@ -278,9 +330,11 @@ def _other_findings(metrics: MemoryMetrics) -> str:
     return ', '.join(listed) if listed else 'none'
 
 
-def _memory_section(comparison: MemoryComparison | None) -> list[str]:
+def _memory_section(comparison: MemoryComparison | CarriedMemorySection | None) -> list[str]:
     if comparison is None:
         return ['Not compared: no eval row runs the primary model with retrieved clauses.']
+    if isinstance(comparison, CarriedMemorySection):
+        return list(comparison.lines)
     settings = (('Memory on', comparison.memory_on), ('Memory off', comparison.memory_off))
     memory_on = comparison.memory_on
     return [
@@ -357,6 +411,13 @@ def _case_result_record(result: CaseResult) -> dict[str, object]:
     } | {'failed': False}
 
 
+def case_result_from_record(record: Mapping[str, object]) -> CaseResult:
+    fields = {name: value for name, value in record.items() if name != 'failed'}
+    if record['failed']:
+        return CASE_FAILURE_RECORD.validate_python(fields)
+    return CASE_OUTCOME_RECORD.validate_python(fields)
+
+
 @dataclass(frozen=True)
 class RowsDirectory:
     path: Path
@@ -390,15 +451,30 @@ def write_row_results(
     return row_path
 
 
-def write_results(results: EvalResults, results_directory: Path, readme_path: Path) -> Path:
-    results_directory.mkdir(parents=True, exist_ok=True)
+def _results_path(results: EvalResults, results_directory: Path) -> Path:
     results_name = dated_results_name(
         results.measured_on, results.run_identifier, results.cases_per_row
     )
-    results_path = results_directory / f'{results_name}.md'
-    results_text = results_file_text(results)
-    with results_path.open('x') as results_file:
-        results_file.write(results_text)
+    return results_directory / f'{results_name}.md'
+
+
+def write_results(results: EvalResults, results_directory: Path, readme_path: Path) -> Path:
+    return _write_results(results, results_directory, readme_path, 'x')
+
+
+def rewrite_results_after_rerun(
+    results: EvalResults, results_directory: Path, readme_path: Path
+) -> None:
+    _write_results(results, results_directory, readme_path, 'w')
+
+
+def _write_results(
+    results: EvalResults, results_directory: Path, readme_path: Path, mode: Literal['x', 'w']
+) -> Path:
+    results_directory.mkdir(parents=True, exist_ok=True)
+    results_path = _results_path(results, results_directory)
+    with results_path.open(mode) as results_file:
+        results_file.write(results_file_text(results))
     if results.cases_per_row is None:
         readme_path.write_text(
             _replace_results_block(readme_path.read_text(), readme_table(results))
