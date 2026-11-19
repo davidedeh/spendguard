@@ -180,7 +180,7 @@ export const ApproverBeat = ({ props, section, realSeconds, timing }: BeatProps<
           ...optional(approve, timing.approve, 'green', 'with a reason'),
           ...optional(reject, timing.reject, 'red', 'with a reason'),
           { line: executed, ...timing.executed, tone: 'green', callout: 'exactly once' },
-          { line: precedent, ...timing.precedent, tone: 'cyan', callout: 'remembered' },
+          { line: precedent, ...timing.precedent, tone: 'cyan', callout: 'informs, never approves' },
           { line: conflict, ...timing.conflict, tone: 'red', callout: 'refused' },
         ]}
         footnote={footnote(props)}
