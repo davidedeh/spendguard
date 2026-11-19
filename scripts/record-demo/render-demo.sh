@@ -6,15 +6,15 @@
 set -euo pipefail
 
 repository="$(cd "$(dirname "$0")/../.." && pwd)"
-output="${OUTPUT:-$repository/docs/media/spendguard-demo.mp4}"
-narrated_output="${NARRATED_OUTPUT:-$repository/docs/media/spendguard-demo-narrated.mp4}"
+output="${OUTPUT:-$repository/recordings/spendguard-demo.mp4}"
+narrated_output="${NARRATED_OUTPUT:-$repository/recordings/spendguard-demo-narrated.mp4}"
 narration_source="$repository/recordings/narration"
-git_size_limit_bytes=10000000
+github_video_upload_limit_bytes=10000000
 
 warn_if_too_large() {
   echo "Wrote $1 ($(du -h "$1" | cut -f1))"
-  if [ "$(stat -f %z "$1")" -gt "$git_size_limit_bytes" ]; then
-    echo 'It is over 10 MB: keep it out of git and link to it from somewhere else' >&2
+  if [ "$(stat -f %z "$1")" -gt "$github_video_upload_limit_bytes" ]; then
+    echo 'It is over 10 MB: compress it before uploading it to GitHub' >&2
   fi
 }
 

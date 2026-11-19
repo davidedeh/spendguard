@@ -59,10 +59,10 @@ index-policy: ## Embed changed policy clauses into this branch's index (calls th
 demo: ## Post signed sample submissions to a running API and show a pending finding (APPROVER_TOKEN=approver token in the environment, URL=base URL, DECIDE=1 to also decide them)
 	@uv run python -m spendguard.demo $(or $(URL),http://localhost:8000) $(if $(DECIDE),--decide)
 
-record-demo: ## Record a demo take on a stack of its own and render the demo videos in docs/media (calls the configured models and Langfuse)
+record-demo: ## Record a demo take on a stack of its own and render the demo videos in recordings/ (calls the configured models and Langfuse)
 	scripts/record-demo/record-demo.sh
 
-render-demo: ## Re-render the demo videos in docs/media from the last take, narrated too when recordings/narration has clips (no model calls)
+render-demo: ## Re-render the demo videos in recordings/ from the last take, narrated too when recordings/narration has clips (no model calls)
 	scripts/record-demo/render-demo.sh
 
 validate-template: ## Validate the SAM template with sam validate and cfn-lint (offline)
