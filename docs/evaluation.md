@@ -43,4 +43,4 @@ GPT OSS 120B is OpenAI's open-weight model, not frontier GPT.
 
 Overlapping 95% intervals are never claimed as a win.
 
-Production default: Haiku unless the eval shows it worse. With 21 expected judgement findings the eval can only detect large gaps, so this is a cost-led default, not a demonstrated equivalence.
+Production default: Haiku unless the eval shows it worse. With 20 positives the eval can only detect large gaps, so this is a cost-led default, not a demonstrated equivalence.

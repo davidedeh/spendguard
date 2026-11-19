@@ -2,6 +2,8 @@
 
 SpendGuard is an AI agent that reviews expense claims and supplier invoices for the fictional Halden Group against a written policy, with a human approver in the loop. Code runs every rule check and verifies every model finding, so clean, low-value claims are approved automatically and everything else reaches a person with evidence.
 
+Built with Python, LangGraph with a Postgres checkpointer, Claude Haiku on AWS Bedrock, pgvector retrieval, Langfuse tracing, and SQS and Lambda deployed with AWS SAM.
+
 https://github.com/user-attachments/assets/aaadc2ae-d7d6-4cf7-8318-11405eaf0040
 
 A narrated walkthrough, about 2 minutes: a clean claim approved automatically, a vague purpose flagged with its evidence, an injection attempt sent to a human, the approver's decisions, and the Langfuse trace behind the injection case. The terminal panes are the real output of a recorded run with real models.
@@ -18,14 +20,14 @@ How a claim flows:
 1. A signed webhook records the claim once and queues it.
 2. Intake converts currency and redacts personal data before any prompt.
 3. Code runs the rule checks; a model judges four policy questions.
-4. Verify drops any model finding whose quote does not match the claim.
+4. Verify drops findings whose quote doesn't match, or whose clause or precedent wasn't supplied.
 5. Clean claims of £100 or less auto-approve; the rest await an approver.
 
 Detail: [how it works](docs/architecture.md), [configuration](docs/configuration.md), the [policy](docs/halden-policy.md) and the [glossary](GLOSSARY.md).
 
 ## Results
 
-- **Recall 0.86, precision 0.62.** Claude Haiku found 18 of 21 expected findings, but 11 of its 29 were wrong.
+- **Recall 0.86, precision 0.62.** Claude Haiku found 18 of 21 expected findings, but 11 of its 29 were wrong; a wrong finding only sends the claim to a person, never rejects it.
 - **Retrieval cuts cost, not errors.** It matched the whole policy in the prompt on recall and routing, at 29% less cost.
 - **Precedent fit is unchecked.** With memory on, Haiku applied precedents to both control cases they did not fit.
 - **GPT OSS 120B failed 21 of 49 cases**, every one by running to its output limit.
@@ -47,11 +49,13 @@ Measured on 2026-11-18 against eval-v2 (968c6684); test cases: 49.
 Rule checks, the same for every row: precision 8/8 = 1.00, recall 8/8 = 1.00.
 <!-- eval-results:end -->
 
+GPT OSS 120B is OpenAI's open-weight model, not frontier GPT. Overlapping 95% intervals are never claimed as a win. Production default: Haiku unless the eval shows it worse. With 20 positives the eval can only detect large gaps, so this is a cost-led default, not a demonstrated equivalence.
+
 ## Key design decisions
 
 - **Rules run in code.** Every applicable rule check runs; a model cannot skip, downgrade or remove one ([ADR 0001](docs/adr/0001-model-confined-to-judgement-checks.md)).
 - **The model only judges.** Four judgement checks, with tools that see only the submission under review.
-- **Verify is deterministic.** Plain Python checks every quote and clause, and records every finding it drops.
+- **Verify is deterministic.** Plain Python, with every dropped finding recorded.
 - **Fail closed.** A check with no usable verdict, or one verify drops, sends the claim to a person.
 - **Durable human review.** Decisions execute exactly once, and precedents inform an approver but never decide ([ADR 0002](docs/adr/0002-precedents-annotate-never-suppress.md), [ADR 0003](docs/adr/0003-lambda-and-fifo-queue-runtime.md)).
 
@@ -69,13 +73,12 @@ The demo with real models, recording the video and teardown are in [docs/develop
 
 ## How it's deployed
 
-As of 2026-11-19, one AWS SAM stack in `us-east-1` runs SpendGuard, deployed since 2026-11-18. Every push to `main` deploys through GitHub Actions over OIDC, with no stored AWS keys, then migrates, indexes the policy and smoke-tests the API. Data is in Supabase Postgres and traces in Langfuse Cloud; the runbook is [docs/deployment.md](docs/deployment.md).
+As of 2026-11-19, one AWS SAM stack in `us-east-1` runs SpendGuard, deployed since 2026-11-18. Every push to `main` deploys through GitHub Actions over OIDC, with no stored AWS keys, then migrates, indexes the policy and smoke-tests the API. Data is in Supabase Postgres; the runbook is [docs/deployment.md](docs/deployment.md).
 
 ## Limitations and next steps
 
-- The eval is small: 21 expected findings and one run per row. Growing the dev split is worth exploring.
-- Nothing checks that a precedent fits the claim it clears; verifying a quoted fact is worth exploring.
-- The policy fits in the prompt, so a policy too large for it is untested.
+- One run per row cannot show run-to-run variation; growing the dev split is worth exploring.
+- A policy too large for the prompt is untested.
 - One auto-approve threshold covers every category; tiered thresholds are worth exploring.
 - The deploy's CloudFormation role has full administrator rights, accepted for a single-owner demo account.
 - Approvers decide through the API, with no UI yet; the finance system is a mock.
